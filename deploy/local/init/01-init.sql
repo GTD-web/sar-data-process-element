@@ -1,0 +1,3 @@
+-- SDPE 로컬 DB 초기화 (deploy/local)
+CREATE SCHEMA IF NOT EXISTS sdpe;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

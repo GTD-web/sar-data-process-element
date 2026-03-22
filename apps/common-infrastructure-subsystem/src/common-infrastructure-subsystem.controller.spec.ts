@@ -11,7 +11,9 @@ describe('CommonInfrastructureSubsystemController', () => {
       providers: [CommonInfrastructureSubsystemService],
     }).compile();
 
-    commonInfrastructureSubsystemController = app.get<CommonInfrastructureSubsystemController>(CommonInfrastructureSubsystemController);
+    commonInfrastructureSubsystemController = app.get<CommonInfrastructureSubsystemController>(
+      CommonInfrastructureSubsystemController,
+    );
   });
 
   describe('root', () => {

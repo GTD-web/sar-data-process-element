@@ -1,0 +1,18 @@
+# Local Postgres for SDPE (SDPE-CDS plan §2.2). pgmq는 Postgres 이미지에 확장이 포함되지 않으므로
+# 운영/통합용 이미지(Tembo·Supabase 등)로 교체하거나 별도 설치 스크립트를 추가한다.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sdpe-postgres-local
+    environment:
+      POSTGRES_USER: sdpe
+      POSTGRES_PASSWORD: sdpe
+      POSTGRES_DB: sdpe
+    ports:
+      - '5432:5432'
+    volumes:
+      - sdpe_pg_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  sdpe_pg_data:

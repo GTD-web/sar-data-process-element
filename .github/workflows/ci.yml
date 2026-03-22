@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
+      - run: npm run lint
+      - run: npm test
+      - run: npm run test:e2e
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Ruff and mypy (SDPE-CDS-001 §4.4)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ruff mypy
+          python -m ruff check algorithms
+          python -m ruff format algorithms --check
+          python -m mypy algorithms/csc03_range_compression

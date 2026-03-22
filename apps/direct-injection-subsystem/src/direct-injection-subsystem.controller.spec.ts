@@ -11,7 +11,9 @@ describe('DirectInjectionSubsystemController', () => {
       providers: [DirectInjectionSubsystemService],
     }).compile();
 
-    directInjectionSubsystemController = app.get<DirectInjectionSubsystemController>(DirectInjectionSubsystemController);
+    directInjectionSubsystemController = app.get<DirectInjectionSubsystemController>(
+      DirectInjectionSubsystemController,
+    );
   });
 
   describe('root', () => {

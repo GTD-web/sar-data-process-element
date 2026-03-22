@@ -10,6 +10,24 @@
   "monorepo": true,
   "root": "apps/pipeline-workflow-subsystem",
   "projects": {
+    "sdpe-shared": {
+      "type": "library",
+      "root": "libs/sdpe-shared",
+      "entryFile": "index",
+      "sourceRoot": "libs/sdpe-shared/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/sdpe-shared/tsconfig.lib.json"
+      }
+    },
+    "sdpe-database": {
+      "type": "library",
+      "root": "libs/sdpe-database",
+      "entryFile": "index",
+      "sourceRoot": "libs/sdpe-database/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/sdpe-database/tsconfig.lib.json"
+      }
+    },
     "common-infrastructure-subsystem": {
       "type": "application",
       "root": "apps/common-infrastructure-subsystem",

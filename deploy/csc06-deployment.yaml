@@ -1,0 +1,26 @@
+# SDPE-CDS-001 §3.4 — Kubernetes manifest naming (CSC06 pipeline workflow)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: csc06-pipeline-workflow
+  labels:
+    app.kubernetes.io/name: csc06-pipeline-workflow
+    app.kubernetes.io/component: pipeline-workflow-subsystem
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: csc06-pipeline-workflow
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: csc06-pipeline-workflow
+    spec:
+      containers:
+        - name: pipeline-workflow-subsystem
+          image: sdpe/pipeline-workflow-subsystem:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: '3000'

@@ -5,5 +5,11 @@
   "testRegex": ".e2e-spec.ts$",
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "^@sdpe/shared$": "<rootDir>/../../../libs/sdpe-shared/src/index.ts",
+    "^@sdpe/shared/(.*)$": "<rootDir>/../../../libs/sdpe-shared/src/$1",
+    "^@sdpe/database$": "<rootDir>/../../../libs/sdpe-database/src/index.ts",
+    "^@sdpe/database/(.*)$": "<rootDir>/../../../libs/sdpe-database/src/$1"
   }
 }

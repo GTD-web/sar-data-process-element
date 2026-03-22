@@ -11,7 +11,9 @@ describe('ProductManagementSubsystemController', () => {
       providers: [ProductManagementSubsystemService],
     }).compile();
 
-    productManagementSubsystemController = app.get<ProductManagementSubsystemController>(ProductManagementSubsystemController);
+    productManagementSubsystemController = app.get<ProductManagementSubsystemController>(
+      ProductManagementSubsystemController,
+    );
   });
 
   describe('root', () => {
