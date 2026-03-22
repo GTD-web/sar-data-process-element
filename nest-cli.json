@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "apps/pipeline-workflow-subsystem/src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "webpack": true,
+    "tsConfigPath": "apps/pipeline-workflow-subsystem/tsconfig.app.json"
+  },
+  "monorepo": true,
+  "root": "apps/pipeline-workflow-subsystem",
+  "projects": {
+    "common-infrastructure-subsystem": {
+      "type": "application",
+      "root": "apps/common-infrastructure-subsystem",
+      "entryFile": "main",
+      "sourceRoot": "apps/common-infrastructure-subsystem/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/common-infrastructure-subsystem/tsconfig.app.json"
+      }
+    },
+    "direct-injection-subsystem": {
+      "type": "application",
+      "root": "apps/direct-injection-subsystem",
+      "entryFile": "main",
+      "sourceRoot": "apps/direct-injection-subsystem/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/direct-injection-subsystem/tsconfig.app.json"
+      }
+    },
+    "sar-processing-subsystem": {
+      "type": "application",
+      "root": "apps/sar-processing-subsystem",
+      "entryFile": "main",
+      "sourceRoot": "apps/sar-processing-subsystem/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/sar-processing-subsystem/tsconfig.app.json"
+      }
+    },
+    "post-processing-tool": {
+      "type": "application",
+      "root": "apps/post-processing-tool",
+      "entryFile": "main",
+      "sourceRoot": "apps/post-processing-tool/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/post-processing-tool/tsconfig.app.json"
+      }
+    },
+    "pipeline-workflow-subsystem": {
+      "type": "application",
+      "root": "apps/pipeline-workflow-subsystem",
+      "entryFile": "main",
+      "sourceRoot": "apps/pipeline-workflow-subsystem/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/pipeline-workflow-subsystem/tsconfig.app.json"
+      }
+    },
+    "product-management-subsystem": {
+      "type": "application",
+      "root": "apps/product-management-subsystem",
+      "entryFile": "main",
+      "sourceRoot": "apps/product-management-subsystem/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/product-management-subsystem/tsconfig.app.json"
+      }
+    },
+    "data-service-subsystem": {
+      "type": "application",
+      "root": "apps/data-service-subsystem",
+      "entryFile": "main",
+      "sourceRoot": "apps/data-service-subsystem/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/data-service-subsystem/tsconfig.app.json"
+      }
+    }
+  }
+}
