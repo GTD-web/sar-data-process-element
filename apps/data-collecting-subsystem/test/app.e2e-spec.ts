@@ -1,14 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import { CommonInfrastructureSubsystemModule } from './../src/common-infrastructure-subsystem.module';
+import { DataCollectingSubsystemModule } from './../src/data-collecting-subsystem.module';
 
-describe('CommonInfrastructureSubsystemController (e2e)', () => {
+describe('DataCollectingSubsystemController (e2e)', () => {
   let app: INestApplication;
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [CommonInfrastructureSubsystemModule],
+      imports: [DataCollectingSubsystemModule],
     }).compile();
 
     app = moduleFixture.createNestApplication();
