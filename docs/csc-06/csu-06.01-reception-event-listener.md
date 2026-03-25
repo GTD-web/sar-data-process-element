@@ -10,6 +10,14 @@
 | **관련 인터페이스** | IF-EXT-01, IF-INT-05, IF-INT-08    |
 | **구독 큐**         | `sdpe.reception.events`            |
 
+> **📐 ICD 구체화 근거**
+>
+> 이 CSU에서 사용하는 `ReceptionEventListener`, `RawDataReceivedEvent`, `FileIntegrityError`, `ProfileNotFoundError`, `DbError` 는 ICD의 역할 묘사와 운영 시나리오를 코드 수준으로 구체화한 명칭이다.
+> 구체화 근거 전체는 [csu-06-naming-decisions.md](./csu-06-naming-decisions.md) 를 참조한다.
+> CDR에서 공식 명칭이 확정되면 이 노트를 제거한다.
+
+---
+
 ### 큐 이름 읽는 법
 
 큐 이름은 ICD 4.2절 규칙 `sdpe.{영역}.{목적}` 을 따른다.
@@ -53,8 +61,8 @@ sequenceDiagram
     actor GS as 위성 수신국
     participant Q1 as pgmq<br/>sdpe.reception.events
     participant L as CSU-06.01<br/>ReceptionEventListener
-    participant DB as CSC-01<br/>DbRepository
-    participant NAS as CSC-01<br/>NasManager
+    participant DB as CSU-01.01<br/>DB Interface
+    participant NAS as CSU-01.03<br/>NAS Manager
     participant P as CSU-06.02<br/>ProcessingProfileManager
     participant TQ as CSU-06.04<br/>TaskQueueManager
     participant AL as CSU-06.06<br/>AuditLogCollector
@@ -69,21 +77,21 @@ sequenceDiagram
         Q1-->>L: RawDataReceivedEvent
     end
 
-    L->>DB: findOne({ event_id })
+    L->>DB: event_id 중복 확인
     Note over L,DB: 동일 event_id가 두 번 들어올 경우를<br/>대비한 중복 방어. 수신국 장애 등으로<br/>같은 이벤트가 재발행될 수 있다.
-    DB-->>L: null (중복 아님, 처리 계속)
+    DB-->>L: 중복 아님 (처리 계속)
 
-    L->>NAS: getChecksum(raw_data_path)
+    L->>NAS: 파일 체크섬 계산 (raw_data_path)
     Note over L,NAS: NAS에 저장된 파일의 SHA-256 해시를<br/>직접 계산해서 이벤트에 포함된<br/>checksum_sha256 값과 비교한다.<br/>전송 중 파일이 깨졌는지 확인하는 용도로 사용한다.
-    NAS-->>L: sha256 hash
+    NAS-->>L: SHA-256 해시값
 
     L->>P: selectProfile(satellite_id, mode)
     Note over L,P: 위성 종류와 촬영 모드(SM/SC/SL)에 따라<br/>어떤 처리 파라미터를 쓸지 결정한다.<br/>예: Spotlight 모드는 BPA 알고리즘을 사용한다.
     P-->>L: ProcessingProfile
 
-    L->>DB: save('jobs', { status: 'PENDING' })
+    L->>DB: job 레코드 생성 (status: PENDING)
     Note over L,DB: 파이프라인 전체를 추적하기 위한<br/>job 레코드를 DB에 생성한다.<br/>이후 모든 CSU는 이 job_id로 상태를 조회한다.
-    DB-->>L: job (job_id 포함)
+    DB-->>L: job_id
 
     L->>TQ: assignJob('CSC-02', { job_id, ... })
     Note over L,TQ: CSU-06.04가 sdpe.jobs.csc02 큐에<br/>JOB_ASSIGNED 메시지를 발행한다.<br/>CSC-02 워커가 이 메시지를 소비하면<br/>Level-0 처리가 시작된다.
@@ -105,15 +113,15 @@ sequenceDiagram
 sequenceDiagram
     participant Q1 as pgmq<br/>sdpe.reception.events
     participant L as CSU-06.01<br/>ReceptionEventListener
-    participant NAS as CSC-01<br/>NasManager
+    participant NAS as CSU-01.03<br/>NAS Manager
     participant AL as CSU-06.06<br/>AuditLogCollector
 
     L->>Q1: pgmq.read(vt=30)
     Note over Q1: 메시지가 30초간 잠김 상태가 된다.
     Q1-->>L: RawDataReceivedEvent
 
-    L->>NAS: getChecksum(raw_data_path)
-    NAS-->>L: sha256 hash
+    L->>NAS: 파일 체크섬 계산 (raw_data_path)
+    NAS-->>L: SHA-256 해시값
     Note over L: 이벤트의 checksum_sha256 값과 불일치.<br/>FileIntegrityError 발생.
 
     L->>AL: log({ type: 'RECEPTION_FAILED', error })
@@ -131,9 +139,9 @@ sequenceDiagram
   → NAS 파일 저장 + sdpe.reception.events 큐에 RAW_DATA_RECEIVED 발행
     → [CSU-06.01] 폴링으로 이벤트 수신
         → 중복 방어 (event_id)
-        → 파일 체크섬 검증 (CSC-01 NasManager)
+        → 파일 체크섬 검증 (CSU-01.03 NAS Manager)
         → CSU-06.02: 처리 프로파일 선택
-        → CSC-01 DbRepository: job 레코드 생성
+        → CSU-01.01 DB Interface: job 레코드 생성
         → CSU-06.04: CSC-02에 작업 할당
         → CSU-06.06: 감사 로그 기록
 ```
@@ -247,14 +255,13 @@ export interface IReceptionEventListener {
 
 이 CSU가 호출하는 다른 CSU / 공통 모듈 목록.
 
-| 의존 대상                             | 호출 목적                         | 정의 위치            |
-| ------------------------------------- | --------------------------------- | -------------------- |
-| **CSU-06.02** `selectProfile()`       | 위성·모드 기반 처리 프로파일 선택 | CSU-06.02 인터페이스 |
-| **CSU-06.04** `assignJob()`           | CSC-02 작업 할당 메시지 발행      | CSU-06.04 인터페이스 |
-| **CSU-06.06** `log()`                 | 이벤트 수신·실패 감사 로그 기록   | CSU-06.06 인터페이스 |
-| **CSC-01** `DbRepository.save()`      | job 레코드 생성                   | IF-INT-08            |
-| **CSC-01** `DbRepository.findOne()`   | event_id 중복 확인                | IF-INT-08            |
-| **CSC-01** `NasManager.getChecksum()` | SHA-256 체크섬 검증               | IF-INT-08            |
+| 의존 대상                       | 호출 목적                            | 정의 위치            |
+| ------------------------------- | ------------------------------------ | -------------------- |
+| **CSU-06.02** `selectProfile()` | 위성·모드 기반 처리 프로파일 선택    | CSU-06.02 인터페이스 |
+| **CSU-06.04** `assignJob()`     | CSC-02 작업 할당 메시지 발행         | CSU-06.04 인터페이스 |
+| **CSU-06.06** `log()`           | 이벤트 수신·실패 감사 로그 기록      | CSU-06.06 인터페이스 |
+| **CSU-01.01** DB Interface      | job 레코드 생성 / event_id 중복 확인 | IF-INT-08            |
+| **CSU-01.03** NAS Manager       | 파일 체크섬 검증                     | IF-INT-08            |
 
 ---
 
@@ -266,10 +273,10 @@ export interface IReceptionEventListener {
 poll()
   └─ pgmq.read('sdpe.reception.events', vt=30, count=1)
       └─ onRawDataReceived(event)
-            1. DbRepository.findOne({ event_id })   // 중복 방어
-            2. NasManager.getChecksum(raw_data_path) // 무결성 검증
+            1. CSU-01.01 DB Interface: event_id 중복 확인
+            2. CSU-01.03 NAS Manager: 파일 체크섬 계산 및 검증
             3. CSU-06.02.selectProfile(satellite_id, mode)
-            4. DbRepository.save('jobs', { status: 'PENDING', ... })
+            4. CSU-01.01 DB Interface: job 레코드 생성 (status: PENDING)
             5. CSU-06.04.assignJob('CSC-02', { job_id, ... })
             6. CSU-06.06.log({ type: 'JOB_CREATED', job_id })
             7. pgmq.delete('sdpe.reception.events', msg_id)  // 큐에서 제거
@@ -294,12 +301,12 @@ onRawDataReceived() 에서 예외 발생
 
 **멱등성 보장**
 동일 `event_id`가 두 번 들어와도 job이 중복 생성되지 않아야 한다.
-`DbRepository.findOne({ event_id })` 확인이 필수이며, DB 레벨에서 `event_id UNIQUE` 제약도 병행을 권장한다.
+CSU-01.01 DB Interface의 중복 확인이 필수이며, DB 레벨에서 `event_id UNIQUE` 제약도 병행을 권장한다.
 
 **트랜잭션 범위**
-`DbRepository.save('jobs', ...)` 와 `CSU-06.04.assignJob()` 은 원자적으로 처리되어야 한다.
+CSU-01.01 DB Interface의 job 레코드 생성과 `CSU-06.04.assignJob()` 은 원자적으로 처리되어야 한다.
 job 저장은 성공했으나 작업 할당이 실패한 경우 job이 `PENDING` 상태로 방치될 수 있다.
-→ 트랜잭션 처리 방식은 **TBD** (CSC-01 DbRepository 트랜잭션 API 확정 후 결정)
+→ 트랜잭션 처리 방식은 **TBD** (CSU-01.01 DB Interface 트랜잭션 API 확정 후 결정)
 
 **폴링 주기**
 현재 2,000ms 기준. 수신국 데이터 도착 빈도에 따라 조정이 필요하다. 수치: **TBC**
@@ -308,15 +315,15 @@ job 저장은 성공했으나 작업 할당이 실패한 경우 job이 `PENDING`
 
 ## 미확정 항목 (CDR 전 해결 필요)
 
-| 우선순위 | 항목                                    | 상태 | 해결 조건                       |
-| -------- | --------------------------------------- | ---- | ------------------------------- |
-| P1       | `satellite_id` 형식 및 파싱 규칙        | TBC  | 위성팀 협의                     |
-| P1       | `mode` 허용값 enum                      | TBC  | 위성팀 협의                     |
-| P1       | `polarization` 허용값 enum              | TBC  | 위성팀 협의                     |
-| P2       | pgmq 재시도 상한 (`max_delivery_count`) | TBD  | 팀 내부 결정                    |
-| P2       | 폴링 주기 (ms)                          | TBC  | 팀 내부 결정                    |
-| P2       | job 저장 + 작업 할당 트랜잭션 처리 방식 | TBD  | CSC-01 DbRepository API 확정 후 |
-| P3       | `metadata_path` 포함 여부 및 스키마     | TBD  | 수신국 협의                     |
+| 우선순위 | 항목                                    | 상태 | 해결 조건                                   |
+| -------- | --------------------------------------- | ---- | ------------------------------------------- |
+| P1       | `satellite_id` 형식 및 파싱 규칙        | TBC  | 위성팀 협의                                 |
+| P1       | `mode` 허용값 enum                      | TBC  | 위성팀 협의                                 |
+| P1       | `polarization` 허용값 enum              | TBC  | 위성팀 협의                                 |
+| P2       | pgmq 재시도 상한 (`max_delivery_count`) | TBD  | 팀 내부 결정                                |
+| P2       | 폴링 주기 (ms)                          | TBC  | 팀 내부 결정                                |
+| P2       | job 저장 + 작업 할당 트랜잭션 처리 방식 | TBD  | CSU-01.01 DB Interface 트랜잭션 API 확정 후 |
+| P3       | `metadata_path` 포함 여부 및 스키마     | TBD  | 수신국 협의                                 |
 
 ---
 
@@ -324,6 +331,6 @@ job 저장은 성공했으나 작업 할당이 실패한 경우 job이 `PENDING`
 
 - **IF-EXT-01** — 위성 수신국 원시 데이터 수신 인터페이스 (입력 이벤트 원천 정의)
 - **IF-INT-05** — 작업 할당 이벤트 (CSU-06.04가 발행, 이 CSU가 트리거)
-- **IF-INT-08** — CSC-01 공통 인프라 서비스 (DbRepository, NasManager)
+- **IF-INT-08** — CSU-01.01 DB Interface, CSU-01.03 NAS Manager 사용
 - **OPS-01** 1~2단계 — 정상 처리 시나리오
 - **OPS-02** 1단계 — 실패 및 재시도 시나리오 시작점
