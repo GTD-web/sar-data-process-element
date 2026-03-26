@@ -28,22 +28,13 @@
         "tsConfigPath": "libs/sdpe-database/tsconfig.lib.json"
       }
     },
-    "common-infrastructure-subsystem": {
+"data-collecting-subsystem": {
       "type": "application",
-      "root": "apps/common-infrastructure-subsystem",
+      "root": "apps/data-collecting-subsystem",
       "entryFile": "main",
-      "sourceRoot": "apps/common-infrastructure-subsystem/src",
+      "sourceRoot": "apps/data-collecting-subsystem/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/common-infrastructure-subsystem/tsconfig.app.json"
-      }
-    },
-    "direct-injection-subsystem": {
-      "type": "application",
-      "root": "apps/direct-injection-subsystem",
-      "entryFile": "main",
-      "sourceRoot": "apps/direct-injection-subsystem/src",
-      "compilerOptions": {
-        "tsConfigPath": "apps/direct-injection-subsystem/tsconfig.app.json"
+        "tsConfigPath": "apps/data-collecting-subsystem/tsconfig.app.json"
       }
     },
     "sar-processing-subsystem": {
@@ -73,16 +64,7 @@
         "tsConfigPath": "apps/pipeline-workflow-subsystem/tsconfig.app.json"
       }
     },
-    "product-management-subsystem": {
-      "type": "application",
-      "root": "apps/product-management-subsystem",
-      "entryFile": "main",
-      "sourceRoot": "apps/product-management-subsystem/src",
-      "compilerOptions": {
-        "tsConfigPath": "apps/product-management-subsystem/tsconfig.app.json"
-      }
-    },
-    "data-service-subsystem": {
+"data-service-subsystem": {
       "type": "application",
       "root": "apps/data-service-subsystem",
       "entryFile": "main",
