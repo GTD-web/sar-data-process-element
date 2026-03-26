@@ -36,6 +36,10 @@ venv/
 *.egg-info/
 .eggs/
 
+# CSCI build artifacts
+*.dll
+csci/**/config.json
+
 # OS
 .DS_Store
 Thumbs.db
