@@ -1,0 +1,38 @@
+{
+  // FTP 서버 주소 (IP 또는 호스트명)
+  "ftp_host": "127.0.0.1",
+
+  // FTP 포트 (기본값: 21)
+  "ftp_port": 21,
+
+  // FTP 계정 / 비밀번호
+  "ftp_user": "",
+  "ftp_pass": "",
+
+  // FTP 연결·응답 타임아웃 (초, 기본값: 30)
+  "ftp_timeout_sec": 30,
+
+  // 수집 대상 FTP 디렉터리 경로 (기본값: "/")
+  "remote_watch_dir": "/HDR/down",
+
+  // 다운로드 완료 파일이 저장될 최종 경로 (필수)
+  "nas_final_dir": "D:\\NAS\\final",
+
+  // 다운로드 중 임시 파일(.part)이 저장될 경로 (필수)
+  "nas_tmp_dir": "D:\\NAS\\.tmp",
+
+  // 파일명 타임스탬프 기준 최근 N일 범위만 수집 (기본값: 7)
+  "lookback_days": 7,
+
+  // 파일 생성 후 최소 N분이 지난 것만 수집 — 쓰기 완료 대기용 (기본값: 3)
+  "min_age_minutes": 3,
+
+  // 동시 다운로드 수 (기본값: 1)
+  "max_parallel_downloads": 1,
+
+  // 파일명 앞 타임스탬프의 Go Time Layout 형식 (기본값: "20060102150405")
+  "filename_time_layout": "20060102150405",
+
+  // 수집할 확장자 목록. 비워두면 모든 파일 대상
+  "allowed_extensions": [".dat", ".hdr"]
+}
