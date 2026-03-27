@@ -8,7 +8,12 @@
       "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
       "Bash(mkdir -p /c/Users/USER/dev/sar-data-process-element/csci)",
       "Bash(mv /c/Users/USER/dev/sar-data-process-element/RawDataCollector /c/Users/USER/dev/sar-data-process-element/csci/csc-02-raw-data-collector)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(find /c/Users/USER/dev/sar-data-process-element -type d -name *pipeline*)",
+      "Bash(xargs grep:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git fetch:*)"
     ]
   },
   "hooks": {
