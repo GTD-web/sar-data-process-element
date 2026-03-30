@@ -24,7 +24,14 @@
     "noFallthroughCasesInSwitch": true,
     "paths": {
       "@sdpe/shared": ["libs/sdpe-shared/src"],
-      "@sdpe/database": ["libs/sdpe-database/src"]
+      "@sdpe/database": ["libs/sdpe-database/src"],
+      "@sdpe/job": ["libs/csu-07.01-job/src"],
+      "@sdpe/pipeline": ["libs/csu-07.02-pipeline/src"],
+      "@sdpe/processing-profile": ["libs/csu-07.03-processing-profile/src"],
+      "@sdpe/retry-policy": ["libs/csu-07.04-retry-policy/src"],
+      "@sdpe/alert": ["libs/csu-07.05-alert/src"],
+      "@sdpe/audit-log": ["libs/csu-07.06-audit-log/src"],
+      "@sdpe/monitoring": ["libs/csu-07.07-monitoring/src"]
     }
   }
 }

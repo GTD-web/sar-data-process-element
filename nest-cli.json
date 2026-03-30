@@ -28,6 +28,69 @@
         "tsConfigPath": "libs/sdpe-database/tsconfig.lib.json"
       }
     },
+    "csu-07.01-job": {
+      "type": "library",
+      "root": "libs/csu-07.01-job",
+      "entryFile": "index",
+      "sourceRoot": "libs/csu-07.01-job/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/csu-07.01-job/tsconfig.lib.json"
+      }
+    },
+    "csu-07.02-pipeline": {
+      "type": "library",
+      "root": "libs/csu-07.02-pipeline",
+      "entryFile": "index",
+      "sourceRoot": "libs/csu-07.02-pipeline/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/csu-07.02-pipeline/tsconfig.lib.json"
+      }
+    },
+    "csu-07.03-processing-profile": {
+      "type": "library",
+      "root": "libs/csu-07.03-processing-profile",
+      "entryFile": "index",
+      "sourceRoot": "libs/csu-07.03-processing-profile/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/csu-07.03-processing-profile/tsconfig.lib.json"
+      }
+    },
+    "csu-07.04-retry-policy": {
+      "type": "library",
+      "root": "libs/csu-07.04-retry-policy",
+      "entryFile": "index",
+      "sourceRoot": "libs/csu-07.04-retry-policy/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/csu-07.04-retry-policy/tsconfig.lib.json"
+      }
+    },
+    "csu-07.05-alert": {
+      "type": "library",
+      "root": "libs/csu-07.05-alert",
+      "entryFile": "index",
+      "sourceRoot": "libs/csu-07.05-alert/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/csu-07.05-alert/tsconfig.lib.json"
+      }
+    },
+    "csu-07.06-audit-log": {
+      "type": "library",
+      "root": "libs/csu-07.06-audit-log",
+      "entryFile": "index",
+      "sourceRoot": "libs/csu-07.06-audit-log/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/csu-07.06-audit-log/tsconfig.lib.json"
+      }
+    },
+    "csu-07.07-monitoring": {
+      "type": "library",
+      "root": "libs/csu-07.07-monitoring",
+      "entryFile": "index",
+      "sourceRoot": "libs/csu-07.07-monitoring/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/csu-07.07-monitoring/tsconfig.lib.json"
+      }
+    },
 "data-collecting-subsystem": {
       "type": "application",
       "root": "apps/data-collecting-subsystem",

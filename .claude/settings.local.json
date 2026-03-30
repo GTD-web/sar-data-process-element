@@ -14,7 +14,16 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git fetch:*)",
-      "Bash(git status:*)"
+      "Bash(git status:*)",
+      "Bash(grep -E \"\\\\.\\(ts|js|json\\)$\")",
+      "Bash(find /c/Users/USER/dev/sar-data-process-element -type f -name *csu* -o -name *CSU*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(mv sdpe-job:*)",
+      "Bash(mv sdpe-pipeline:*)",
+      "Bash(mv sdpe-processing-profile:*)",
+      "Bash(mv sdpe-retry-policy:*)",
+      "Bash(mv sdpe-alert:*)"
     ]
   },
   "hooks": {
