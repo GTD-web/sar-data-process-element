@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { Csc07OrchestratorContextService } from '../../csc07-orchestrator-context.service';
+import { Csc07OrchestratorContextService } from '../../csc07-orchestrator-context.service';
 import type { ProcessingEvent } from '@sdpe/shared';
 
 /**

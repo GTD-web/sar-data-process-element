@@ -10,6 +10,20 @@
     "^@sdpe/shared$": "<rootDir>/../../../libs/sdpe-shared/src/index.ts",
     "^@sdpe/shared/(.*)$": "<rootDir>/../../../libs/sdpe-shared/src/$1",
     "^@sdpe/database$": "<rootDir>/../../../libs/sdpe-database/src/index.ts",
-    "^@sdpe/database/(.*)$": "<rootDir>/../../../libs/sdpe-database/src/$1"
+    "^@sdpe/database/(.*)$": "<rootDir>/../../../libs/sdpe-database/src/$1",
+    "^@sdpe/job$": "<rootDir>/../../../libs/csu-07.01-job/src/index.ts",
+    "^@sdpe/job/(.*)$": "<rootDir>/../../../libs/csu-07.01-job/src/$1",
+    "^@sdpe/pipeline$": "<rootDir>/../../../libs/csu-07.02-pipeline/src/index.ts",
+    "^@sdpe/pipeline/(.*)$": "<rootDir>/../../../libs/csu-07.02-pipeline/src/$1",
+    "^@sdpe/processing-profile$": "<rootDir>/../../../libs/csu-07.03-processing-profile/src/index.ts",
+    "^@sdpe/processing-profile/(.*)$": "<rootDir>/../../../libs/csu-07.03-processing-profile/src/$1",
+    "^@sdpe/retry-policy$": "<rootDir>/../../../libs/csu-07.04-retry-policy/src/index.ts",
+    "^@sdpe/retry-policy/(.*)$": "<rootDir>/../../../libs/csu-07.04-retry-policy/src/$1",
+    "^@sdpe/alert$": "<rootDir>/../../../libs/csu-07.05-alert/src/index.ts",
+    "^@sdpe/alert/(.*)$": "<rootDir>/../../../libs/csu-07.05-alert/src/$1",
+    "^@sdpe/audit-log$": "<rootDir>/../../../libs/csu-07.06-audit-log/src/index.ts",
+    "^@sdpe/audit-log/(.*)$": "<rootDir>/../../../libs/csu-07.06-audit-log/src/$1",
+    "^@sdpe/monitoring$": "<rootDir>/../../../libs/csu-07.07-monitoring/src/index.ts",
+    "^@sdpe/monitoring/(.*)$": "<rootDir>/../../../libs/csu-07.07-monitoring/src/$1"
   }
 }
