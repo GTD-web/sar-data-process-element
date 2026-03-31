@@ -3,7 +3,7 @@ import type { ProcessingProfile } from '@sdpe/shared';
 import { type IProfileSelector, PROCESSING_PROFILE_REPOSITORY, type IProcessingProfileRepository } from '@sdpe/processing-profile';
 
 @Injectable()
-export class DefaultProfileSelectorAdapter implements IProfileSelector {
+export class ProfileSelectorAdapter implements IProfileSelector {
   constructor(
     @Inject(PROCESSING_PROFILE_REPOSITORY)
     private readonly profileRepository: IProcessingProfileRepository,

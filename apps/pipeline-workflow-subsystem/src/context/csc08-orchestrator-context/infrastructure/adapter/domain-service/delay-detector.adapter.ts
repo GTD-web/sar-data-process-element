@@ -3,7 +3,7 @@ import type { TargetCsc } from '@sdpe/shared';
 import { type IDelayDetector, DelayStatus, MONITORING_THRESHOLD } from '@sdpe/processing-monitor';
 
 @Injectable()
-export class DefaultDelayDetectorAdapter implements IDelayDetector {
+export class DelayDetectorAdapter implements IDelayDetector {
   detectStepDelay(targetCsc: TargetCsc, elapsedSec: number): DelayStatus {
     const targetSec = MONITORING_THRESHOLD.STEP_TARGET_SEC[targetCsc];
     if (elapsedSec >= targetSec) return DelayStatus.CRITICAL;

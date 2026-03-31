@@ -3,7 +3,7 @@ import { type IPerformanceAnalyzer, type PerformanceSummary } from '@sdpe/perfor
 import type { ProcessingMetric } from '@sdpe/processing-monitor';
 
 @Injectable()
-export class DefaultPerformanceAnalyzerAdapter implements IPerformanceAnalyzer {
+export class PerformanceAnalyzerAdapter implements IPerformanceAnalyzer {
   analyze(metrics: ProcessingMetric[]): PerformanceSummary {
     if (metrics.length === 0) {
       return { totalDurationMs: 0, stepDurations: {}, bottleneckCsc: null };

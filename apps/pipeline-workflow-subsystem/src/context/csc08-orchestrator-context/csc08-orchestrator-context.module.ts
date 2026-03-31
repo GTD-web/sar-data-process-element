@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { SdpeTaskQueueModule } from '@sdpe/task-queue';
 import { SdpePipelineSchedulerModule } from '@sdpe/pipeline-scheduler';
 import { SdpeProcessingProfileModule } from '@sdpe/processing-profile';
@@ -7,22 +8,31 @@ import { SdpeProcessingMonitorModule } from '@sdpe/processing-monitor';
 import { SdpeAlertModule } from '@sdpe/alert';
 import { SdpeAuditLogModule } from '@sdpe/audit-log';
 import { SdpePerformanceAnalyzerModule } from '@sdpe/performance-analyzer';
+import {
+  JobEntity,
+  PipelineExecutionEntity,
+  PipelineStepEntity,
+  ProcessingProfileEntity,
+  AuditEventEntity,
+  ProcessingMetricEntity,
+} from '@sdpe/database';
 import { Csc08OrchestratorContextService } from './csc08-orchestrator-context.service';
 import { commandHandlers, queryHandlers, eventHandlers } from './handlers';
-// Infrastructure Adapters
-import { TypeOrmJobRepository } from './infrastructure/adapter/typeorm-job.repository';
-import { TypeOrmPipelineExecutionRepository } from './infrastructure/adapter/typeorm-pipeline-execution.repository';
-import { DefaultStepResolverAdapter } from './infrastructure/adapter/default-step-resolver.adapter';
-import { DefaultDagBuilderAdapter } from './infrastructure/adapter/default-dag-builder.adapter';
-import { TypeOrmProcessingProfileRepository } from './infrastructure/adapter/typeorm-processing-profile.repository';
-import { DefaultProfileSelectorAdapter } from './infrastructure/adapter/default-profile-selector.adapter';
-import { DefaultRetryEvaluatorAdapter } from './infrastructure/adapter/default-retry-evaluator.adapter';
-import { ConsoleAlertDispatcherAdapter } from './infrastructure/adapter/console-alert-dispatcher.adapter';
-import { DefaultAlertConditionEvaluatorAdapter } from './infrastructure/adapter/default-alert-condition-evaluator.adapter';
-import { TypeOrmAuditLogAdapter } from './infrastructure/adapter/typeorm-audit-log.adapter';
-import { LogMetricRecorderAdapter } from './infrastructure/adapter/log-metric-recorder.adapter';
-import { DefaultDelayDetectorAdapter } from './infrastructure/adapter/default-delay-detector.adapter';
-import { DefaultPerformanceAnalyzerAdapter } from './infrastructure/adapter/default-performance-analyzer.adapter';
+// Infrastructure Adapters — TypeORM (DB)
+import { TypeOrmJobRepository } from './infrastructure/adapter/typeorm/typeorm-job.repository';
+import { TypeOrmPipelineExecutionRepository } from './infrastructure/adapter/typeorm/typeorm-pipeline-execution.repository';
+import { TypeOrmProcessingProfileRepository } from './infrastructure/adapter/typeorm/typeorm-processing-profile.repository';
+import { TypeOrmAuditLogAdapter } from './infrastructure/adapter/typeorm/typeorm-audit-log.adapter';
+import { TypeOrmMetricRecorderAdapter } from './infrastructure/adapter/typeorm/typeorm-metric-recorder.adapter';
+// Infrastructure Adapters — Domain Service (비즈니스 규칙 / 외부 연동)
+import { StepResolverAdapter } from './infrastructure/adapter/domain-service/step-resolver.adapter';
+import { DagBuilderAdapter } from './infrastructure/adapter/domain-service/dag-builder.adapter';
+import { ProfileSelectorAdapter } from './infrastructure/adapter/domain-service/profile-selector.adapter';
+import { RetryEvaluatorAdapter } from './infrastructure/adapter/domain-service/retry-evaluator.adapter';
+import { DelayDetectorAdapter } from './infrastructure/adapter/domain-service/delay-detector.adapter';
+import { AlertConditionEvaluatorAdapter } from './infrastructure/adapter/domain-service/alert-condition-evaluator.adapter';
+import { PerformanceAnalyzerAdapter } from './infrastructure/adapter/domain-service/performance-analyzer.adapter';
+import { ConsoleAlertDispatcherAdapter } from './infrastructure/adapter/domain-service/console-alert-dispatcher.adapter';
 // Consumers
 import { ReceptionEventConsumer } from './infrastructure/consumer/reception-event.consumer';
 import { ProcessingEventConsumer } from './infrastructure/consumer/processing-event.consumer';
@@ -30,26 +40,34 @@ import { ProcessingEventConsumer } from './infrastructure/consumer/processing-ev
 @Module({
   imports: [
     CqrsModule,
-    SdpeTaskQueueModule.forRoot({ jobRepository: TypeOrmJobRepository, stepResolver: DefaultStepResolverAdapter }),
+    TypeOrmModule.forFeature([
+      JobEntity,
+      PipelineExecutionEntity,
+      PipelineStepEntity,
+      ProcessingProfileEntity,
+      AuditEventEntity,
+      ProcessingMetricEntity,
+    ]),
+    SdpeTaskQueueModule.forRoot({ jobRepository: TypeOrmJobRepository, stepResolver: StepResolverAdapter }),
     SdpePipelineSchedulerModule.forRoot({
       pipelineExecutionRepository: TypeOrmPipelineExecutionRepository,
-      dagBuilder: DefaultDagBuilderAdapter,
+      dagBuilder: DagBuilderAdapter,
     }),
     SdpeProcessingProfileModule.forRoot({
       profileRepository: TypeOrmProcessingProfileRepository,
-      profileSelector: DefaultProfileSelectorAdapter,
+      profileSelector: ProfileSelectorAdapter,
     }),
     SdpeProcessingMonitorModule.forRoot({
-      retryEvaluator: DefaultRetryEvaluatorAdapter,
-      metricRecorder: LogMetricRecorderAdapter,
-      delayDetector: DefaultDelayDetectorAdapter,
+      retryEvaluator: RetryEvaluatorAdapter,
+      metricRecorder: TypeOrmMetricRecorderAdapter,
+      delayDetector: DelayDetectorAdapter,
     }),
     SdpeAlertModule.forRoot({
       alertDispatcher: ConsoleAlertDispatcherAdapter,
-      alertConditionEvaluator: DefaultAlertConditionEvaluatorAdapter,
+      alertConditionEvaluator: AlertConditionEvaluatorAdapter,
     }),
     SdpeAuditLogModule.forRoot({ writer: TypeOrmAuditLogAdapter, reader: TypeOrmAuditLogAdapter }),
-    SdpePerformanceAnalyzerModule.forRoot({ performanceAnalyzer: DefaultPerformanceAnalyzerAdapter }),
+    SdpePerformanceAnalyzerModule.forRoot({ performanceAnalyzer: PerformanceAnalyzerAdapter }),
   ],
   providers: [
     Csc08OrchestratorContextService,
@@ -57,7 +75,7 @@ import { ProcessingEventConsumer } from './infrastructure/consumer/processing-ev
     ...queryHandlers,
     ...eventHandlers,
     // Adapters (forRoot에서 주입하지 않는 것들)
-    DefaultProfileSelectorAdapter,
+    ProfileSelectorAdapter,
     // Consumers
     ReceptionEventConsumer,
     ProcessingEventConsumer,

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { type IAlertConditionEvaluator, type AlertPayload, AlertType, ALERT_THRESHOLD } from '@sdpe/alert';
 
 @Injectable()
-export class DefaultAlertConditionEvaluatorAdapter implements IAlertConditionEvaluator {
+export class AlertConditionEvaluatorAdapter implements IAlertConditionEvaluator {
   evaluateRetryExhausted(jobId: string, retryCount: number): AlertPayload | null {
     if (retryCount < 3) return null;
     return {

@@ -3,7 +3,7 @@ import { type ProductLevel, PipelineStep } from '@sdpe/shared';
 import { type IDagBuilder, DEFAULT_PIPELINE_STEPS } from '@sdpe/pipeline-scheduler';
 
 @Injectable()
-export class DefaultDagBuilderAdapter implements IDagBuilder {
+export class DagBuilderAdapter implements IDagBuilder {
   buildFullDag(): PipelineStep[] {
     return DEFAULT_PIPELINE_STEPS.map(
       (def) => new PipelineStep(def.order, def.targetCsc, def.productLevel),

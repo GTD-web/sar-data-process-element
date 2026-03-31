@@ -3,7 +3,7 @@ import type { PipelineExecution, PipelineStep } from '@sdpe/shared';
 import type { IStepResolver } from '@sdpe/task-queue';
 
 @Injectable()
-export class DefaultStepResolverAdapter implements IStepResolver {
+export class StepResolverAdapter implements IStepResolver {
   resolveNextStep(execution: PipelineExecution): PipelineStep | null {
     return execution.nextPendingStep;
   }

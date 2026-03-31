@@ -34,7 +34,13 @@
       "Bash(done)",
       "Bash(while read:*)",
       "Bash(npm test:*)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(grep -E \"\\\\.ts$\")",
+      "Bash(npx tsc:*)",
+      "Bash(for dir:*)",
+      "Bash(do echo:*)",
+      "Read(//c/Users/USER/dev/sar-data-process-element/**)",
+      "Bash(cd:*)"
     ],
     "deny": [
       "Bash(curl:*)",
