@@ -23,7 +23,24 @@
       "Bash(mv sdpe-pipeline:*)",
       "Bash(mv sdpe-processing-profile:*)",
       "Bash(mv sdpe-retry-policy:*)",
-      "Bash(mv sdpe-alert:*)"
+      "Bash(mv sdpe-alert:*)",
+      "Bash(find /c/Users/USER/dev/sar-data-process-element -name csc-* -o -name CSC-*)",
+      "Bash(find /c/Users/USER/dev/sar-data-process-element/libs -maxdepth 3 -type d -name *interface* -o -type d -name *csc*)",
+      "Bash(grep -r \"csu-07\\\\|csu-02\" C:/Users/USER/dev/sar-data-process-element --include=*.md --include=README*)",
+      "Bash(git mv:*)",
+      "Bash(find:*)",
+      "Bash(for lib:*)",
+      "Bash(do sed:*)",
+      "Bash(done)",
+      "Bash(while read:*)",
+      "Bash(npm test:*)",
+      "Bash(cp:*)"
+    ],
+    "deny": [
+      "Bash(curl:*)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)"
     ]
   },
   "hooks": {

@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { SdpeDatabaseRootModule } from '@sdpe/database';
 import { Csc06PipelineModule } from './csc06-pipeline/csc06-pipeline.module';
-import { Csc07OrchestratorContextModule } from './context/csc07-orchestrator-context/csc07-orchestrator-context.module';
+import { Csc08OrchestratorContextModule } from './context/csc08-orchestrator-context/csc08-orchestrator-context.module';
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -23,7 +23,7 @@ const databaseUrl = process.env.DATABASE_URL;
         ]
       : []),
     Csc06PipelineModule,
-    Csc07OrchestratorContextModule,
+    Csc08OrchestratorContextModule,
   ],
 })
 export class AppModule {}
