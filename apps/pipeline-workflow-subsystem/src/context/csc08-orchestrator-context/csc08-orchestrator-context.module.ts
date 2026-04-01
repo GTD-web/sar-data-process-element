@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { SdpeTaskQueueModule } from '@sdpe/task-queue';
-import { SdpePipelineSchedulerModule } from '@sdpe/pipeline-scheduler';
-import { SdpeProcessingProfileModule } from '@sdpe/processing-profile';
-import { SdpeProcessingMonitorModule } from '@sdpe/processing-monitor';
-import { SdpeAlertModule } from '@sdpe/alert';
+import { SdpeTaskQueueModule, StepResolverService } from '@sdpe/task-queue';
+import { SdpePipelineSchedulerModule, DagBuilderService } from '@sdpe/pipeline-scheduler';
+import { SdpeProcessingProfileModule, ProfileSelectorService } from '@sdpe/processing-profile';
+import { SdpeProcessingMonitorModule, RetryEvaluatorService, DelayDetectorService } from '@sdpe/processing-monitor';
+import { SdpeAlertModule, AlertConditionEvaluatorService } from '@sdpe/alert';
 import { SdpeAuditLogModule } from '@sdpe/audit-log';
-import { SdpePerformanceAnalyzerModule } from '@sdpe/performance-analyzer';
+import { SdpePerformanceAnalyzerModule, PerformanceAnalyzerService } from '@sdpe/performance-analyzer';
 import {
   JobEntity,
   PipelineExecutionEntity,
@@ -15,25 +15,21 @@ import {
   ProcessingProfileEntity,
   AuditEventEntity,
   ProcessingMetricEntity,
+  TypeOrmJobRepository,
+  TypeOrmPipelineExecutionRepository,
+  TypeOrmProcessingProfileRepository,
+  TypeOrmAuditLogRepository,
+  TypeOrmMetricRecorderRepository,
 } from '@sdpe/database';
 import { Csc08OrchestratorContextService } from './csc08-orchestrator-context.service';
 import { commandHandlers, queryHandlers, eventHandlers } from './handlers';
-// Infrastructure Adapters — TypeORM (DB)
-import { TypeOrmJobRepository } from './infrastructure/adapter/typeorm/typeorm-job.repository';
-import { TypeOrmPipelineExecutionRepository } from './infrastructure/adapter/typeorm/typeorm-pipeline-execution.repository';
-import { TypeOrmProcessingProfileRepository } from './infrastructure/adapter/typeorm/typeorm-processing-profile.repository';
-import { TypeOrmAuditLogAdapter } from './infrastructure/adapter/typeorm/typeorm-audit-log.adapter';
-import { TypeOrmMetricRecorderAdapter } from './infrastructure/adapter/typeorm/typeorm-metric-recorder.adapter';
-// Infrastructure Adapters — Domain Service (비즈니스 규칙 / 외부 연동)
-import { StepResolverAdapter } from './infrastructure/adapter/domain-service/step-resolver.adapter';
-import { DagBuilderAdapter } from './infrastructure/adapter/domain-service/dag-builder.adapter';
-import { ProfileSelectorAdapter } from './infrastructure/adapter/domain-service/profile-selector.adapter';
-import { RetryEvaluatorAdapter } from './infrastructure/adapter/domain-service/retry-evaluator.adapter';
-import { DelayDetectorAdapter } from './infrastructure/adapter/domain-service/delay-detector.adapter';
-import { AlertConditionEvaluatorAdapter } from './infrastructure/adapter/domain-service/alert-condition-evaluator.adapter';
-import { PerformanceAnalyzerAdapter } from './infrastructure/adapter/domain-service/performance-analyzer.adapter';
-import { ConsoleAlertDispatcherAdapter } from './infrastructure/adapter/domain-service/console-alert-dispatcher.adapter';
-// Consumers
+// Use Cases
+import { StartPipelineUseCase } from './use-case/start-pipeline.use-case';
+import { HandleStepCompletedUseCase } from './use-case/handle-step-completed.use-case';
+import { HandleStepFailedUseCase } from './use-case/handle-step-failed.use-case';
+import { ReprocessPipelineUseCase } from './use-case/reprocess-pipeline.use-case';
+// Infrastructure
+import { ConsoleAlertDispatcherAdapter } from './infrastructure/console-alert-dispatcher.adapter';
 import { ReceptionEventConsumer } from './infrastructure/consumer/reception-event.consumer';
 import { ProcessingEventConsumer } from './infrastructure/consumer/processing-event.consumer';
 
@@ -48,34 +44,38 @@ import { ProcessingEventConsumer } from './infrastructure/consumer/processing-ev
       AuditEventEntity,
       ProcessingMetricEntity,
     ]),
-    SdpeTaskQueueModule.forRoot({ jobRepository: TypeOrmJobRepository, stepResolver: StepResolverAdapter }),
+    SdpeTaskQueueModule.forRoot({ jobRepository: TypeOrmJobRepository, stepResolver: StepResolverService }),
     SdpePipelineSchedulerModule.forRoot({
       pipelineExecutionRepository: TypeOrmPipelineExecutionRepository,
-      dagBuilder: DagBuilderAdapter,
+      dagBuilder: DagBuilderService,
     }),
     SdpeProcessingProfileModule.forRoot({
       profileRepository: TypeOrmProcessingProfileRepository,
-      profileSelector: ProfileSelectorAdapter,
+      profileSelector: ProfileSelectorService,
     }),
     SdpeProcessingMonitorModule.forRoot({
-      retryEvaluator: RetryEvaluatorAdapter,
-      metricRecorder: TypeOrmMetricRecorderAdapter,
-      delayDetector: DelayDetectorAdapter,
+      retryEvaluator: RetryEvaluatorService,
+      metricRecorder: TypeOrmMetricRecorderRepository,
+      delayDetector: DelayDetectorService,
     }),
     SdpeAlertModule.forRoot({
       alertDispatcher: ConsoleAlertDispatcherAdapter,
-      alertConditionEvaluator: AlertConditionEvaluatorAdapter,
+      alertConditionEvaluator: AlertConditionEvaluatorService,
     }),
-    SdpeAuditLogModule.forRoot({ writer: TypeOrmAuditLogAdapter, reader: TypeOrmAuditLogAdapter }),
-    SdpePerformanceAnalyzerModule.forRoot({ performanceAnalyzer: PerformanceAnalyzerAdapter }),
+    SdpeAuditLogModule.forRoot({ writer: TypeOrmAuditLogRepository, reader: TypeOrmAuditLogRepository }),
+    SdpePerformanceAnalyzerModule.forRoot({ performanceAnalyzer: PerformanceAnalyzerService }),
   ],
   providers: [
     Csc08OrchestratorContextService,
+    // Use Cases
+    StartPipelineUseCase,
+    HandleStepCompletedUseCase,
+    HandleStepFailedUseCase,
+    ReprocessPipelineUseCase,
+    // CQRS Handlers
     ...commandHandlers,
     ...queryHandlers,
     ...eventHandlers,
-    // Adapters (forRoot에서 주입하지 않는 것들)
-    ProfileSelectorAdapter,
     // Consumers
     ReceptionEventConsumer,
     ProcessingEventConsumer,

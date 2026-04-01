@@ -2,10 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { IMetricRecorder, ProcessingMetric } from '@sdpe/processing-monitor';
-import { ProcessingMetricEntity } from '@sdpe/database';
+import { ProcessingMetricEntity } from '../entities';
 
 @Injectable()
-export class TypeOrmMetricRecorderAdapter implements IMetricRecorder {
+export class TypeOrmMetricRecorderRepository implements IMetricRecorder {
   constructor(
     @InjectRepository(ProcessingMetricEntity)
     private readonly repo: Repository<ProcessingMetricEntity>,

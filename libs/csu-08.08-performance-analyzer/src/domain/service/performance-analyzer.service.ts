@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { type IPerformanceAnalyzer, type PerformanceSummary } from '@sdpe/performance-analyzer';
+import type { IPerformanceAnalyzer, PerformanceSummary } from '../port/performance-analyzer.port';
 import type { ProcessingMetric } from '@sdpe/processing-monitor';
 
 @Injectable()
-export class PerformanceAnalyzerAdapter implements IPerformanceAnalyzer {
+export class PerformanceAnalyzerService implements IPerformanceAnalyzer {
   analyze(metrics: ProcessingMetric[]): PerformanceSummary {
     if (metrics.length === 0) {
       return { totalDurationMs: 0, stepDurations: {}, bottleneckCsc: null };

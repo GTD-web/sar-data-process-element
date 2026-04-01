@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { Job, JobId, JobStatus } from '@sdpe/shared';
 import type { IJobRepository } from '@sdpe/task-queue';
-import { JobEntity } from '@sdpe/database';
+import { JobEntity } from '../entities';
 
 @Injectable()
 export class TypeOrmJobRepository implements IJobRepository {

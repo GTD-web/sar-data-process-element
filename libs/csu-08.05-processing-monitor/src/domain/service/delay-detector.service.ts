@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import type { TargetCsc } from '@sdpe/shared';
-import { type IDelayDetector, DelayStatus, MONITORING_THRESHOLD } from '@sdpe/processing-monitor';
+import type { IDelayDetector } from '../port/delay-detector.port';
+import { DelayStatus } from '../type/delay-status.type';
+import { MONITORING_THRESHOLD } from '../constant/monitoring-threshold.constant';
 
 @Injectable()
-export class DelayDetectorAdapter implements IDelayDetector {
+export class DelayDetectorService implements IDelayDetector {
   detectStepDelay(targetCsc: TargetCsc, elapsedSec: number): DelayStatus {
     const targetSec = MONITORING_THRESHOLD.STEP_TARGET_SEC[targetCsc];
     if (elapsedSec >= targetSec) return DelayStatus.CRITICAL;

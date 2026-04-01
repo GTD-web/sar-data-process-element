@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { ProcessingProfile } from '@sdpe/shared';
 import type { IProcessingProfileRepository } from '@sdpe/processing-profile';
-import { ProcessingProfileEntity } from '@sdpe/database';
+import { ProcessingProfileEntity } from '../entities';
 
 @Injectable()
 export class TypeOrmProcessingProfileRepository implements IProcessingProfileRepository {

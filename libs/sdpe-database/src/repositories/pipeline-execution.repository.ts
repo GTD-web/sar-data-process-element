@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { PipelineExecution } from '@sdpe/shared';
 import type { IPipelineExecutionRepository } from '@sdpe/pipeline-scheduler';
-import { PipelineExecutionEntity } from '@sdpe/database';
+import { PipelineExecutionEntity } from '../entities';
 
 @Injectable()
 export class TypeOrmPipelineExecutionRepository implements IPipelineExecutionRepository {

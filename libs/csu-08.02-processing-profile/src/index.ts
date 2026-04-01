@@ -4,3 +4,4 @@ export { PROCESSING_PROFILE_REPOSITORY } from './domain/port/processing-profile-
 export type { IProcessingProfileRepository } from './domain/port/processing-profile-repository.port';
 export { PROFILE_SELECTOR } from './domain/port/profile-selector.port';
 export type { IProfileSelector } from './domain/port/profile-selector.port';
+export { ProfileSelectorService } from './domain/service/profile-selector.service';

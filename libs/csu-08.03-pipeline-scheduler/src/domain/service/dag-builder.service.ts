@@ -1,13 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { type ProductLevel, PipelineStep } from '@sdpe/shared';
-import { type IDagBuilder, DEFAULT_PIPELINE_STEPS } from '@sdpe/pipeline-scheduler';
+import type { IDagBuilder } from '../port/dag-builder.port';
+import { DEFAULT_PIPELINE_STEPS } from '../constant/pipeline-steps.constant';
 
 @Injectable()
-export class DagBuilderAdapter implements IDagBuilder {
+export class DagBuilderService implements IDagBuilder {
   buildFullDag(): PipelineStep[] {
-    return DEFAULT_PIPELINE_STEPS.map(
-      (def) => new PipelineStep(def.order, def.targetCsc, def.productLevel),
-    );
+    return DEFAULT_PIPELINE_STEPS.map((def) => new PipelineStep(def.order, def.targetCsc, def.productLevel));
   }
 
   buildPartialDag(targetLevel: ProductLevel): PipelineStep[] {

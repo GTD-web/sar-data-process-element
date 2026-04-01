@@ -11,3 +11,5 @@ export { DelayStatus } from './domain/type/delay-status.type';
 export type { ProcessingMetric } from './domain/type/processing-metric.type';
 export { RETRY_POLICY } from './domain/constant/retry-policy.constant';
 export { MONITORING_THRESHOLD } from './domain/constant/monitoring-threshold.constant';
+export { RetryEvaluatorService } from './domain/service/retry-evaluator.service';
+export { DelayDetectorService } from './domain/service/delay-detector.service';

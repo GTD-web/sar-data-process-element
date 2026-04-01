@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { type IRetryEvaluator, type RetryDecision, RETRY_POLICY } from '@sdpe/processing-monitor';
+import type { IRetryEvaluator } from '../port/retry-evaluator.port';
+import type { RetryDecision } from '../type/retry-decision.type';
+import { RETRY_POLICY } from '../constant/retry-policy.constant';
 
 @Injectable()
-export class RetryEvaluatorAdapter implements IRetryEvaluator {
+export class RetryEvaluatorService implements IRetryEvaluator {
   evaluate(retryCount: number): RetryDecision {
     if (retryCount < RETRY_POLICY.MAX_RETRY_COUNT) {
       return {

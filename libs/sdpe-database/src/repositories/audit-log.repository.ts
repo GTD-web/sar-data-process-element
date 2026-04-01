@@ -2,10 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { IAuditLogWriter, IAuditLogReader, AuditEvent } from '@sdpe/audit-log';
-import { AuditEventEntity } from '@sdpe/database';
+import { AuditEventEntity } from '../entities';
 
 @Injectable()
-export class TypeOrmAuditLogAdapter implements IAuditLogWriter, IAuditLogReader {
+export class TypeOrmAuditLogRepository implements IAuditLogWriter, IAuditLogReader {
   constructor(
     @InjectRepository(AuditEventEntity)
     private readonly repo: Repository<AuditEventEntity>,
