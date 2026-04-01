@@ -28,6 +28,15 @@
         "tsConfigPath": "libs/sdpe-database/tsconfig.lib.json"
       }
     },
+    "sdpe-infrastructure": {
+      "type": "library",
+      "root": "libs/sdpe-infrastructure",
+      "entryFile": "index",
+      "sourceRoot": "libs/sdpe-infrastructure/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/sdpe-infrastructure/tsconfig.lib.json"
+      }
+    },
     "csu-08.01-reception-event": {
       "type": "library",
       "root": "libs/csu-08.01-reception-event",

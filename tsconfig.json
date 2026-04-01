@@ -25,6 +25,7 @@
     "paths": {
       "@sdpe/shared": ["libs/sdpe-shared/src"],
       "@sdpe/database": ["libs/sdpe-database/src"],
+      "@sdpe/infrastructure": ["libs/sdpe-infrastructure/src"],
       "@sdpe/reception-event": ["libs/csu-08.01-reception-event/src"],
       "@sdpe/processing-profile": ["libs/csu-08.02-processing-profile/src"],
       "@sdpe/pipeline-scheduler": ["libs/csu-08.03-pipeline-scheduler/src"],

@@ -31,3 +31,12 @@ export const commandHandlers = [
 export const queryHandlers = [GetJobStatusHandler, GetPipelineExecutionHandler];
 
 export const eventHandlers = [JobFailedAlertHandler, StepCompletedAuditHandler];
+
+// Messages (pgmq)
+import { ReceptionEventMessageHandler } from './messages/reception-event.message-handler';
+import { ProcessingEventMessageHandler } from './messages/processing-event.message-handler';
+
+export { ReceptionEventMessageHandler } from './messages/reception-event.message-handler';
+export { ProcessingEventMessageHandler } from './messages/processing-event.message-handler';
+
+export const messageHandlers = [ReceptionEventMessageHandler, ProcessingEventMessageHandler];

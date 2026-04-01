@@ -6,6 +6,8 @@ import { SdpePipelineSchedulerModule, DagBuilderService } from '@sdpe/pipeline-s
 import { SdpeProcessingProfileModule, ProfileSelectorService } from '@sdpe/processing-profile';
 import { SdpeProcessingMonitorModule, RetryEvaluatorService, DelayDetectorService } from '@sdpe/processing-monitor';
 import { SdpeAlertModule, AlertConditionEvaluatorService } from '@sdpe/alert';
+import { ConsoleAlertDispatcherService } from '@sdpe/infrastructure';
+import { SdpePgmqModule } from '@sdpe/database';
 import { SdpeAuditLogModule } from '@sdpe/audit-log';
 import { SdpePerformanceAnalyzerModule, PerformanceAnalyzerService } from '@sdpe/performance-analyzer';
 import {
@@ -21,17 +23,19 @@ import {
   TypeOrmAuditLogRepository,
   TypeOrmMetricRecorderRepository,
 } from '@sdpe/database';
-import { Csc08OrchestratorContextService } from './csc08-orchestrator-context.service';
-import { commandHandlers, queryHandlers, eventHandlers } from './handlers';
+import { QUEUE_CONFIG } from '@sdpe/task-queue';
+import {
+  commandHandlers,
+  queryHandlers,
+  eventHandlers,
+  ReceptionEventMessageHandler,
+  ProcessingEventMessageHandler,
+} from './handlers';
 // Use Cases
 import { StartPipelineUseCase } from './use-case/start-pipeline.use-case';
 import { HandleStepCompletedUseCase } from './use-case/handle-step-completed.use-case';
 import { HandleStepFailedUseCase } from './use-case/handle-step-failed.use-case';
 import { ReprocessPipelineUseCase } from './use-case/reprocess-pipeline.use-case';
-// Infrastructure
-import { ConsoleAlertDispatcherAdapter } from './infrastructure/console-alert-dispatcher.adapter';
-import { ReceptionEventConsumer } from './infrastructure/consumer/reception-event.consumer';
-import { ProcessingEventConsumer } from './infrastructure/consumer/processing-event.consumer';
 
 @Module({
   imports: [
@@ -44,6 +48,22 @@ import { ProcessingEventConsumer } from './infrastructure/consumer/processing-ev
       AuditEventEntity,
       ProcessingMetricEntity,
     ]),
+    SdpePgmqModule.forRoot({
+      consumers: [
+        {
+          queue: QUEUE_CONFIG.consume.RECEPTION_EVENTS,
+          handler: ReceptionEventMessageHandler,
+          visibilityTimeoutSec: 30,
+          pollIntervalMs: 1000,
+        },
+        {
+          queue: QUEUE_CONFIG.consume.PROCESSING_EVENTS,
+          handler: ProcessingEventMessageHandler,
+          visibilityTimeoutSec: 30,
+          pollIntervalMs: 1000,
+        },
+      ],
+    }),
     SdpeTaskQueueModule.forRoot({ jobRepository: TypeOrmJobRepository, stepResolver: StepResolverService }),
     SdpePipelineSchedulerModule.forRoot({
       pipelineExecutionRepository: TypeOrmPipelineExecutionRepository,
@@ -59,14 +79,13 @@ import { ProcessingEventConsumer } from './infrastructure/consumer/processing-ev
       delayDetector: DelayDetectorService,
     }),
     SdpeAlertModule.forRoot({
-      alertDispatcher: ConsoleAlertDispatcherAdapter,
+      alertDispatcher: ConsoleAlertDispatcherService,
       alertConditionEvaluator: AlertConditionEvaluatorService,
     }),
     SdpeAuditLogModule.forRoot({ writer: TypeOrmAuditLogRepository, reader: TypeOrmAuditLogRepository }),
     SdpePerformanceAnalyzerModule.forRoot({ performanceAnalyzer: PerformanceAnalyzerService }),
   ],
   providers: [
-    Csc08OrchestratorContextService,
     // Use Cases
     StartPipelineUseCase,
     HandleStepCompletedUseCase,
@@ -76,10 +95,7 @@ import { ProcessingEventConsumer } from './infrastructure/consumer/processing-ev
     ...commandHandlers,
     ...queryHandlers,
     ...eventHandlers,
-    // Consumers
-    ReceptionEventConsumer,
-    ProcessingEventConsumer,
   ],
-  exports: [Csc08OrchestratorContextService],
+  exports: [],
 })
 export class Csc08OrchestratorContextModule {}

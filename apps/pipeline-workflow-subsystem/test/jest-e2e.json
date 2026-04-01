@@ -11,6 +11,8 @@
     "^@sdpe/shared/(.*)$": "<rootDir>/../../../libs/sdpe-shared/src/$1",
     "^@sdpe/database$": "<rootDir>/../../../libs/sdpe-database/src/index.ts",
     "^@sdpe/database/(.*)$": "<rootDir>/../../../libs/sdpe-database/src/$1",
+    "^@sdpe/infrastructure$": "<rootDir>/../../../libs/sdpe-infrastructure/src/index.ts",
+    "^@sdpe/infrastructure/(.*)$": "<rootDir>/../../../libs/sdpe-infrastructure/src/$1",
     "^@sdpe/reception-event$": "<rootDir>/../../../libs/csu-08.01-reception-event/src/index.ts",
     "^@sdpe/reception-event/(.*)$": "<rootDir>/../../../libs/csu-08.01-reception-event/src/$1",
     "^@sdpe/processing-profile$": "<rootDir>/../../../libs/csu-08.02-processing-profile/src/index.ts",
