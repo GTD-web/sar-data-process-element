@@ -1,9 +1,9 @@
-import type { ProductLevel } from '@sdpe/shared';
+import type { ProductLevel, CscIdentifier } from '@sdpe/shared';
 
 export interface ReprocessParams {
   readonly jobId: string;
   readonly targetLevel: ProductLevel;
-  readonly requestedBy: string;
+  readonly requestedBy: CscIdentifier;
 }
 
 export interface JobStatusResult {

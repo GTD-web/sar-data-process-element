@@ -1,5 +1,6 @@
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 import type { AuditEvent, AuditEventType } from '@sdpe/audit-log';
+import type { CscIdentifier } from '@sdpe/shared';
 
 @Entity({ name: 'audit_event', schema: 'sdpe' })
 export class AuditEventEntity {
@@ -36,7 +37,7 @@ export class AuditEventEntity {
     return {
       eventType: this.eventType as AuditEventType,
       timestamp: this.timestamp,
-      actor: this.actor,
+      actor: this.actor as CscIdentifier,
       jobId: this.jobId ?? undefined,
       payload: this.payload,
     };

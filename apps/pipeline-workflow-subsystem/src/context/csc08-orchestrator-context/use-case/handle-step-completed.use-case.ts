@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { type ProcessingEvent, createJobId } from '@sdpe/shared';
+import { type ProcessingEvent, createJobId, CscIdentifier } from '@sdpe/shared';
 import { JOB_REPOSITORY, type IJobRepository, STEP_RESOLVER, type IStepResolver } from '@sdpe/task-queue';
 import { PIPELINE_EXECUTION_REPOSITORY, type IPipelineExecutionRepository } from '@sdpe/pipeline-scheduler';
 import { AUDIT_LOG_WRITER, type IAuditLogWriter, AuditEventType } from '@sdpe/audit-log';
@@ -54,7 +54,7 @@ export class HandleStepCompletedUseCase {
       await this.auditLogWriter.write({
         eventType: AuditEventType.PIPELINE_COMPLETED,
         timestamp: new Date(),
-        actor: 'CSC-07',
+        actor: CscIdentifier.CSC_07,
         jobId: event.job_id,
         payload: { finalLevel: event.product_level },
       });

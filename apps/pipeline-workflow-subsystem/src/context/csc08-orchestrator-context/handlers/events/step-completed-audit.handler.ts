@@ -1,6 +1,6 @@
 import { EventsHandler, type IEventHandler } from '@nestjs/cqrs';
 import { Inject, Logger } from '@nestjs/common';
-import type { TargetCsc, ProductLevel } from '@sdpe/shared';
+import { type TargetCsc, type ProductLevel, CscIdentifier } from '@sdpe/shared';
 import { AUDIT_LOG_WRITER, type IAuditLogWriter, AuditEventType } from '@sdpe/audit-log';
 
 export class StepCompletedAuditEvent {
@@ -21,7 +21,7 @@ export class StepCompletedAuditHandler implements IEventHandler<StepCompletedAud
     await this.auditLogWriter.write({
       eventType: AuditEventType.JOB_COMPLETED,
       timestamp: new Date(),
-      actor: 'CSC-07',
+      actor: CscIdentifier.CSC_07,
       jobId: event.jobId,
       payload: { targetCsc: event.targetCsc, productLevel: event.productLevel },
     });

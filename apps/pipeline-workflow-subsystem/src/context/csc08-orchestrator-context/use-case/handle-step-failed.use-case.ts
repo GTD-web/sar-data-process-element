@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { type ProcessingEvent, createJobId } from '@sdpe/shared';
+import { type ProcessingEvent, createJobId, CscIdentifier } from '@sdpe/shared';
 import { JOB_REPOSITORY, type IJobRepository } from '@sdpe/task-queue';
 import { PIPELINE_EXECUTION_REPOSITORY, type IPipelineExecutionRepository } from '@sdpe/pipeline-scheduler';
 import { RETRY_EVALUATOR, type IRetryEvaluator } from '@sdpe/processing-monitor';
@@ -50,7 +50,7 @@ export class HandleStepFailedUseCase {
       await this.auditLogWriter.write({
         eventType: AuditEventType.JOB_RETRIED,
         timestamp: new Date(),
-        actor: 'CSC-07',
+        actor: CscIdentifier.CSC_07,
         jobId: event.job_id,
         payload: { retryCount: job.retryCount, reason: decision.reason },
       });
@@ -64,7 +64,7 @@ export class HandleStepFailedUseCase {
           await this.auditLogWriter.write({
             eventType: AuditEventType.ALERT_DISPATCHED,
             timestamp: new Date(),
-            actor: 'CSC-07',
+            actor: CscIdentifier.CSC_07,
             jobId: event.job_id,
             payload: { alertType: alertPayload.alertType },
           });
@@ -74,7 +74,7 @@ export class HandleStepFailedUseCase {
       await this.auditLogWriter.write({
         eventType: AuditEventType.JOB_FAILED,
         timestamp: new Date(),
-        actor: 'CSC-07',
+        actor: CscIdentifier.CSC_07,
         jobId: event.job_id,
         payload: { retryCount: job.retryCount, errorCode: event.error_code },
       });

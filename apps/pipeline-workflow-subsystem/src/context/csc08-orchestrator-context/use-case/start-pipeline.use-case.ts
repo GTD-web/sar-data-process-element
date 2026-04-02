@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
-import { type RawDataReceivedEvent, Job, PipelineExecution, createJobId } from '@sdpe/shared';
+import { type RawDataReceivedEvent, Job, PipelineExecution, createJobId, CscIdentifier } from '@sdpe/shared';
 import { JOB_REPOSITORY, type IJobRepository } from '@sdpe/task-queue';
 import {
   DAG_BUILDER,
@@ -54,7 +54,7 @@ export class StartPipelineUseCase {
     await this.auditLogWriter.write({
       eventType: AuditEventType.PIPELINE_STARTED,
       timestamp: new Date(),
-      actor: 'CSC-07',
+      actor: CscIdentifier.CSC_07,
       jobId,
       payload: { eventId: event.event_id, profileId: profile.id },
     });
