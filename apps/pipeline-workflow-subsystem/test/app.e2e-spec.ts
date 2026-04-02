@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { PgmqClientService, SdpePgmqModule, type PgmqMessageHandler } from '@sdpe/database';
+import { PgmqClientService, SdpePgmqModule, type PgmqMessageHandler } from '@sdpe/infrastructure';
 import { Injectable } from '@nestjs/common';
 
 interface TestMessage {

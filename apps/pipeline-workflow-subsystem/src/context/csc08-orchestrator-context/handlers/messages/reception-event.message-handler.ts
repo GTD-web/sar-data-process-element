@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CommandBus } from '@nestjs/cqrs';
 import type { RawDataReceivedEvent } from '@sdpe/shared';
-import type { PgmqMessageHandler } from '@sdpe/database';
+import type { PgmqMessageHandler } from '@sdpe/infrastructure';
 import { StartPipelineCommand } from '../commands/start-pipeline.handler';
 
 @Injectable()

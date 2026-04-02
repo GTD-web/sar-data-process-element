@@ -6,8 +6,7 @@ import { SdpePipelineSchedulerModule, DagBuilderService } from '@sdpe/pipeline-s
 import { SdpeProcessingProfileModule, ProfileSelectorService } from '@sdpe/processing-profile';
 import { SdpeProcessingMonitorModule, RetryEvaluatorService, DelayDetectorService } from '@sdpe/processing-monitor';
 import { SdpeAlertModule, AlertConditionEvaluatorService } from '@sdpe/alert';
-import { ConsoleAlertDispatcherService } from '@sdpe/infrastructure';
-import { SdpePgmqModule } from '@sdpe/database';
+import { ConsoleAlertDispatcherService, SdpePgmqModule } from '@sdpe/infrastructure';
 import { SdpeAuditLogModule } from '@sdpe/audit-log';
 import { SdpePerformanceAnalyzerModule, PerformanceAnalyzerService } from '@sdpe/performance-analyzer';
 import {

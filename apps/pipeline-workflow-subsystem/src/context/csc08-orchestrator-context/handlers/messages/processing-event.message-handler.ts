@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CommandBus } from '@nestjs/cqrs';
 import type { ProcessingEvent } from '@sdpe/shared';
-import type { PgmqMessageHandler } from '@sdpe/database';
+import type { PgmqMessageHandler } from '@sdpe/infrastructure';
 import { HandleStepCompletedCommand } from '../commands/handle-step-completed.handler';
 import { HandleStepFailedCommand } from '../commands/handle-step-failed.handler';
 
