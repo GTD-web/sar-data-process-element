@@ -1,4 +1,4 @@
-import type { ProductLevel, TargetCsc } from '@sdpe/shared';
+import { ProductLevel, TargetCsc } from '@sdpe/shared';
 
 /** 파이프라인 단계 정의. order는 실행 순서, targetCsc는 처리 담당 컴포넌트 */
 export interface PipelineStepDefinition {
@@ -17,9 +17,9 @@ export interface PipelineStepDefinition {
  *   CSC-06: 최종 산출물 → LEVEL_3
  */
 export const DEFAULT_PIPELINE_STEPS: readonly PipelineStepDefinition[] = [
-  { order: 1, targetCsc: 'CSC-02', productLevel: 'LEVEL_0' },
-  { order: 2, targetCsc: 'CSC-03', productLevel: 'LEVEL_0' },
-  { order: 3, targetCsc: 'CSC-04', productLevel: 'LEVEL_1' },
-  { order: 4, targetCsc: 'CSC-05', productLevel: 'LEVEL_2' },
-  { order: 5, targetCsc: 'CSC-06', productLevel: 'LEVEL_3' },
+  { order: 1, targetCsc: TargetCsc.CSC_02, productLevel: ProductLevel.LEVEL_0 },
+  { order: 2, targetCsc: TargetCsc.CSC_03, productLevel: ProductLevel.LEVEL_0 },
+  { order: 3, targetCsc: TargetCsc.CSC_04, productLevel: ProductLevel.LEVEL_1 },
+  { order: 4, targetCsc: TargetCsc.CSC_05, productLevel: ProductLevel.LEVEL_2 },
+  { order: 5, targetCsc: TargetCsc.CSC_06, productLevel: ProductLevel.LEVEL_3 },
 ] as const;

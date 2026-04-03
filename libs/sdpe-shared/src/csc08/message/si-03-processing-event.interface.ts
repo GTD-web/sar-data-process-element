@@ -1,4 +1,6 @@
-import type { ProductLevel, SchemaVersion, SourceCsc } from '../common';
+import type { SchemaVersion } from '../type/schema-version.type';
+import type { ProductLevel } from '../type/product-level.type';
+import type { SourceCsc } from '../type/source-csc.type';
 
 /**
  * SI-03 처리 완료/실패 이벤트 (ICD 6.5)

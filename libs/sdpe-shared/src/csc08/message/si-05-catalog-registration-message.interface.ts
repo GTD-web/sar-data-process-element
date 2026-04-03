@@ -1,4 +1,4 @@
-import type { SchemaVersion } from '../common';
+import type { SchemaVersion } from '../type/schema-version.type';
 
 /**
  * SI-05 제품 등록 트리거 (ICD 6.7)

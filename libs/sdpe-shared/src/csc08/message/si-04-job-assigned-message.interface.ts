@@ -1,4 +1,6 @@
-import type { ProductLevel, SchemaVersion, TargetCsc } from '../common';
+import type { SchemaVersion } from '../type/schema-version.type';
+import type { ProductLevel } from '../type/product-level.type';
+import type { TargetCsc } from '../type/target-csc.type';
 
 /**
  * SI-04 작업 할당 메시지 (ICD 6.6)

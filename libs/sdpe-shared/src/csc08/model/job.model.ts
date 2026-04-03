@@ -1,4 +1,5 @@
-import type { ProductLevel, TargetCsc } from '../interface/common';
+import type { ProductLevel } from '../type/product-level.type';
+import type { TargetCsc } from '../type/target-csc.type';
 import type { JobId } from '../type/job-id.type';
 import { JobStatus } from '../type/job-status.type';
 

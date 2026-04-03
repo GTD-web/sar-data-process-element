@@ -1,4 +1,4 @@
-import type { SchemaVersion } from '../common';
+import type { SchemaVersion } from '../type/schema-version.type';
 
 /**
  * EI-01 수신 이벤트 (ICD 5.1.1)
