@@ -1,3 +1,4 @@
+/** 파이프라인 감사 로그에 기록되는 이벤트 유형 */
 export const AuditEventType = {
   JOB_CREATED: 'JOB_CREATED',
   JOB_ASSIGNED: 'JOB_ASSIGNED',

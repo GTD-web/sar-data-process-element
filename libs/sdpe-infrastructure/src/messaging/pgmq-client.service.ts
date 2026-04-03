@@ -2,6 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { PgmqMessage } from './pgmq.types';
 
+/**
+ * PGMQ 저수준 SQL 연산 래퍼 서비스 (AD-02).
+ * PostgreSQL의 pgmq 확장 함수(create, send, read, archive, delete)를 TypeORM DataSource를 통해 호출한다.
+ */
 @Injectable()
 export class PgmqClientService {
   private readonly logger = new Logger(PgmqClientService.name);

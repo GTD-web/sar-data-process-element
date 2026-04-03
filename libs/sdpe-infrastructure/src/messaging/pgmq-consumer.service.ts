@@ -3,6 +3,11 @@ import { ModuleRef } from '@nestjs/core';
 import { PgmqClientService } from './pgmq-client.service';
 import { type PgmqConsumerConfig, type PgmqModuleOptions, PGMQ_MODULE_OPTIONS } from './pgmq.types';
 
+/**
+ * PGMQ 폴링 소비자 관리 서비스.
+ * 설정된 소비자별로 주기적 폴링을 수행하여 큐에서 메시지를 읽고,
+ * 핸들러로 처리한 뒤 아카이빙한다 (SI-01, SI-03).
+ */
 @Injectable()
 export class PgmqConsumerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PgmqConsumerService.name);

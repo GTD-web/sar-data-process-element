@@ -4,6 +4,10 @@ import { Repository } from 'typeorm';
 import type { IMetricRecorder, ProcessingMetric } from '@sdpe/processing-monitor';
 import { ProcessingMetricEntity } from '../entities';
 
+/**
+ * IMetricRecorder 포트의 TypeORM 구현체 (@sdpe/processing-monitor).
+ * CSC 처리 소요시간 메트릭을 기록하고 Job ID로 조회한다 (CSU-08.05).
+ */
 @Injectable()
 export class TypeOrmMetricRecorderRepository implements IMetricRecorder {
   constructor(

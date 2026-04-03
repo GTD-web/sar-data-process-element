@@ -1,6 +1,13 @@
 import type { ProductLevel, TargetCsc } from '../interface/common';
 import { StepStatus } from '../type/step-status.type';
 
+/**
+ * 파이프라인 단계. 하나의 CSC가 수행하는 처리 단위를 나타낸다.
+ * 예: order=3, targetCsc='CSC-04', productLevel='LEVEL_1' → CSC-04가 Level-1 처리 수행
+ *
+ * 상태 전이: PENDING → IN_PROGRESS → COMPLETED | FAILED
+ *            PENDING → SKIPPED (재처리 시 이전 단계 건너뛰기)
+ */
 export class PipelineStep {
   readonly order: number;
   readonly targetCsc: TargetCsc;

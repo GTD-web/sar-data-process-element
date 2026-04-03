@@ -1,6 +1,6 @@
 import { CommandHandler, type ICommandHandler } from '@nestjs/cqrs';
 import { ReprocessPipelineUseCase } from '../../use-case/reprocess-pipeline.use-case';
-import type { ReprocessParams } from '../../interfaces/csc08-orchestrator-context.interface';
+import type { ReprocessParams } from '../../interfaces/csc08-orchestrator.interface';
 
 export class ReprocessPipelineCommand {
   constructor(public readonly params: ReprocessParams) {}

@@ -11,6 +11,13 @@ import {
 } from '@sdpe/alert';
 import { AUDIT_LOG_WRITER, type IAuditLogWriter, AuditEventType } from '@sdpe/audit-log';
 
+/**
+ * SI-03 처리 실패 이벤트(PROCESSING_FAILED)를 처리하는 유스케이스.
+ *
+ * 재시도 정책 (ICD 3.5, 시스템 설계서 2.2):
+ *  - 최대 3회 자동 재시도, 동일 CSC/레벨에 재할당
+ *  - 재시도 소진 시 Alert 발행 후 작업 영구 실패 처리
+ */
 @Injectable()
 export class HandleStepFailedUseCase {
   private readonly logger = new Logger(HandleStepFailedUseCase.name);
@@ -41,6 +48,7 @@ export class HandleStepFailedUseCase {
     }
     job.fail();
 
+    // 재시도 가능 여부 판단: retryCount < MAX_RETRY_COUNT(3)이면 재시도
     const decision = this.retryEvaluator.evaluate(job.retryCount);
 
     if (decision.shouldRetry) {

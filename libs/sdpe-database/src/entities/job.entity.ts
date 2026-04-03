@@ -1,6 +1,10 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 import { Job, type JobStatus, type ProductLevel, type TargetCsc, createJobId } from '@sdpe/shared';
 
+/**
+ * Job 애그리게이트를 sdpe.job 테이블에 매핑하는 TypeORM 엔티티.
+ * fromDomain/toDomain을 통해 도메인 모델과 영속성 계층 간 변환을 수행한다.
+ */
 @Entity({ name: 'job', schema: 'sdpe' })
 export class JobEntity {
   @PrimaryColumn('uuid')

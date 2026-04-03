@@ -2,6 +2,10 @@ import { Column, CreateDateColumn, Entity, Index, OneToMany, PrimaryColumn } fro
 import { PipelineExecution } from '@sdpe/shared';
 import { PipelineStepEntity } from './pipeline-step.entity';
 
+/**
+ * PipelineExecution 애그리게이트를 sdpe.pipeline_execution 테이블에 매핑하는 엔티티.
+ * PipelineStepEntity와 OneToMany 관계(cascade)를 가진다.
+ */
 @Entity({ name: 'pipeline_execution', schema: 'sdpe' })
 export class PipelineExecutionEntity {
   @PrimaryColumn('uuid')

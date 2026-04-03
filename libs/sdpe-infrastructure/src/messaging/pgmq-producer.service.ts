@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PgmqClientService } from './pgmq-client.service';
 
+/**
+ * PGMQ 메시지 발행 서비스.
+ * {@link PgmqClientService}를 래핑하여 큐에 메시지를 발행한다 (SI-04, SI-05).
+ */
 @Injectable()
 export class PgmqProducerService {
   private readonly logger = new Logger(PgmqProducerService.name);

@@ -4,6 +4,10 @@ import { ALERT_DISPATCHER } from './domain/port/alert-dispatcher.port';
 import type { IAlertConditionEvaluator } from './domain/port/alert-condition-evaluator.port';
 import { ALERT_CONDITION_EVALUATOR } from './domain/port/alert-condition-evaluator.port';
 
+/**
+ * CSU-08.07 Alert 모듈.
+ * 재시도 소진, 파이프라인 지연, 자원 임계값 초과 등의 Alert 조건 평가 및 발송을 담당한다.
+ */
 export interface SdpeAlertModuleOptions {
   alertDispatcher: Type<IAlertDispatcher>;
   alertConditionEvaluator: Type<IAlertConditionEvaluator>;

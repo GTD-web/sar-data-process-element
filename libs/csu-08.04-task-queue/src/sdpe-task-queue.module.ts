@@ -4,6 +4,11 @@ import { JOB_REPOSITORY } from './domain/port/job-repository.port';
 import type { IStepResolver } from './domain/port/step-resolver.port';
 import { STEP_RESOLVER } from './domain/port/step-resolver.port';
 
+/**
+ * CSU-08.04 작업 큐 모듈.
+ * Job 영속화와 다음 파이프라인 단계 결정 로직을 담당한다.
+ * PGMQ 큐 설정(QUEUE_CONFIG)도 이 모듈에서 제공한다.
+ */
 export interface SdpeTaskQueueModuleOptions {
   jobRepository: Type<IJobRepository>;
   stepResolver: Type<IStepResolver>;

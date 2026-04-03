@@ -4,6 +4,10 @@ import { PROCESSING_PROFILE_REPOSITORY } from './domain/port/processing-profile-
 import type { IProfileSelector } from './domain/port/profile-selector.port';
 import { PROFILE_SELECTOR } from './domain/port/profile-selector.port';
 
+/**
+ * CSU-08.02 처리 프로파일 모듈.
+ * 위성 ID + 촬영 모드별 처리 파라미터를 관리한다.
+ */
 export interface SdpeProcessingProfileModuleOptions {
   profileRepository: Type<IProcessingProfileRepository>;
   profileSelector: Type<IProfileSelector>;

@@ -2,6 +2,9 @@ import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 import type { TargetCsc } from '@sdpe/shared';
 import type { ProcessingMetric } from '@sdpe/processing-monitor';
 
+/**
+ * CSC 처리 소요시간 메트릭을 sdpe.processing_metric 테이블에 영속화하는 엔티티 (CSU-08.05).
+ */
 @Entity({ name: 'processing_metric', schema: 'sdpe' })
 export class ProcessingMetricEntity {
   @PrimaryGeneratedColumn('uuid')

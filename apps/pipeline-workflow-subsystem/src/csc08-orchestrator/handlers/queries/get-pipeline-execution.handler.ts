@@ -4,7 +4,7 @@ import {
   PIPELINE_EXECUTION_REPOSITORY,
   type IPipelineExecutionRepository,
 } from '@sdpe/pipeline-scheduler';
-import type { PipelineExecutionResult } from '../../interfaces/csc08-orchestrator-context.interface';
+import type { PipelineExecutionResult } from '../../interfaces/csc08-orchestrator.interface';
 
 export class GetPipelineExecutionQuery {
   constructor(public readonly executionId: string) {}

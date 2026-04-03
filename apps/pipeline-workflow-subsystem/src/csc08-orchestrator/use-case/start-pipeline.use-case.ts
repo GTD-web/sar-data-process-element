@@ -11,6 +11,15 @@ import {
 import { PROFILE_SELECTOR, type IProfileSelector } from '@sdpe/processing-profile';
 import { AUDIT_LOG_WRITER, type IAuditLogWriter, AuditEventType } from '@sdpe/audit-log';
 
+/**
+ * SI-01 수신 이벤트(RawDataReceivedEvent)를 받아 새 파이프라인을 시작하는 유스케이스.
+ *
+ * 처리 흐름:
+ *  1. 위성 ID + 촬영 모드로 처리 프로파일 선택
+ *  2. Job 생성 및 전체 DAG(LEVEL_0 → LEVEL_3) 구성
+ *  3. 첫 번째 단계(CSC-03)에 작업 할당
+ *  4. 감사 로그 기록
+ */
 @Injectable()
 export class StartPipelineUseCase {
   private readonly logger = new Logger(StartPipelineUseCase.name);
@@ -27,6 +36,7 @@ export class StartPipelineUseCase {
   async execute(event: RawDataReceivedEvent): Promise<void> {
     this.logger.log(`Starting pipeline for event: ${event.event_id}`);
 
+    // 위성 ID와 촬영 모드 조합으로 적절한 처리 프로파일을 결정
     const profile = await this.profileSelector.selectProfile(event.satellite_id, event.mode);
 
     const jobId = createJobId(uuidv4());
@@ -39,9 +49,11 @@ export class StartPipelineUseCase {
       mode: event.mode,
     });
 
+    // 전체 파이프라인 DAG 생성: CSC-02 → CSC-03 → CSC-04 → CSC-05 → CSC-06
     const steps = this.dagBuilder.buildFullDag();
     const execution = PipelineExecution.create(uuidv4(), jobId, steps);
 
+    // 첫 번째 대기 단계를 찾아 작업 시작
     const firstStep = execution.nextPendingStep;
     if (firstStep) {
       firstStep.start();

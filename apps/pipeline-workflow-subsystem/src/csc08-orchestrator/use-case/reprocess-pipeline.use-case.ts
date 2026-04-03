@@ -9,8 +9,15 @@ import {
   type IPipelineExecutionRepository,
 } from '@sdpe/pipeline-scheduler';
 import { AUDIT_LOG_WRITER, type IAuditLogWriter, AuditEventType } from '@sdpe/audit-log';
-import type { ReprocessParams } from '../interfaces/csc08-orchestrator-context.interface';
+import type { ReprocessParams } from '../interfaces/csc08-orchestrator.interface';
 
+/**
+ * SI-07 재처리 요청을 처리하는 유스케이스.
+ * CSC-09(Data API Provider)로부터 특정 레벨까지의 재처리 요청을 받는다.
+ *
+ * 전체 DAG가 아닌 부분 DAG(partial DAG)를 생성하여,
+ * targetLevel 이전 단계는 건너뛰고 해당 레벨부터 재처리를 시작한다.
+ */
 @Injectable()
 export class ReprocessPipelineUseCase {
   private readonly logger = new Logger(ReprocessPipelineUseCase.name);

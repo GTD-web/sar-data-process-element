@@ -5,6 +5,10 @@ import type { ProcessingProfile } from '@sdpe/shared';
 import type { IProcessingProfileRepository } from '@sdpe/processing-profile';
 import { ProcessingProfileEntity } from '../entities';
 
+/**
+ * IProcessingProfileRepository 포트의 TypeORM 구현체 (@sdpe/processing-profile).
+ * 위성 ID와 모드 기반으로 처리 프로파일을 조회한다.
+ */
 @Injectable()
 export class TypeOrmProcessingProfileRepository implements IProcessingProfileRepository {
   constructor(

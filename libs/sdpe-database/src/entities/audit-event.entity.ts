@@ -2,6 +2,9 @@ import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 import type { AuditEvent, AuditEventType } from '@sdpe/audit-log';
 import type { CscIdentifier } from '@sdpe/shared';
 
+/**
+ * 파이프라인 감사 이벤트를 sdpe.audit_event 테이블에 영속화하는 엔티티 (CSU-08.06).
+ */
 @Entity({ name: 'audit_event', schema: 'sdpe' })
 export class AuditEventEntity {
   @PrimaryGeneratedColumn('uuid')

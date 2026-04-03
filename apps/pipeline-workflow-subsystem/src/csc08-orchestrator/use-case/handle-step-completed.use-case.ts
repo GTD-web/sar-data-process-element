@@ -5,6 +5,14 @@ import { PIPELINE_EXECUTION_REPOSITORY, type IPipelineExecutionRepository } from
 import { AUDIT_LOG_WRITER, type IAuditLogWriter, AuditEventType } from '@sdpe/audit-log';
 import { METRIC_RECORDER, type IMetricRecorder } from '@sdpe/processing-monitor';
 
+/**
+ * SI-03 처리 완료 이벤트(PROCESSING_COMPLETED)를 처리하는 유스케이스.
+ *
+ * 처리 흐름:
+ *  1. 현재 단계를 완료로 표시하고 처리 시간 메트릭 기록
+ *  2. 다음 단계가 있으면 → 해당 CSC에 작업 할당
+ *  3. 다음 단계가 없으면 → 파이프라인 완료 처리 및 감사 로그 기록
+ */
 @Injectable()
 export class HandleStepCompletedUseCase {
   private readonly logger = new Logger(HandleStepCompletedUseCase.name);
@@ -43,6 +51,7 @@ export class HandleStepCompletedUseCase {
       });
     }
 
+    // 다음 대기 단계 확인: 있으면 진행, 없으면 파이프라인 완료
     const nextStep = this.stepResolver.resolveNextStep(execution);
     if (nextStep) {
       nextStep.start();

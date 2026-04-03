@@ -2,7 +2,7 @@ import { type IQueryHandler, QueryHandler } from '@nestjs/cqrs';
 import { Inject } from '@nestjs/common';
 import { createJobId } from '@sdpe/shared';
 import { JOB_REPOSITORY, type IJobRepository } from '@sdpe/task-queue';
-import type { JobStatusResult } from '../../interfaces/csc08-orchestrator-context.interface';
+import type { JobStatusResult } from '../../interfaces/csc08-orchestrator.interface';
 
 export class GetJobStatusQuery {
   constructor(public readonly jobId: string) {}

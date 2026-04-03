@@ -2,6 +2,11 @@ import type { ProductLevel, TargetCsc } from '../interface/common';
 import { StepStatus } from '../type/step-status.type';
 import { PipelineStep } from './pipeline-step.model';
 
+/**
+ * PipelineExecution Aggregate Root.
+ * 하나의 Job에 대한 파이프라인 실행 이력으로, 단계(PipelineStep) 목록을 관리한다.
+ * DAG 순서대로 각 단계가 PENDING → IN_PROGRESS → COMPLETED/FAILED/SKIPPED 상태를 거친다.
+ */
 export class PipelineExecution {
   readonly id: string;
   readonly jobId: string;

@@ -5,6 +5,10 @@ import type { Job, JobId, JobStatus } from '@sdpe/shared';
 import type { IJobRepository } from '@sdpe/task-queue';
 import { JobEntity } from '../entities';
 
+/**
+ * IJobRepository 포트의 TypeORM 구현체 (@sdpe/task-queue).
+ * Job 도메인 모델의 CRUD를 JobEntity를 통해 PostgreSQL에 위임한다.
+ */
 @Injectable()
 export class TypeOrmJobRepository implements IJobRepository {
   constructor(

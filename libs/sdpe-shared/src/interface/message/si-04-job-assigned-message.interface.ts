@@ -1,9 +1,10 @@
 import type { ProductLevel, SchemaVersion, TargetCsc } from '../common';
 
 /**
- * SI-04 작업 할당 메시지 (ICD 6.5)
- * - CSC-07이 CSC별 전용 큐에 발행
- * - 스키마 소유자: CSC-07
+ * SI-04 작업 할당 메시지 (ICD 6.6)
+ * - CSC-08이 CSC별 전용 큐(sdpe.jobs.cscXX)에 발행
+ * - 각 CSC는 자신의 전용 큐를 구독하여 작업 수신
+ * - 스키마 소유자: CSC-08
  */
 export interface JobAssignedMessage {
   // ── 확정 필드 ──

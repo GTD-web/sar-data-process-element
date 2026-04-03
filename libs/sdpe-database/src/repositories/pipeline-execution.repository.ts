@@ -5,6 +5,10 @@ import type { PipelineExecution } from '@sdpe/shared';
 import type { IPipelineExecutionRepository } from '@sdpe/pipeline-scheduler';
 import { PipelineExecutionEntity } from '../entities';
 
+/**
+ * IPipelineExecutionRepository 포트의 TypeORM 구현체 (@sdpe/pipeline-scheduler).
+ * 파이프라인 실행 및 하위 스텝을 cascade로 함께 영속화한다.
+ */
 @Injectable()
 export class TypeOrmPipelineExecutionRepository implements IPipelineExecutionRepository {
   constructor(

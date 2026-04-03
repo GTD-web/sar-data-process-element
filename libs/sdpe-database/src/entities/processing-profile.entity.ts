@@ -1,6 +1,10 @@
 import { Column, Entity, PrimaryColumn, Unique } from 'typeorm';
 import { ProcessingProfile } from '@sdpe/shared';
 
+/**
+ * ProcessingProfile 값 객체를 sdpe.processing_profile 테이블에 매핑하는 엔티티.
+ * (satelliteId, mode) 조합에 대해 유니크 제약을 가진다.
+ */
 @Entity({ name: 'processing_profile', schema: 'sdpe' })
 @Unique(['satelliteId', 'mode'])
 export class ProcessingProfileEntity {

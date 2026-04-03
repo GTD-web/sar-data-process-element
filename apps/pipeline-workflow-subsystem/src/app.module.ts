@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { SdpeDatabaseRootModule } from '@sdpe/database';
-import { Csc08OrchestratorContextModule } from './context/csc08-orchestrator-context/csc08-orchestrator-context.module';
+import { Csc08OrchestratorModule } from './csc08-orchestrator/csc08-orchestrator.module';
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -19,7 +19,7 @@ const databaseUrl = process.env.DATABASE_URL;
               logging: process.env.TYPEORM_LOGGING === 'true',
             }),
           }),
-          Csc08OrchestratorContextModule,
+          Csc08OrchestratorModule,
         ]
       : []),
   ],

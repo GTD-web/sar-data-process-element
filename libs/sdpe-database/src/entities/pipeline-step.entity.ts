@@ -2,6 +2,10 @@ import { Column, Entity, ManyToOne, JoinColumn, PrimaryGeneratedColumn } from 't
 import { PipelineStep, type StepStatus, type TargetCsc, type ProductLevel } from '@sdpe/shared';
 import { PipelineExecutionEntity } from './pipeline-execution.entity';
 
+/**
+ * PipelineStep을 sdpe.pipeline_step 테이블에 매핑하는 엔티티.
+ * PipelineExecutionEntity와 ManyToOne 관계이며, 실행 삭제 시 CASCADE로 함께 삭제된다.
+ */
 @Entity({ name: 'pipeline_step', schema: 'sdpe' })
 export class PipelineStepEntity {
   @PrimaryGeneratedColumn('uuid')

@@ -3,8 +3,9 @@ import type { SchemaVersion } from '../common';
 /**
  * EI-01 수신 이벤트 (ICD 5.1.1)
  * - 위성 수신국이 NAS에 원시 데이터를 저장한 후 발행
- * - CSC-07이 파이프라인을 시작하는 트리거
- * - 스키마 소유자: 위성 수신국
+ * - CSC-08이 파이프라인을 시작하는 트리거
+ * - 큐: sdpe.reception.events
+ * - 스키마 소유자: 위성 수신국 (EI-01) / CSC-02 (SI-01)
  */
 export interface RawDataReceivedEvent {
   // ── 확정 필드 ──
