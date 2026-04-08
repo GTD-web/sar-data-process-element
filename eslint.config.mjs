@@ -10,6 +10,12 @@ export default tseslint.config(
   ...tseslint.configs.strict,
   eslintConfigPrettier,
   {
+    files: ['**/*.spec.ts', '**/*.e2e-spec.ts'],
+    rules: {
+      '@typescript-eslint/no-non-null-assertion': 'off',
+    },
+  },
+  {
     files: ['apps/**/*.ts', 'libs/**/*.ts'],
     languageOptions: {
       parserOptions: {

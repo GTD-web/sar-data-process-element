@@ -1,23 +1,19 @@
 import { Test, type TestingModule } from '@nestjs/testing';
-import { type INestApplication, Injectable, Inject } from '@nestjs/common';
+import { type INestApplication, Injectable } from '@nestjs/common';
+import { CqrsModule } from '@nestjs/cqrs';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { CqrsModule, CommandBus } from '@nestjs/cqrs';
-import { PgmqClientService, SdpePgmqModule, type PgmqMessageHandler } from '@sdpe/infrastructure';
+import { PgmqClientService, SdpePgmqModule } from '@sdpe/infrastructure';
 import {
   type RawDataReceivedEvent,
   type ProcessingEvent,
   ProductLevel,
   TargetCsc,
   SourceCsc,
-  QueueName,
   Job,
   PipelineExecution,
-  PipelineStep,
   ProcessingProfile,
   JobStatus,
   StepStatus,
-  CscIdentifier,
-  createJobId,
 } from '@sdpe/shared';
 import { JOB_REPOSITORY, type IJobRepository, STEP_RESOLVER } from '@sdpe/task-queue';
 import {
@@ -311,10 +307,7 @@ describe('CSC-08 Pipeline E2E (PGMQ)', () => {
     const jobId = job.id;
 
     // CSC-02 완료 이벤트 전송
-    await pgmqClient.send(
-      E2E_PROCESSING_QUEUE,
-      createCompletedEvent(jobId, SourceCsc.CSC_02, ProductLevel.LEVEL_0),
-    );
+    await pgmqClient.send(E2E_PROCESSING_QUEUE, createCompletedEvent(jobId, SourceCsc.CSC_02, ProductLevel.LEVEL_0));
 
     await waitForCondition(() => {
       const j = jobs.get(jobId);
@@ -334,10 +327,7 @@ describe('CSC-08 Pipeline E2E (PGMQ)', () => {
     const jobId = job.id;
 
     // CSC-02 실패 이벤트 전송
-    await pgmqClient.send(
-      E2E_PROCESSING_QUEUE,
-      createFailedEvent(jobId, SourceCsc.CSC_02, ProductLevel.LEVEL_0, 0),
-    );
+    await pgmqClient.send(E2E_PROCESSING_QUEUE, createFailedEvent(jobId, SourceCsc.CSC_02, ProductLevel.LEVEL_0, 0));
 
     await waitForCondition(() => {
       return auditLogs.some((l) => l.eventType === 'JOB_RETRIED');
@@ -359,10 +349,7 @@ describe('CSC-08 Pipeline E2E (PGMQ)', () => {
 
     // 3회 실패 시뮬레이션: fail → assign 반복하여 retryCount를 3으로 만듦
     for (let i = 0; i < 3; i++) {
-      await pgmqClient.send(
-        E2E_PROCESSING_QUEUE,
-        createFailedEvent(jobId, SourceCsc.CSC_02, ProductLevel.LEVEL_0, i),
-      );
+      await pgmqClient.send(E2E_PROCESSING_QUEUE, createFailedEvent(jobId, SourceCsc.CSC_02, ProductLevel.LEVEL_0, i));
       await waitForCondition(() => {
         const j = jobs.get(jobId);
         return j !== undefined && j.retryCount >= i + 1;
