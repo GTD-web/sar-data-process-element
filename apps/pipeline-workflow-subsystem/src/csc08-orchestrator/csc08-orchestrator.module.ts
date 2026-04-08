@@ -65,6 +65,7 @@ import { ReprocessPipelineUseCase } from './use-case/reprocess-pipeline.use-case
     ]),
     // --- 메시징: PGMQ 소비자 (SI-01 수신 이벤트, SI-03 처리 이벤트) ---
     SdpePgmqModule.forRoot({
+      imports: [CqrsModule],
       consumers: [
         {
           queue: QUEUE_CONFIG.consume.RECEPTION_EVENTS,

@@ -15,6 +15,7 @@ export class SdpePgmqModule {
 
     return {
       module: SdpePgmqModule,
+      imports: options.imports ?? [],
       providers: [
         { provide: PGMQ_MODULE_OPTIONS, useValue: options },
         PgmqClientService,

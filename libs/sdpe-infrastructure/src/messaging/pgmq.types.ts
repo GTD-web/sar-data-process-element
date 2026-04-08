@@ -1,4 +1,4 @@
-import type { Type } from '@nestjs/common';
+import type { DynamicModule, ForwardReference, Type } from '@nestjs/common';
 
 /**
  * PGMQ에서 읽은 메시지 래퍼.
@@ -44,6 +44,7 @@ export interface PgmqProducerConfig {
  * {@link SdpePgmqModule.forRoot}에 전달되어 소비자 및 생산자 목록을 구성한다 (AD-02).
  */
 export interface PgmqModuleOptions {
+  readonly imports?: Array<Type | DynamicModule | Promise<DynamicModule> | ForwardReference>;
   readonly consumers?: readonly PgmqConsumerConfig[];
   readonly producers?: readonly PgmqProducerConfig[];
 }

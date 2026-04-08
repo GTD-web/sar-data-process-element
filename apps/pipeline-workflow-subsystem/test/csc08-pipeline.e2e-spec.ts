@@ -144,6 +144,7 @@ describe('CSC-08 Pipeline E2E (PGMQ)', () => {
         }),
         CqrsModule,
         SdpePgmqModule.forRoot({
+          imports: [CqrsModule],
           consumers: [
             {
               queue: E2E_RECEPTION_QUEUE,
