@@ -532,11 +532,26 @@ section h2 { font-size: 18px; margin-bottom: 16px; padding-bottom: 8px; border-b
 .test-stat.failed .number { color: var(--fail); }
 .test-stat.skipped .number { color: var(--skip); }
 
-.test-suite { margin-top: 12px; }
-.test-suite summary { cursor: pointer; font-size: 14px; padding: 8px; border-radius: 4px; }
-.test-suite summary:hover { background: var(--bg); }
-.test-case { font-size: 13px; padding: 4px 0 4px 24px; display: flex; gap: 8px; align-items: center; }
-.test-case.test-failed { color: var(--fail); }
+.test-suite { margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.test-suite summary { cursor: pointer; font-size: 14px; padding: 10px 14px; display: flex;
+  align-items: center; gap: 8px; background: var(--bg); }
+.test-suite summary:hover { background: #e9ecef; }
+.test-suite summary .suite-meta { margin-left: auto; font-size: 12px; color: var(--text-secondary); display: flex; gap: 12px; }
+.test-suite summary .suite-counts span { margin-right: 6px; }
+.test-suite[open] summary { border-bottom: 1px solid var(--border); }
+.test-cases { padding: 4px 0; }
+.test-case { font-size: 13px; padding: 5px 14px 5px 32px; display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid #f0f0f0; }
+.test-case:last-child { border-bottom: none; }
+.test-case.test-passed { color: var(--text); }
+.test-case.test-failed { color: var(--fail); background: #fff5f5; }
+.test-case.test-skipped { color: var(--skip); }
+.test-case .test-duration { margin-left: auto; font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+.test-failure-msg { margin: 0 14px 8px 32px; }
+.suite-status-bar { display: flex; height: 3px; width: 100%; }
+.suite-status-bar .bar-pass { background: var(--pass); }
+.suite-status-bar .bar-fail { background: var(--fail); }
+.suite-status-bar .bar-skip { background: var(--skip); }
 
 /* Failure */
 .failure-block { margin-bottom: 16px; }
@@ -653,7 +668,7 @@ ${
   ${testResults
     .map(
       (tr) => `
-  <h3 style="font-size:15px;margin:12px 0 8px">${escapeHtml(tr.label)}</h3>
+  <h3 style="font-size:15px;margin:16px 0 8px">${escapeHtml(tr.label)}</h3>
   <div class="test-summary">
     <div class="test-stat passed"><div class="number">${tr.passed}</div><div class="label">Passed</div></div>
     <div class="test-stat failed"><div class="number">${tr.failed}</div><div class="label">Failed</div></div>
@@ -662,21 +677,42 @@ ${
     <div class="test-stat"><div class="number">${tr.duration}s</div><div class="label">Duration</div></div>
   </div>
   ${tr.details
-    .filter((s) => s.status === 'failed')
-    .map(
-      (s) => `<details class="test-suite" open>
-    <summary>${statusIcon('failure')} ${escapeHtml(s.name)}</summary>
-    ${s.tests
-      .filter((t) => t.status === 'failed')
-      .map(
-        (t) => `<div class="test-case test-failed">
-      ${statusIcon('failure')} ${escapeHtml(t.title)}
-      ${t.failureMessages ? `<pre class="failure-output" style="margin-top:4px;max-height:150px">${escapeHtml(t.failureMessages)}</pre>` : ''}
-    </div>`,
-      )
-      .join('\n    ')}
-  </details>`,
-    )
+    .map((s) => {
+      const suitePassed = s.tests.filter((t) => t.status === 'passed').length;
+      const suiteFailed = s.tests.filter((t) => t.status === 'failed').length;
+      const suiteSkipped = s.tests.filter((t) => t.status === 'pending').length;
+      const suiteTotal = s.tests.length;
+      const barTotal = suiteTotal || 1;
+      const isFailed = s.status === 'failed';
+      return `<details class="test-suite"${isFailed ? ' open' : ''}>
+    <summary>
+      ${statusIcon(s.status === 'passed' ? 'success' : s.status === 'failed' ? 'failure' : 'skipped')}
+      <strong>${escapeHtml(s.name)}</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">${suitePassed} passed</span> <span style="color:var(--fail)">${suiteFailed} failed</span> <span style="color:var(--skip)">${suiteSkipped} skipped</span></span>
+        <span>${s.duration.toFixed(1)}s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:${(suitePassed / barTotal) * 100}%"></div>
+      <div class="bar-fail" style="width:${(suiteFailed / barTotal) * 100}%"></div>
+      <div class="bar-skip" style="width:${(suiteSkipped / barTotal) * 100}%"></div>
+    </div>
+    <div class="test-cases">
+      ${s.tests
+        .map((t) => {
+          const tStatus = t.status === 'passed' ? 'success' : t.status === 'failed' ? 'failure' : 'skipped';
+          const tClass = t.status === 'passed' ? 'test-passed' : t.status === 'failed' ? 'test-failed' : 'test-skipped';
+          return `<div class="test-case ${tClass}">
+        ${statusIcon(tStatus)}
+        <span>${escapeHtml(t.title)}</span>
+        <span class="test-duration">${t.duration >= 0.01 ? t.duration.toFixed(2) + 's' : '<0.01s'}</span>
+      </div>${t.status === 'failed' && t.failureMessages ? `\n      <pre class="failure-output test-failure-msg" style="max-height:200px">${escapeHtml(t.failureMessages)}</pre>` : ''}`;
+        })
+        .join('\n      ')}
+    </div>
+  </details>`;
+    })
     .join('\n  ')}`,
     )
     .join('\n  ')}
