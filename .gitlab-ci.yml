@@ -4,10 +4,7 @@ stages:
 
 # ── 공통 변수 ──
 variables:
-  POSTGRES_USER: sdpe
-  POSTGRES_PASSWORD: sdpe
-  POSTGRES_DB: sdpe
-  DATABASE_URL: postgresql://sdpe:sdpe@postgres:5432/sdpe
+  DATABASE_URL: postgresql://sdpe:sdpe@localhost:5432/sdpe
 
 # ── TypeScript 테스트 ──
 typescript:
@@ -16,19 +13,13 @@ typescript:
     - shared
     - ubuntu
     - linux
-  image: node:22
-  services:
-    - name: quay.io/tembo/pgmq-pg:latest
-      alias: postgres
-      variables:
-        POSTGRES_USER: sdpe
-        POSTGRES_PASSWORD: sdpe
-        POSTGRES_DB: sdpe
   before_script:
-    - apt-get update && apt-get install -y postgresql-client
-    - PGHOST=postgres PGUSER=sdpe PGPASSWORD=sdpe PGDATABASE=sdpe psql -f deploy/local/init/01-init.sql
+    - node --version
+    - npm --version
     - npm ci
     - mkdir -p ci-results
+    # DB 초기화 (PostgreSQL이 로컬에 실행 중인 경우)
+    - PGHOST=localhost PGUSER=sdpe PGPASSWORD=sdpe PGDATABASE=sdpe psql -f deploy/local/init/01-init.sql || echo "DB init skipped"
   script:
     # Build
     - |
@@ -74,28 +65,31 @@ python:
     - shared
     - ubuntu
     - linux
-  image: python:3.11
   before_script:
-    - python -m pip install --upgrade pip
-    - python -m pip install ruff mypy
+    - python3 --version
+    - python3 -m pip install --upgrade pip --user
+    - python3 -m pip install ruff mypy --user
+    - export PATH="$HOME/.local/bin:$PATH"
     - mkdir -p ci-results
   script:
+    - export PATH="$HOME/.local/bin:$PATH"
+
     # Ruff check
     - |
       RUFF_CHECK_RESULT="success"
-      python -m ruff check algorithms 2>&1 | tee ci-results/python-output.txt || RUFF_CHECK_RESULT="failure"
+      python3 -m ruff check algorithms 2>&1 | tee ci-results/python-output.txt || RUFF_CHECK_RESULT="failure"
       echo "$RUFF_CHECK_RESULT" > ci-results/ruff-check-result.txt
 
     # Ruff format check
     - |
       RUFF_FORMAT_RESULT="success"
-      python -m ruff format algorithms --check 2>&1 | tee -a ci-results/python-output.txt || RUFF_FORMAT_RESULT="failure"
+      python3 -m ruff format algorithms --check 2>&1 | tee -a ci-results/python-output.txt || RUFF_FORMAT_RESULT="failure"
       echo "$RUFF_FORMAT_RESULT" > ci-results/ruff-format-result.txt
 
     # Mypy
     - |
       MYPY_RESULT="success"
-      python -m mypy algorithms/csc03_range_compression 2>&1 | tee -a ci-results/python-output.txt || MYPY_RESULT="failure"
+      python3 -m mypy algorithms/csc03_range_compression 2>&1 | tee -a ci-results/python-output.txt || MYPY_RESULT="failure"
       echo "$MYPY_RESULT" > ci-results/mypy-result.txt
 
     # 최종 결과 확인
@@ -118,7 +112,6 @@ pages:
     - shared
     - ubuntu
     - linux
-  image: node:22
   needs:
     - job: typescript
       artifacts: true
@@ -169,10 +162,6 @@ pages:
         <h1>SDPE CI/CD Reports</h1>
         <p class="meta">이 페이지는 파이프라인 실행 시 자동 갱신됩니다.</p>
         <ul class="report-list" id="list"></ul>
-        <script>
-          // 현재 디렉토리의 날짜 폴더들을 링크로 표시
-          // GitLab Pages는 directory listing이 안 되므로 서버사이드에서 생성
-        </script>
       </body>
       </html>
       INDEXEOF
