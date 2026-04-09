@@ -1,0 +1,1188 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CI/CD Report - 2026-04-09 - 1e95444</title>
+<style>
+:root {
+  --pass: #28a745; --fail: #dc3545; --skip: #6c757d;
+  --bg: #f8f9fa; --card: #fff; --border: #dee2e6;
+  --text: #212529; --text-secondary: #6c757d;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.6; padding: 24px; }
+.container { max-width: 1100px; margin: 0 auto; }
+
+/* Header */
+.header { background: var(--card); border-radius: 12px; padding: 32px; margin-bottom: 24px;
+  border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.header h1 { font-size: 24px; margin-bottom: 8px; }
+.header-meta { display: flex; gap: 24px; flex-wrap: wrap; color: var(--text-secondary); font-size: 14px; }
+.overall-status { display: inline-block; padding: 6px 20px; border-radius: 20px; font-weight: 700;
+  font-size: 14px; letter-spacing: 0.5px; margin-top: 12px; }
+.overall-pass { background: #d4edda; color: #155724; }
+.overall-fail { background: #f8d7da; color: #721c24; }
+
+/* Section */
+section { background: var(--card); border-radius: 12px; padding: 24px; margin-bottom: 20px;
+  border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+section h2 { font-size: 18px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid var(--bg); }
+
+/* Commit info */
+.commit-hash { font-family: var(--mono); font-size: 13px; background: var(--bg); padding: 2px 8px;
+  border-radius: 4px; }
+.commit-message { background: var(--bg); padding: 12px 16px; border-radius: 8px; margin-top: 8px;
+  font-size: 14px; white-space: pre-wrap; border-left: 4px solid var(--border); }
+.commit-meta { display: grid; grid-template-columns: 120px 1fr; gap: 8px 16px; font-size: 14px; margin-top: 12px; }
+.commit-meta dt { font-weight: 600; color: var(--text-secondary); }
+
+/* Files */
+.file-list { list-style: none; font-size: 13px; font-family: var(--mono); }
+.file-list li { padding: 6px 12px; border-radius: 4px; display: flex; align-items: center; gap: 8px; }
+.file-list li:nth-child(odd) { background: var(--bg); }
+.file-status { display: inline-block; width: 44px; text-align: center; font-size: 11px; font-weight: 600;
+  padding: 1px 6px; border-radius: 3px; font-family: var(--font); }
+.file-modified .file-status { background: #fff3cd; color: #856404; }
+.file-added .file-status { background: #d4edda; color: #155724; }
+.file-deleted .file-status { background: #f8d7da; color: #721c24; }
+.diff-stat { margin-left: auto; white-space: nowrap; font-size: 12px; }
+.diff-stat .added { color: var(--pass); }
+.diff-stat .deleted { color: var(--fail); }
+.change-summary { font-size: 14px; color: var(--text-secondary); margin-bottom: 12px; }
+.file-entry { border-bottom: 1px solid var(--bg); padding-bottom: 4px; }
+.file-entry:nth-child(odd) { background: #fafbfc; }
+.file-desc { font-family: var(--font); font-size: 12px; color: var(--text-secondary); margin-left: 4px; }
+.file-diff { margin: 8px 0 12px 0; }
+.file-diff summary { cursor: pointer; font-size: 12px; color: var(--text-secondary); padding: 4px 8px; }
+.file-diff summary:hover { color: var(--text); }
+.diff-content { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px;
+  font-family: var(--mono); font-size: 11px; line-height: 1.6; overflow-x: auto;
+  white-space: pre; max-height: 400px; overflow-y: auto; margin-top: 4px; }
+.diff-content .diff-add { color: #b5cea8; }
+.diff-content .diff-del { color: #f48771; }
+.diff-content .diff-hunk { color: #569cd6; font-weight: 600; }
+
+/* Impact */
+.impact-card { background: var(--bg); border-radius: 8px; padding: 14px 16px; margin-bottom: 10px;
+  border-left: 4px solid var(--border); }
+.impact-card.source-changed { border-left-color: #ffc107; }
+.impact-card h3 { font-size: 14px; margin-bottom: 4px; }
+.impact-card p { font-size: 13px; color: var(--text-secondary); margin: 0; }
+.impact-summary { background: #e8f4fd; padding: 12px 16px; border-radius: 8px; font-size: 14px;
+  color: #0c5460; margin-bottom: 16px; }
+
+/* Pipeline */
+.pipeline { display: flex; flex-direction: column; gap: 8px; }
+.pipeline-step { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 8px;
+  background: var(--bg); font-size: 14px; }
+.pipeline-step .step-name { flex: 1; }
+.icon-pass { color: var(--pass); font-weight: 700; font-size: 16px; }
+.icon-fail { color: var(--fail); font-weight: 700; font-size: 16px; }
+.icon-skip { color: var(--skip); font-size: 16px; }
+.badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 11px;
+  font-weight: 700; letter-spacing: 0.3px; }
+
+/* Test results */
+.test-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px; margin-bottom: 16px; }
+.test-stat { text-align: center; padding: 16px; background: var(--bg); border-radius: 8px; }
+.test-stat .number { font-size: 28px; font-weight: 700; }
+.test-stat .label { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; }
+.test-stat.passed .number { color: var(--pass); }
+.test-stat.failed .number { color: var(--fail); }
+.test-stat.skipped .number { color: var(--skip); }
+
+.test-suite { margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.test-suite summary { cursor: pointer; font-size: 14px; padding: 10px 14px; display: flex;
+  align-items: center; gap: 8px; background: var(--bg); }
+.test-suite summary:hover { background: #e9ecef; }
+.test-suite summary .suite-meta { margin-left: auto; font-size: 12px; color: var(--text-secondary); display: flex; gap: 12px; }
+.test-suite summary .suite-counts span { margin-right: 6px; }
+.test-suite[open] summary { border-bottom: 1px solid var(--border); }
+.test-cases { padding: 4px 0; }
+.test-case { font-size: 13px; padding: 5px 14px 5px 32px; display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid #f0f0f0; }
+.test-case:last-child { border-bottom: none; }
+.test-case.test-passed { color: var(--text); }
+.test-case.test-failed { color: var(--fail); background: #fff5f5; }
+.test-case.test-skipped { color: var(--skip); }
+.test-case .test-duration { margin-left: auto; font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+.test-failure-msg { margin: 0 14px 8px 32px; }
+.error-detail { margin: 4px 14px 10px 32px; background: #fff5f5; border: 1px solid #fecaca;
+  border-radius: 6px; padding: 10px 14px; font-size: 12px; }
+.error-detail .error-location { font-family: var(--mono); color: var(--fail); font-weight: 600; }
+.error-detail .error-assertion { font-family: var(--mono); color: #7c3aed; margin-top: 4px; }
+.error-detail .error-expected { color: var(--pass); margin-top: 4px; }
+.error-detail .error-received { color: var(--fail); }
+.error-detail .error-label { font-weight: 600; display: inline-block; width: 72px; }
+.suite-status-bar { display: flex; height: 3px; width: 100%; }
+.suite-status-bar .bar-pass { background: var(--pass); }
+.suite-status-bar .bar-fail { background: var(--fail); }
+.suite-status-bar .bar-skip { background: var(--skip); }
+
+/* Failure */
+.failure-block { margin-bottom: 16px; }
+.failure-block h3 { font-size: 14px; color: var(--fail); margin-bottom: 8px; }
+.failure-output { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 8px;
+  font-family: var(--mono); font-size: 12px; line-height: 1.5; overflow-x: auto;
+  white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; }
+.no-failures { color: var(--pass); font-size: 14px; padding: 16px; text-align: center;
+  background: #d4edda; border-radius: 8px; }
+
+/* Footer */
+.footer { text-align: center; padding: 24px; color: var(--text-secondary); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- Header -->
+<div class="header">
+  <h1>CI/CD 보고서</h1>
+  <div class="header-meta">
+    <span>2026-04-09 13:59:35 (KST)</span>
+    <span>Branch: <strong>interface/명세-정의</strong></span>
+    <span>Commit: <code class="commit-hash">1e95444</code></span>
+    <span>Author: =</span>
+  </div>
+  <div class="overall-status overall-pass">ALL PASSED</div>
+</div>
+
+<!-- 1. 커밋 정보 -->
+<section>
+  <h2>1. 커밋 정보</h2>
+  <dl class="commit-meta">
+    <dt>커밋 해시</dt><dd><code class="commit-hash">1e954446287b87598e4f5c440723f302464dc412</code></dd>
+    <dt>브랜치</dt><dd>interface/명세-정의</dd>
+    <dt>작성자</dt><dd>= &lt;wukddang@gmail.com&gt;</dd>
+    <dt>일시</dt><dd>2026-04-09 13:58:09 +0900</dd>
+    <dt>유형</dt><dd>일반 커밋</dd>
+  </dl>
+  <div class="commit-message">ci: GitHub Pages 제거, artifact 다운로드 방식으로 변경
+
+Organization private 레포에서 Pages를 사용할 수 없어
+artifact 업로드 + 다운로드 링크 방식으로 전환
+
+Co-Authored-By: Claude Opus 4.6 (1M context) &lt;noreply@anthropic.com&gt;</div>
+</section>
+
+<!-- 2. 변경 사항 -->
+<section>
+  <h2>2. 변경 사항</h2>
+  <div class="change-summary">
+    1개 파일 변경 |
+    <span style="color:var(--pass)">+8</span>
+    <span style="color:var(--fail)">-15</span>
+  </div>
+  <div class="file-entry">
+    <div class="file-modified" style="display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:13px;font-family:var(--mono)">
+      <span class="file-status">수정</span>
+      <span>.github/workflows/ci.yml</span>
+      <span class="diff-stat"><span class="added">+8</span> <span class="deleted">-15</span></span>
+    </div>
+    <div style="padding:0 12px 2px 56px"><span class="file-desc">설정 파일 수정 — CI/CD 또는 배포 구성</span></div>
+    <details class="file-diff" style="padding-left:56px">
+      <summary>diff 보기</summary>
+      <div class="diff-content">diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index ca3b7db..8824118 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+<span class="diff-hunk">@@ -9,8 +9,6 @@ on:</span>
+ 
+ permissions:
+   contents: write
+<span class="diff-del">-  pages: write</span>
+<span class="diff-del">-  id-token: write</span>
+ 
+ jobs:
+   typescript:
+<span class="diff-hunk">@@ -220,15 +218,12 @@ jobs:</span>
+             git push
+           fi
+ 
+<span class="diff-del">-      - name: Deploy to GitHub Pages</span>
+<span class="diff-del">-        continue-on-error: true</span>
+<span class="diff-del">-        uses: actions/upload-pages-artifact@v3</span>
+<span class="diff-add">+      - name: Upload report artifact</span>
+<span class="diff-add">+        uses: actions/upload-artifact@v4</span>
+         with:
+<span class="diff-add">+          name: ci-report-${{ github.sha }}</span>
+           path: reports/
+<span class="diff-del">-</span>
+<span class="diff-del">-      - name: Publish Pages</span>
+<span class="diff-del">-        continue-on-error: true</span>
+<span class="diff-del">-        uses: actions/deploy-pages@v4</span>
+<span class="diff-add">+          retention-days: 90</span>
+ 
+       - name: Write job summary
+         if: always() &amp;&amp; steps.report.outputs.report-path != ''
+<span class="diff-hunk">@@ -240,11 +235,7 @@ jobs:</span>
+           REPO=&quot;${{ github.repository }}&quot;
+           BRANCH=&quot;${{ github.ref_name }}&quot;
+           BLOB_URL=&quot;https://github.com/${REPO}/blob/${BRANCH}/${REPORT_PATH}&quot;
+<span class="diff-del">-</span>
+<span class="diff-del">-          # GitHub Pages URL: https://&lt;org&gt;.github.io/&lt;repo&gt;/</span>
+<span class="diff-del">-          ORG=$(echo &quot;$REPO&quot; | cut -d'/' -f1)</span>
+<span class="diff-del">-          REPO_NAME=$(echo &quot;$REPO&quot; | cut -d'/' -f2)</span>
+<span class="diff-del">-          PAGES_URL=&quot;https://${ORG}.github.io/${REPO_NAME}/${REPORT_DATE}/${REPORT_FILE}&quot;</span>
+<span class="diff-add">+          RUN_URL=&quot;https://github.com/${REPO}/actions/runs/${{ github.run_id }}&quot;</span>
+ 
+           TS_RESULT=&quot;${{ needs.typescript.result }}&quot;
+           PY_RESULT=&quot;${{ needs.python.result }}&quot;
+<span class="diff-hunk">@@ -267,8 +258,10 @@ jobs:</span>
+             echo &quot;&quot;
+             echo &quot;### 보고서 링크&quot;
+             echo &quot;&quot;
+<span class="diff-del">-            echo &quot;- [HTML 보고서 보기](${PAGES_URL})&quot;</span>
+             echo &quot;- [GitHub에서 보기](${BLOB_URL})&quot;
+<span class="diff-add">+            echo &quot;- [Artifact 다운로드 (HTML)](${RUN_URL}#artifacts)&quot;</span>
+<span class="diff-add">+            echo &quot;&quot;</span>
+<span class="diff-add">+            echo &quot;&gt; 다운로드한 HTML 파일을 브라우저에서 열면 렌더링된 보고서를 확인할 수 있습니다.&quot;</span>
+             echo &quot;&quot;
+             echo &quot;### 파이프라인 결과&quot;
+             echo &quot;&quot;</div>
+    </details>
+  </div>
+</section>
+
+<!-- 3. 영향 분석 -->
+<section>
+  <h2>3. 영향 분석</h2>
+  <div class="impact-summary">설정 파일만 변경됨</div>
+  <div class="impact-card ">
+    <h3>CI/CD</h3>
+    <p>GitHub Actions 워크플로우 &mdash; CI/CD 파이프라인 자체에 영향</p>
+    <p style="font-size:12px;margin-top:4px;color:#888">1개 파일: ci.yml</p>
+  </div>
+</section>
+
+<!-- 4. CI/CD 파이프라인 -->
+<section>
+  <h2>4. CI/CD 파이프라인</h2>
+  <div class="pipeline">
+    <div class="pipeline-step">
+      <span class="icon-pass">&#10003;</span>
+      <span class="step-name">Build (nest build)</span>
+      <span class="badge" style="background:#d4edda;color:#155724">PASS</span>
+    </div>
+    <div class="pipeline-step">
+      <span class="icon-pass">&#10003;</span>
+      <span class="step-name">Lint (ESLint)</span>
+      <span class="badge" style="background:#d4edda;color:#155724">PASS</span>
+    </div>
+    <div class="pipeline-step">
+      <span class="icon-pass">&#10003;</span>
+      <span class="step-name">Unit Test (Jest)</span>
+      <span class="badge" style="background:#d4edda;color:#155724">PASS</span>
+    </div>
+    <div class="pipeline-step">
+      <span class="icon-pass">&#10003;</span>
+      <span class="step-name">E2E Test (Jest)</span>
+      <span class="badge" style="background:#d4edda;color:#155724">PASS</span>
+    </div>
+    <div class="pipeline-step">
+      <span class="icon-pass">&#10003;</span>
+      <span class="step-name">Python Lint (ruff check)</span>
+      <span class="badge" style="background:#d4edda;color:#155724">PASS</span>
+    </div>
+    <div class="pipeline-step">
+      <span class="icon-pass">&#10003;</span>
+      <span class="step-name">Python Format (ruff format)</span>
+      <span class="badge" style="background:#d4edda;color:#155724">PASS</span>
+    </div>
+    <div class="pipeline-step">
+      <span class="icon-pass">&#10003;</span>
+      <span class="step-name">Python Type Check (mypy)</span>
+      <span class="badge" style="background:#d4edda;color:#155724">PASS</span>
+    </div>
+  </div>
+</section>
+
+<!-- 5. 테스트 결과 -->
+<section>
+  <h2>5. 테스트 결과</h2>
+  
+  <h3 style="font-size:15px;margin:16px 0 8px">Unit Test</h3>
+  <div class="test-summary">
+    <div class="test-stat passed"><div class="number">88</div><div class="label">Passed</div></div>
+    <div class="test-stat failed"><div class="number">0</div><div class="label">Failed</div></div>
+    <div class="test-stat skipped"><div class="number">0</div><div class="label">Skipped</div></div>
+    <div class="test-stat"><div class="number">88</div><div class="label">Total</div></div>
+    <div class="test-stat"><div class="number">5.8s</div><div class="label">Duration</div></div>
+  </div>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>handle-step-failed.use-case.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">5 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>3.5s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>HandleStepFailedUseCase &gt; 재시도 가능하면 동일 CSC에 재할당 + JOB_RETRIED 감사 로그</span>
+        <span class="test-duration">0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>HandleStepFailedUseCase &gt; 재시도 소진 + Alert 조건 충족 시 Alert 발행 + JOB_FAILED 감사 로그</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>HandleStepFailedUseCase &gt; 재시도 소진이지만 Alert 조건 미충족 시 Alert 없이 JOB_FAILED만</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>HandleStepFailedUseCase &gt; Job이 없으면 에러</span>
+        <span class="test-duration">0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>HandleStepFailedUseCase &gt; PipelineExecution이 없으면 에러</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>handle-step-completed.use-case.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">5 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.2s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>HandleStepCompletedUseCase &gt; 다음 단계가 있으면 현재 단계 완료 후 다음 CSC에 할당</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>HandleStepCompletedUseCase &gt; 다음 단계가 없으면 파이프라인 완료 감사 로그 기록</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>HandleStepCompletedUseCase &gt; processing_duration_ms가 없으면 메트릭 기록 생략</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>HandleStepCompletedUseCase &gt; Job이 없으면 에러</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>HandleStepCompletedUseCase &gt; PipelineExecution이 없으면 에러</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>pipeline-execution.model.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">15 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.1s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineExecution &gt; create &gt; id, jobId, steps를 갖는 실행 이력 생성</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineExecution &gt; create &gt; 빈 steps 배열이면 에러</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineExecution &gt; currentStep &gt; IN_PROGRESS 상태인 단계를 반환</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineExecution &gt; currentStep &gt; IN_PROGRESS 상태인 단계가 없으면 null</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineExecution &gt; nextPendingStep &gt; 첫 번째 PENDING 단계를 반환</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineExecution &gt; nextPendingStep &gt; 첫 단계가 완료되면 두 번째 PENDING 단계를 반환</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineExecution &gt; nextPendingStep &gt; 모든 단계가 완료되면 null</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineExecution &gt; isCompleted &gt; 모든 단계가 COMPLETED면 true</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineExecution &gt; isCompleted &gt; SKIPPED + COMPLETED 조합도 true</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineExecution &gt; isCompleted &gt; PENDING 단계가 남아있으면 false</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineExecution &gt; isFailed &gt; 하나라도 FAILED면 true</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineExecution &gt; isFailed &gt; FAILED 단계 없으면 false</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineExecution &gt; getStepByCsc &gt; 해당 CSC의 단계를 반환</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineExecution &gt; getStepByCsc &gt; 없는 CSC면 undefined</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineExecution &gt; getStepByProductLevel &gt; 해당 레벨의 단계를 반환</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>job.model.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">11 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.1s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Job &gt; create &gt; 초기 상태는 CREATED, retryCount=0, 할당 정보 없음</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Job &gt; assign &gt; CREATED 상태에서 CSC와 레벨을 할당하면 ASSIGNED로 전이</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Job &gt; assign &gt; FAILED 상태에서 재할당 가능 (재시도)</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Job &gt; assign &gt; ASSIGNED 상태에서 assign 호출 시 에러</span>
+        <span class="test-duration">0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Job &gt; assign &gt; COMPLETED 상태에서 assign 호출 시 에러</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Job &gt; complete &gt; ASSIGNED 상태에서 완료 처리</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Job &gt; complete &gt; CREATED 상태에서 complete 호출 시 에러</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Job &gt; fail &gt; ASSIGNED 상태에서 실패 처리하면 retryCount 증가</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Job &gt; fail &gt; 재시도마다 retryCount가 누적됨</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Job &gt; fail &gt; CREATED 상태에서 fail 호출 시 에러</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Job &gt; resetForReprocessing &gt; 상태를 CREATED로 초기화하고 retryCount와 할당 정보 리셋</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>command-handlers.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">4 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.3s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Command Handlers &gt; StartPipelineHandler &gt; StartPipelineCommand를 받아 StartPipelineUseCase에 위임</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Command Handlers &gt; HandleStepCompletedHandler &gt; HandleStepCompletedCommand를 받아 UseCase에 위임</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Command Handlers &gt; HandleStepFailedHandler &gt; HandleStepFailedCommand를 받아 UseCase에 위임</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Command Handlers &gt; ReprocessPipelineHandler &gt; ReprocessPipelineCommand를 받아 UseCase에 위임</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>reprocess-pipeline.use-case.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">2 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.2s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>ReprocessPipelineUseCase &gt; Job 리셋 → 부분 DAG 생성 → 첫 단계 할당 → 저장 → 감사 로그</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>ReprocessPipelineUseCase &gt; Job이 없으면 에러</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>start-pipeline.use-case.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">2 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.1s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>StartPipelineUseCase &gt; 프로파일 선택 → Job 생성 → DAG 구성 → 첫 단계 할당 → 저장 → 감사 로그</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>StartPipelineUseCase &gt; 프로파일 선택 실패 시 에러 전파</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>message-handlers.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">3 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.2s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Message Handlers &gt; ReceptionEventMessageHandler &gt; RawDataReceivedEvent를 StartPipelineCommand로 변환하여 CommandBus에 전달</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Message Handlers &gt; ProcessingEventMessageHandler &gt; PROCESSING_COMPLETED 이벤트를 HandleStepCompletedCommand로 라우팅</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Message Handlers &gt; ProcessingEventMessageHandler &gt; PROCESSING_FAILED 이벤트를 HandleStepFailedCommand로 라우팅</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>query-handlers.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">4 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.1s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Query Handlers &gt; GetJobStatusHandler &gt; Job이 있으면 상태 정보 반환</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Query Handlers &gt; GetJobStatusHandler &gt; Job이 없으면 null 반환</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Query Handlers &gt; GetPipelineExecutionHandler &gt; 실행 이력이 있으면 단계별 상태 포함하여 반환</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Query Handlers &gt; GetPipelineExecutionHandler &gt; 실행 이력이 없으면 null 반환</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>event-handlers.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">3 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.3s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Event Handlers &gt; JobFailedAlertHandler &gt; Alert 조건 충족 시 dispatch 호출</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Event Handlers &gt; JobFailedAlertHandler &gt; Alert 조건 미충족 시 dispatch 호출하지 않음</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>Event Handlers &gt; StepCompletedAuditHandler &gt; JOB_COMPLETED 감사 로그 기록</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>dag-builder.service.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">6 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.1s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>DagBuilderService &gt; buildFullDag &gt; 5개의 파이프라인 단계를 순서대로 생성 (CSC-02 → CSC-06)</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>DagBuilderService &gt; buildFullDag &gt; 모든 단계가 PENDING 상태로 생성</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>DagBuilderService &gt; buildPartialDag &gt; LEVEL_1부터 재처리 시 order 1,2는 SKIPPED, order 3부터 PENDING</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>DagBuilderService &gt; buildPartialDag &gt; LEVEL_2부터 재처리 시 order 1~3은 SKIPPED</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>DagBuilderService &gt; buildPartialDag &gt; LEVEL_0부터 재처리 시 모든 단계 PENDING (targetIndex=0, order&lt;=0 없음)</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>DagBuilderService &gt; buildPartialDag &gt; 존재하지 않는 레벨이면 에러</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>pipeline-step.model.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">9 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.1s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineStep &gt; constructor &gt; 초기 상태는 PENDING, 시작/완료 시간 없음</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineStep &gt; start &gt; PENDING → IN_PROGRESS 전이, startedAt 설정</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineStep &gt; start &gt; IN_PROGRESS 상태에서 start 호출 시 에러</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineStep &gt; complete &gt; IN_PROGRESS → COMPLETED 전이, completedAt 설정</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineStep &gt; complete &gt; PENDING 상태에서 complete 호출 시 에러</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineStep &gt; fail &gt; IN_PROGRESS → FAILED 전이, completedAt 설정</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineStep &gt; fail &gt; PENDING 상태에서 fail 호출 시 에러</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineStep &gt; skip &gt; PENDING → SKIPPED 전이</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineStep &gt; skip &gt; IN_PROGRESS 상태에서 skip 호출 시 에러</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>step-resolver.service.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">5 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.1s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>StepResolverService &gt; resolveNextStep &gt; 첫 번째 PENDING 단계를 반환</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>StepResolverService &gt; resolveNextStep &gt; 완료된 단계 이후 다음 PENDING 단계를 반환</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>StepResolverService &gt; resolveNextStep &gt; 모든 단계가 완료되면 null 반환</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>StepResolverService &gt; isLastStep &gt; PENDING 단계가 남아있으면 false</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>StepResolverService &gt; isLastStep &gt; 모든 단계가 완료되면 true</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>alert-condition-evaluator.service.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">4 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.1s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>AlertConditionEvaluatorService &gt; evaluateRetryExhausted &gt; retryCount &gt;= 3이면 RETRY_EXHAUSTED Alert 생성</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>AlertConditionEvaluatorService &gt; evaluateRetryExhausted &gt; retryCount &lt; 3이면 null 반환</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>AlertConditionEvaluatorService &gt; evaluatePipelineDelay &gt; 경과 시간이 임계값 이상이면 PIPELINE_DELAYED Alert 생성</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>AlertConditionEvaluatorService &gt; evaluatePipelineDelay &gt; 경과 시간이 임계값 미만이면 null 반환</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>retry-evaluator.service.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">5 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.1s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>RetryEvaluatorService &gt; retryCount=0이면 재시도 가능</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>RetryEvaluatorService &gt; retryCount=1이면 재시도 가능</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>RetryEvaluatorService &gt; retryCount=2이면 재시도 가능 (마지막 재시도)</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>RetryEvaluatorService &gt; retryCount=3이면 재시도 불가, Alert 발행</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>RetryEvaluatorService &gt; retryCount &gt; MAX_RETRY_COUNT여도 재시도 불가</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>pipeline-workflow.controller.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">1 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.1s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PipelineWorkflowController &gt; root &gt; should return &quot;Hello World!&quot;</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>data-collecting-subsystem.controller.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">1 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.1s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>DataCollectingSubsystemController &gt; root &gt; should return &quot;Hello World!&quot;</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>sar-processing-subsystem.controller.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">1 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.1s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>SarProcessingSubsystemController &gt; root &gt; should return &quot;Hello World!&quot;</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>data-service-subsystem.controller.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">1 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.1s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>DataServiceSubsystemController &gt; root &gt; should return &quot;Hello World!&quot;</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>post-processing-tool.controller.spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">1 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>0.1s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>PostProcessingToolController &gt; root &gt; should return &quot;Hello World!&quot;</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+    </div>
+  </details>
+  
+  <h3 style="font-size:15px;margin:16px 0 8px">E2E Test</h3>
+  <div class="test-summary">
+    <div class="test-stat passed"><div class="number">7</div><div class="label">Passed</div></div>
+    <div class="test-stat failed"><div class="number">0</div><div class="label">Failed</div></div>
+    <div class="test-stat skipped"><div class="number">0</div><div class="label">Skipped</div></div>
+    <div class="test-stat"><div class="number">7</div><div class="label">Total</div></div>
+    <div class="test-stat"><div class="number">9.1s</div><div class="label">Duration</div></div>
+  </div>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>csc08-pipeline.e2e-spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">5 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>7.3s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>CSC-08 Pipeline E2E (PGMQ) &gt; SI-01 수신 이벤트 → 파이프라인 시작: Job 생성 및 첫 단계 할당</span>
+        <span class="test-duration">0.21s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>CSC-08 Pipeline E2E (PGMQ) &gt; SI-03 완료 이벤트 → 다음 단계 할당</span>
+        <span class="test-duration">0.41s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>CSC-08 Pipeline E2E (PGMQ) &gt; SI-03 실패 이벤트 → 재시도 (retryCount &lt; 3)</span>
+        <span class="test-duration">0.40s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>CSC-08 Pipeline E2E (PGMQ) &gt; 3회 재시도 소진 → Alert 발행 + JOB_FAILED</span>
+        <span class="test-duration">0.81s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>CSC-08 Pipeline E2E (PGMQ) &gt; 전체 파이프라인 흐름: SI-01 → CSC-02~06 순차 완료 → PIPELINE_COMPLETED</span>
+        <span class="test-duration">1.21s</span>
+      </div>
+    </div>
+  </details>
+  <details class="test-suite">
+    <summary>
+      <span class="icon-pass">&#10003;</span>
+      <strong>app.e2e-spec.ts</strong>
+      <span class="suite-meta">
+        <span class="suite-counts"><span style="color:var(--pass)">2 passed</span> <span style="color:var(--fail)">0 failed</span> <span style="color:var(--skip)">0 skipped</span></span>
+        <span>1.8s</span>
+      </span>
+    </summary>
+    <div class="suite-status-bar">
+      <div class="bar-pass" style="width:100%"></div>
+      <div class="bar-fail" style="width:0%"></div>
+      <div class="bar-skip" style="width:0%"></div>
+    </div>
+    <div class="test-cases">
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>pgmq (e2e) &gt; send → read → archive 기본 동작</span>
+        <span class="test-duration"><0.01s</span>
+      </div>
+      <div class="test-case test-passed">
+        <span class="icon-pass">&#10003;</span>
+        <span>pgmq (e2e) &gt; consumer 폴링으로 자동 처리</span>
+        <span class="test-duration">1.50s</span>
+      </div>
+    </div>
+  </details>
+</section>
+
+<!-- 6. 실패 분석 -->
+<section>
+  <h2>6. 실패 분석</h2>
+  <div class="no-failures">모든 CI/CD 단계가 성공적으로 통과했습니다.</div>
+</section>
+
+<div class="footer">
+  Generated by SDPE CI/CD Report Generator
+</div>
+
+</div>
+</body>
+</html>
