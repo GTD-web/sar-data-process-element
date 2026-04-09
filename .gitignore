@@ -23,8 +23,7 @@ yarn-error.log*
 coverage/
 .nyc_output/
 
-# CI reports (generated in CI, downloaded as artifacts)
-reports/
+# CI intermediate results
 ci-results/
 
 # Python (algorithms/)
