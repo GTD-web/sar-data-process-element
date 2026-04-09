@@ -63,8 +63,20 @@ function collectGitInfo() {
 
   // 변경 파일 목록 (부모 커밋 대비)
   const diffStat = exec('git diff HEAD~1 --stat 2>/dev/null') || exec('git diff --stat 2>/dev/null');
-  const changedFiles = exec('git diff HEAD~1 --name-status 2>/dev/null') || '';
+  const changedFilesRaw = exec('git diff HEAD~1 --name-status 2>/dev/null') || '';
   const diffNumstat = exec('git diff HEAD~1 --numstat 2>/dev/null') || '';
+
+  const changedFiles = changedFilesRaw
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [status, ...pathParts] = line.split('\t');
+      const filePath = pathParts.join('\t');
+      // 파일별 diff (최대 3000자)
+      const rawDiff = exec(`git diff HEAD~1 -- "${filePath}" 2>/dev/null`);
+      const diff = rawDiff.length > 3000 ? rawDiff.slice(0, 3000) + '\n... (truncated)' : rawDiff;
+      return { status, path: filePath, diff, desc: describeFileChange(status, filePath) };
+    });
 
   return {
     sha,
@@ -76,13 +88,7 @@ function collectGitInfo() {
     commitMessage,
     isMerge,
     diffStat,
-    changedFiles: changedFiles
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => {
-        const [status, ...pathParts] = line.split('\t');
-        return { status, path: pathParts.join('\t') };
-      }),
+    changedFiles,
     diffNumstat: diffNumstat
       .split('\n')
       .filter(Boolean)
@@ -91,6 +97,40 @@ function collectGitInfo() {
         return { added: parseInt(added) || 0, deleted: parseInt(deleted) || 0, file };
       }),
   };
+}
+
+/** 파일 경로와 변경 유형으로부터 사람이 읽을 수 있는 변경 설명 생성 */
+function describeFileChange(status, filePath) {
+  const actionMap = { M: '수정', A: '신규 추가', D: '삭제', R: '이름 변경', C: '복사' };
+  const action = actionMap[status] || '변경';
+
+  const name = filePath.split('/').pop();
+
+  // 파일 유형별 설명
+  if (name.endsWith('.e2e-spec.ts')) return `E2E 테스트 ${action} — 통합 시나리오 검증 코드`;
+  if (name.endsWith('.spec.ts')) return `단위 테스트 ${action} — 개별 컴포넌트 검증 코드`;
+  if (name.endsWith('.module.ts')) return `NestJS 모듈 ${action} — DI 구성 및 모듈 의존성`;
+  if (name.endsWith('.service.ts')) return `서비스 ${action} — 비즈니스 로직`;
+  if (name.endsWith('.controller.ts')) return `컨트롤러 ${action} — API 엔드포인트`;
+  if (name.endsWith('.handler.ts')) return `핸들러 ${action} — CQRS 커맨드/쿼리/이벤트 처리`;
+  if (name.endsWith('.use-case.ts')) return `유스케이스 ${action} — 도메인 워크플로우 로직`;
+  if (name.endsWith('.entity.ts')) return `엔티티 ${action} — 데이터베이스 모델 정의`;
+  if (name.endsWith('.model.ts')) return `도메인 모델 ${action} — 핵심 도메인 객체`;
+  if (name.endsWith('.type.ts') || name.endsWith('.types.ts')) return `타입 정의 ${action} — 인터페이스 및 타입`;
+  if (name.endsWith('.constant.ts') || name.endsWith('.constants.ts')) return `상수 ${action} — 설정값 및 상수 정의`;
+  if (name.endsWith('.interface.ts')) return `인터페이스 ${action} — 포트/어댑터 계약`;
+  if (name.endsWith('.repository.ts')) return `리포지토리 ${action} — 데이터 영속성 계층`;
+  if (name.endsWith('.message-handler.ts')) return `메시지 핸들러 ${action} — PGMQ 메시지 처리`;
+  if (name.endsWith('.migration.ts')) return `DB 마이그레이션 ${action} — 스키마 변경`;
+  if (filePath.endsWith('.yml') || filePath.endsWith('.yaml')) return `설정 파일 ${action} — CI/CD 또는 배포 구성`;
+  if (filePath.endsWith('.json')) return `설정/메타 파일 ${action}`;
+  if (filePath.endsWith('.mjs') || filePath.endsWith('.js')) return `스크립트 ${action}`;
+  if (filePath.endsWith('.md')) return `문서 ${action}`;
+  if (filePath.endsWith('.py')) return `Python 코드 ${action} — SAR 알고리즘`;
+  if (filePath.endsWith('.sql')) return `SQL 스크립트 ${action} — 데이터베이스 초기화/마이그레이션`;
+  if (filePath.endsWith('.ts')) return `TypeScript 소스 ${action}`;
+
+  return `${action}`;
 }
 
 // ── 2. 영향 분석 ──
@@ -356,6 +396,19 @@ function fileStatusClass(status) {
   return map[status] || '';
 }
 
+function colorizeDiff(diff) {
+  if (!diff) return '';
+  return escapeHtml(diff)
+    .split('\n')
+    .map((line) => {
+      if (line.startsWith('@@')) return `<span class="diff-hunk">${line}</span>`;
+      if (line.startsWith('+') && !line.startsWith('+++')) return `<span class="diff-add">${line}</span>`;
+      if (line.startsWith('-') && !line.startsWith('---')) return `<span class="diff-del">${line}</span>`;
+      return line;
+    })
+    .join('\n');
+}
+
 function generateHtml(git, impact, ci, testResults, failureLogs) {
   const now = new Date();
   const dateStr = now.toISOString().split('T')[0];
@@ -422,6 +475,18 @@ section h2 { font-size: 18px; margin-bottom: 16px; padding-bottom: 8px; border-b
 .diff-stat .added { color: var(--pass); }
 .diff-stat .deleted { color: var(--fail); }
 .change-summary { font-size: 14px; color: var(--text-secondary); margin-bottom: 12px; }
+.file-entry { border-bottom: 1px solid var(--bg); padding-bottom: 4px; }
+.file-entry:nth-child(odd) { background: #fafbfc; }
+.file-desc { font-family: var(--font); font-size: 12px; color: var(--text-secondary); margin-left: 4px; }
+.file-diff { margin: 8px 0 12px 0; }
+.file-diff summary { cursor: pointer; font-size: 12px; color: var(--text-secondary); padding: 4px 8px; }
+.file-diff summary:hover { color: var(--text); }
+.diff-content { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px;
+  font-family: var(--mono); font-size: 11px; line-height: 1.6; overflow-x: auto;
+  white-space: pre; max-height: 400px; overflow-y: auto; margin-top: 4px; }
+.diff-content .diff-add { color: #b5cea8; }
+.diff-content .diff-del { color: #f48771; }
+.diff-content .diff-hunk { color: #569cd6; font-weight: 600; }
 
 /* Impact */
 .impact-card { background: var(--bg); border-radius: 8px; padding: 14px 16px; margin-bottom: 10px;
@@ -510,18 +575,23 @@ section h2 { font-size: 18px; margin-bottom: 16px; padding-bottom: 8px; border-b
     <span style="color:var(--pass)">+${totalAdded}</span>
     <span style="color:var(--fail)">-${totalDeleted}</span>
   </div>
-  <ul class="file-list">
-    ${git.changedFiles
-      .map((f) => {
-        const numstat = git.diffNumstat.find((n) => n.file === f.path) || { added: 0, deleted: 0 };
-        return `<li class="${fileStatusClass(f.status)}">
+  ${git.changedFiles
+    .map((f) => {
+      const numstat = git.diffNumstat.find((n) => n.file === f.path) || { added: 0, deleted: 0 };
+      return `<div class="file-entry">
+    <div class="${fileStatusClass(f.status)}" style="display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:13px;font-family:var(--mono)">
       <span class="file-status">${fileStatusLabel(f.status)}</span>
       <span>${escapeHtml(f.path)}</span>
       <span class="diff-stat"><span class="added">+${numstat.added}</span> <span class="deleted">-${numstat.deleted}</span></span>
-    </li>`;
-      })
-      .join('\n    ')}
-  </ul>`
+    </div>
+    <div style="padding:0 12px 2px 56px"><span class="file-desc">${escapeHtml(f.desc)}</span></div>
+    ${f.diff ? `<details class="file-diff" style="padding-left:56px">
+      <summary>diff 보기</summary>
+      <div class="diff-content">${colorizeDiff(f.diff)}</div>
+    </details>` : ''}
+  </div>`;
+    })
+    .join('\n  ')}`
       : '<div class="no-failures">코드 변경 사항 없음 (수동 실행 또는 동일 커밋 재실행)</div>'
   }
 </section>
@@ -648,7 +718,10 @@ function main() {
   const outDir = join('reports', dateDir);
   mkdirSync(outDir, { recursive: true });
 
-  const filename = `report-${git.shortSha}.html`;
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  const filename = `report-${hh}${mm}${ss}-${git.shortSha}.html`;
   const outPath = join(outDir, filename);
   writeFileSync(outPath, html, 'utf-8');
 
