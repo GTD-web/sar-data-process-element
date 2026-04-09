@@ -735,7 +735,7 @@ function main() {
   const hh = String(now.getUTCHours()).padStart(2, '0');
   const mm = String(now.getUTCMinutes()).padStart(2, '0');
   const ss = String(now.getUTCSeconds()).padStart(2, '0');
-  const filename = `report-${hh}h${mm}m${ss}s-${git.shortSha}.html`;
+  const filename = `report-${hh}h_${mm}m_${ss}s-${git.shortSha}.html`;
   const outPath = join(outDir, filename);
   writeFileSync(outPath, html, 'utf-8');
 
