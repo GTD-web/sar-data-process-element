@@ -503,7 +503,9 @@ section h2 { font-size: 18px; margin-bottom: 16px; padding-bottom: 8px; border-b
 <!-- 2. 변경 사항 -->
 <section>
   <h2>2. 변경 사항</h2>
-  <div class="change-summary">
+  ${
+    git.changedFiles.length > 0
+      ? `<div class="change-summary">
     ${git.changedFiles.length}개 파일 변경 |
     <span style="color:var(--pass)">+${totalAdded}</span>
     <span style="color:var(--fail)">-${totalDeleted}</span>
@@ -519,13 +521,17 @@ section h2 { font-size: 18px; margin-bottom: 16px; padding-bottom: 8px; border-b
     </li>`;
       })
       .join('\n    ')}
-  </ul>
+  </ul>`
+      : '<div class="no-failures">코드 변경 사항 없음 (수동 실행 또는 동일 커밋 재실행)</div>'
+  }
 </section>
 
 <!-- 3. 영향 분석 -->
 <section>
   <h2>3. 영향 분석</h2>
-  <div class="impact-summary">${escapeHtml(impact.summary)}</div>
+  ${
+    impact.modules.length > 0
+      ? `<div class="impact-summary">${escapeHtml(impact.summary)}</div>
   ${impact.modules
     .map(
       (m) => `<div class="impact-card ${m.hasSourceChange ? 'source-changed' : ''}">
@@ -534,7 +540,9 @@ section h2 { font-size: 18px; margin-bottom: 16px; padding-bottom: 8px; border-b
     <p style="font-size:12px;margin-top:4px;color:#888">${m.files.length}개 파일: ${m.files.map((f) => escapeHtml(f.split('/').pop())).join(', ')}</p>
   </div>`,
     )
-    .join('\n  ')}
+    .join('\n  ')}`
+      : '<div class="no-failures">변경된 모듈 없음 &mdash; 기존 코드에 대한 검증 실행</div>'
+  }
 </section>
 
 <!-- 4. CI/CD 파이프라인 -->
