@@ -775,11 +775,7 @@ function main() {
   const outPath = join(outDir, filename);
   writeFileSync(outPath, html, 'utf-8');
 
-  // 최신 보고서 링크 (index.html)
-  writeFileSync(join('reports', 'latest.html'), html, 'utf-8');
-
   console.log(`Report generated: ${outPath}`);
-  console.log(`Latest report: reports/latest.html`);
 }
 
 main();
