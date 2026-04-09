@@ -194,6 +194,7 @@ jobs:
           path: ci-results/
 
       - name: Generate CI report
+        id: report
         env:
           CI_RESULTS_DIR: ci-results
           STEP_BUILD: ${{ needs.typescript.outputs.build-result }}
@@ -216,3 +217,51 @@ jobs:
             git commit -m "docs(report): CI/CD 보고서 추가 (${{ github.sha }})"
             git push
           fi
+
+      - name: Write job summary
+        if: always() && steps.report.outputs.report-path != ''
+        run: |
+          REPO="${{ github.repository }}"
+          BRANCH="${{ github.ref_name }}"
+          REPORT_PATH="${{ steps.report.outputs.report-path }}"
+          REPORT_FILE="${{ steps.report.outputs.report-filename }}"
+          REPORT_DATE="${{ steps.report.outputs.report-date }}"
+          BLOB_URL="https://github.com/${REPO}/blob/${BRANCH}/${REPORT_PATH}"
+          PREVIEW_URL="https://htmlpreview.github.io/?https://github.com/${REPO}/blob/${BRANCH}/${REPORT_PATH}"
+
+          TS_RESULT="${{ needs.typescript.result }}"
+          PY_RESULT="${{ needs.python.result }}"
+          if [ "$TS_RESULT" = "success" ] && [ "$PY_RESULT" = "success" ]; then
+            STATUS_EMOJI="✅"
+            STATUS_TEXT="ALL PASSED"
+          else
+            STATUS_EMOJI="❌"
+            STATUS_TEXT="FAILED"
+          fi
+
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## ${STATUS_EMOJI} CI/CD 보고서 — ${STATUS_TEXT}
+
+          | 항목 | 값 |
+          |------|-----|
+          | **커밋** | \`${{ github.sha }}\` |
+          | **브랜치** | \`${BRANCH}\` |
+          | **보고서** | \`${REPORT_DATE}/${REPORT_FILE}\` |
+
+          ### 📄 보고서 링크
+
+          - [🔗 HTML 보고서 보기 (렌더링)](${PREVIEW_URL})
+          - [📂 GitHub에서 보기](${BLOB_URL})
+
+          ### 파이프라인 결과
+
+          | 단계 | 결과 |
+          |------|------|
+          | Build | \`${{ needs.typescript.outputs.build-result }}\` |
+          | Lint | \`${{ needs.typescript.outputs.lint-result }}\` |
+          | Unit Test | \`${{ needs.typescript.outputs.test-result }}\` |
+          | E2E Test | \`${{ needs.typescript.outputs.e2e-result }}\` |
+          | Python ruff check | \`${{ needs.python.outputs.ruff-check-result }}\` |
+          | Python ruff format | \`${{ needs.python.outputs.ruff-format-result }}\` |
+          | Python mypy | \`${{ needs.python.outputs.mypy-result }}\` |
+          EOF

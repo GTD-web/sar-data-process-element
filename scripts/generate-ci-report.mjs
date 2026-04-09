@@ -8,7 +8,7 @@
  */
 
 import { execSync } from 'node:child_process';
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 // ── 한국 시간 ──
@@ -841,6 +841,15 @@ function main() {
   const filename = `report-${hh}h_${mm}m_${ss}s-${git.shortSha}.html`;
   const outPath = join(outDir, filename);
   writeFileSync(outPath, html, 'utf-8');
+
+  // GitHub Actions output (GITHUB_OUTPUT이 있으면 CI 환경)
+  const ghOutput = process.env.GITHUB_OUTPUT;
+  if (ghOutput) {
+    const posixPath = outPath.replace(/\\/g, '/');
+    appendFileSync(ghOutput, `report-path=${posixPath}\n`, 'utf-8');
+    appendFileSync(ghOutput, `report-filename=${filename}\n`, 'utf-8');
+    appendFileSync(ghOutput, `report-date=${dateDir}\n`, 'utf-8');
+  }
 
   console.log(`Report generated: ${outPath}`);
 }
