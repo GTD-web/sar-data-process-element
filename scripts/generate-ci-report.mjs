@@ -314,7 +314,46 @@ function collectCIResults() {
   return { steps, overallResult };
 }
 
-// ── 4. 테스트 결과 파싱 ──
+// ── 4. 테스트 실패 상세 파싱 ──
+
+/** Jest 실패 메시지에서 에러 위치, assertion 내용, 기대값/실제값을 추출 */
+function parseFailureDetails(rawMsg) {
+  if (!rawMsg) return { errorLocation: null, assertion: null, expected: null, received: null };
+
+  // 에러 위치: "at Object.<anonymous> (src/foo.spec.ts:42:5)" 또는 "foo.spec.ts:42:5"
+  let errorLocation = null;
+  const locMatch = rawMsg.match(/\(([^)]*\.(?:spec|e2e-spec)\.ts:\d+:\d+)\)/) ||
+    rawMsg.match(/at\s+.*\((.+\.ts:\d+:\d+)\)/) ||
+    rawMsg.match(/([^\s(]+\.ts:\d+:\d+)/);
+  if (locMatch) {
+    errorLocation = locMatch[1].replace(/^.*[/\\]/, ''); // 파일명:라인:컬럼
+  }
+
+  // assertion 메시지: "expect(received).toBe(expected)" 등
+  let assertion = null;
+  const assertMatch = rawMsg.match(/(expect\(.*?\)\.\w+\(.*?\))/);
+  if (assertMatch) {
+    assertion = assertMatch[1];
+  }
+
+  // Expected / Received
+  let expected = null;
+  let received = null;
+  const expectedMatch = rawMsg.match(/Expected[:：]\s*(.+)/i);
+  const receivedMatch = rawMsg.match(/Received[:：]\s*(.+)/i);
+  if (expectedMatch) expected = expectedMatch[1].trim().slice(0, 200);
+  if (receivedMatch) received = receivedMatch[1].trim().slice(0, 200);
+
+  // "expect(...).toThrow(...)" 패턴에서 에러 메시지 추출
+  if (!expected && !received) {
+    const toThrowMatch = rawMsg.match(/Expected.*?to throw.*?error.*?matching[:\s]*(.+)/i);
+    if (toThrowMatch) expected = toThrowMatch[1].trim().slice(0, 200);
+  }
+
+  return { errorLocation, assertion, expected, received };
+}
+
+// ── 5. 테스트 결과 파싱 ──
 
 function parseTestResults(resultsDir) {
   const unit = readJsonOrNull(join(resultsDir, 'test-unit.json'));
@@ -330,15 +369,20 @@ function parseTestResults(resultsDir) {
 
     const suites = (data.testResults || []).map((suite) => ({
       name: suite.name?.replace(/^.*[/\\]/, '') || 'unknown',
+      fullPath: suite.name || '',
       status: suite.status,
       duration: ((suite.endTime || 0) - (suite.startTime || 0)) / 1000,
       failureMessages: suite.message || '',
-      tests: (suite.assertionResults || []).map((t) => ({
-        title: t.ancestorTitles?.join(' > ') + ' > ' + t.title,
-        status: t.status,
-        failureMessages: (t.failureMessages || []).join('\n'),
-        duration: (t.duration || 0) / 1000,
-      })),
+      tests: (suite.assertionResults || []).map((t) => {
+        const rawMsg = (t.failureMessages || []).join('\n');
+        return {
+          title: t.ancestorTitles?.join(' > ') + ' > ' + t.title,
+          status: t.status,
+          failureMessages: rawMsg,
+          ...parseFailureDetails(rawMsg),
+          duration: (t.duration || 0) / 1000,
+        };
+      }),
     }));
 
     parsed.push({
@@ -548,6 +592,13 @@ section h2 { font-size: 18px; margin-bottom: 16px; padding-bottom: 8px; border-b
 .test-case.test-skipped { color: var(--skip); }
 .test-case .test-duration { margin-left: auto; font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
 .test-failure-msg { margin: 0 14px 8px 32px; }
+.error-detail { margin: 4px 14px 10px 32px; background: #fff5f5; border: 1px solid #fecaca;
+  border-radius: 6px; padding: 10px 14px; font-size: 12px; }
+.error-detail .error-location { font-family: var(--mono); color: var(--fail); font-weight: 600; }
+.error-detail .error-assertion { font-family: var(--mono); color: #7c3aed; margin-top: 4px; }
+.error-detail .error-expected { color: var(--pass); margin-top: 4px; }
+.error-detail .error-received { color: var(--fail); }
+.error-detail .error-label { font-weight: 600; display: inline-block; width: 72px; }
 .suite-status-bar { display: flex; height: 3px; width: 100%; }
 .suite-status-bar .bar-pass { background: var(--pass); }
 .suite-status-bar .bar-fail { background: var(--fail); }
@@ -703,11 +754,27 @@ ${
         .map((t) => {
           const tStatus = t.status === 'passed' ? 'success' : t.status === 'failed' ? 'failure' : 'skipped';
           const tClass = t.status === 'passed' ? 'test-passed' : t.status === 'failed' ? 'test-failed' : 'test-skipped';
+          let failBlock = '';
+          if (t.status === 'failed') {
+            const parts = [];
+            if (t.errorLocation) parts.push(`<div class="error-location">@ ${escapeHtml(t.errorLocation)}</div>`);
+            if (t.assertion) parts.push(`<div class="error-assertion">${escapeHtml(t.assertion)}</div>`);
+            if (t.expected || t.received) {
+              if (t.expected) parts.push(`<div class="error-expected"><span class="error-label">Expected:</span> ${escapeHtml(t.expected)}</div>`);
+              if (t.received) parts.push(`<div class="error-received"><span class="error-label">Received:</span> ${escapeHtml(t.received)}</div>`);
+            }
+            if (parts.length > 0) {
+              failBlock += `\n      <div class="error-detail">${parts.join('\n        ')}</div>`;
+            }
+            if (t.failureMessages) {
+              failBlock += `\n      <details style="margin:0 14px 10px 32px"><summary style="cursor:pointer;font-size:12px;color:var(--text-secondary)">전체 에러 로그</summary><pre class="failure-output" style="max-height:250px;margin-top:4px">${escapeHtml(t.failureMessages)}</pre></details>`;
+            }
+          }
           return `<div class="test-case ${tClass}">
         ${statusIcon(tStatus)}
         <span>${escapeHtml(t.title)}</span>
         <span class="test-duration">${t.duration >= 0.01 ? t.duration.toFixed(2) + 's' : '<0.01s'}</span>
-      </div>${t.status === 'failed' && t.failureMessages ? `\n      <pre class="failure-output test-failure-msg" style="max-height:200px">${escapeHtml(t.failureMessages)}</pre>` : ''}`;
+      </div>${failBlock}`;
         })
         .join('\n      ')}
     </div>
