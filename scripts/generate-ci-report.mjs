@@ -11,6 +11,20 @@ import { execSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
+// ── 한국 시간 ──
+
+function toKST(date) {
+  return new Date(date.getTime() + 9 * 60 * 60 * 1000);
+}
+
+function kstDateStr(kst) {
+  return kst.toISOString().split('T')[0];
+}
+
+function kstTimeStr(kst) {
+  return kst.toISOString().split('T')[1].split('.')[0];
+}
+
 // ── 유틸리티 ──
 
 function exec(cmd) {
@@ -410,9 +424,9 @@ function colorizeDiff(diff) {
 }
 
 function generateHtml(git, impact, ci, testResults, failureLogs) {
-  const now = new Date();
-  const dateStr = now.toISOString().split('T')[0];
-  const timeStr = now.toTimeString().split(' ')[0];
+  const now = toKST(new Date());
+  const dateStr = kstDateStr(now);
+  const timeStr = kstTimeStr(now);
   const overallClass = ci.overallResult === 'success' ? 'overall-pass' : 'overall-fail';
   const overallLabel = ci.overallResult === 'success' ? 'ALL PASSED' : 'FAILED';
 
@@ -544,7 +558,7 @@ section h2 { font-size: 18px; margin-bottom: 16px; padding-bottom: 8px; border-b
 <div class="header">
   <h1>CI/CD 보고서</h1>
   <div class="header-meta">
-    <span>${dateStr} ${timeStr}</span>
+    <span>${dateStr} ${timeStr} (KST)</span>
     <span>Branch: <strong>${escapeHtml(git.branch)}</strong></span>
     <span>Commit: <code class="commit-hash">${git.shortSha}</code></span>
     <span>Author: ${escapeHtml(git.author)}</span>
@@ -712,15 +726,15 @@ function main() {
 
   const html = generateHtml(git, impact, ci, testResults, failureLogs);
 
-  // reports/YYYY-MM-DD/ 구조로 저장
-  const now = new Date();
-  const dateDir = now.toISOString().split('T')[0];
+  // reports/YYYY-MM-DD/ 구조로 저장 (한국 시간 기준)
+  const now = toKST(new Date());
+  const dateDir = kstDateStr(now);
   const outDir = join('reports', dateDir);
   mkdirSync(outDir, { recursive: true });
 
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
-  const ss = String(now.getSeconds()).padStart(2, '0');
+  const hh = String(now.getUTCHours()).padStart(2, '0');
+  const mm = String(now.getUTCMinutes()).padStart(2, '0');
+  const ss = String(now.getUTCSeconds()).padStart(2, '0');
   const filename = `report-${hh}${mm}${ss}-${git.shortSha}.html`;
   const outPath = join(outDir, filename);
   writeFileSync(outPath, html, 'utf-8');
