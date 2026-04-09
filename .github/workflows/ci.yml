@@ -9,8 +9,6 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 jobs:
   typescript:
@@ -220,15 +218,12 @@ jobs:
             git push
           fi
 
-      - name: Deploy to GitHub Pages
-        continue-on-error: true
-        uses: actions/upload-pages-artifact@v3
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
         with:
+          name: ci-report-${{ github.sha }}
           path: reports/
-
-      - name: Publish Pages
-        continue-on-error: true
-        uses: actions/deploy-pages@v4
+          retention-days: 90
 
       - name: Write job summary
         if: always() && steps.report.outputs.report-path != ''
@@ -240,11 +235,7 @@ jobs:
           REPO="${{ github.repository }}"
           BRANCH="${{ github.ref_name }}"
           BLOB_URL="https://github.com/${REPO}/blob/${BRANCH}/${REPORT_PATH}"
-
-          # GitHub Pages URL: https://<org>.github.io/<repo>/
-          ORG=$(echo "$REPO" | cut -d'/' -f1)
-          REPO_NAME=$(echo "$REPO" | cut -d'/' -f2)
-          PAGES_URL="https://${ORG}.github.io/${REPO_NAME}/${REPORT_DATE}/${REPORT_FILE}"
+          RUN_URL="https://github.com/${REPO}/actions/runs/${{ github.run_id }}"
 
           TS_RESULT="${{ needs.typescript.result }}"
           PY_RESULT="${{ needs.python.result }}"
@@ -267,8 +258,10 @@ jobs:
             echo ""
             echo "### 보고서 링크"
             echo ""
-            echo "- [HTML 보고서 보기](${PAGES_URL})"
             echo "- [GitHub에서 보기](${BLOB_URL})"
+            echo "- [Artifact 다운로드 (HTML)](${RUN_URL}#artifacts)"
+            echo ""
+            echo "> 다운로드한 HTML 파일을 브라우저에서 열면 렌더링된 보고서를 확인할 수 있습니다."
             echo ""
             echo "### 파이프라인 결과"
             echo ""
