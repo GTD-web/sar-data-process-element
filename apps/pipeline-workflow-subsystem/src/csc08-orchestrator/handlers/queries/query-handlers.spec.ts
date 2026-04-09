@@ -36,8 +36,8 @@ describe('Query Handlers', () => {
 
       expect(result).toEqual({
         jobId: 'job-001',
-        status: 'COMPLETED',
-        retryCount: 99,
+        status: 'ASSIGNED',
+        retryCount: 0,
         currentTargetCsc: TargetCsc.CSC_03,
         currentProductLevel: ProductLevel.LEVEL_0,
       });

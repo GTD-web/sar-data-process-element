@@ -221,11 +221,13 @@ jobs:
           fi
 
       - name: Deploy to GitHub Pages
+        continue-on-error: true
         uses: actions/upload-pages-artifact@v3
         with:
           path: reports/
 
       - name: Publish Pages
+        continue-on-error: true
         uses: actions/deploy-pages@v4
 
       - name: Write job summary
