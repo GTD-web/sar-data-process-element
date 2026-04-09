@@ -4,7 +4,7 @@ stages:
 
 # ── 공통 변수 ──
 variables:
-  DATABASE_URL: postgresql://sdpe:sdpe@localhost:5432/sdpe
+  DATABASE_URL: postgresql://sdpe:sdpe@localhost:5433/sdpe
 
 # ── TypeScript 테스트 ──
 typescript:
@@ -19,7 +19,7 @@ typescript:
     - npm ci
     - mkdir -p ci-results
     # DB 초기화 (PostgreSQL이 로컬에 실행 중인 경우)
-    - PGHOST=localhost PGUSER=sdpe PGPASSWORD=sdpe PGDATABASE=sdpe psql -f deploy/local/init/01-init.sql || echo "DB init skipped"
+    - PGHOST=localhost PGPORT=5433 PGUSER=sdpe PGPASSWORD=sdpe PGDATABASE=sdpe psql -f deploy/local/init/01-init.sql || echo "DB init skipped"
   script:
     # Build
     - |
