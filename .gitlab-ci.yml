@@ -51,7 +51,8 @@ typescript:
     # Unit Test
     - |
       TEST_RESULT="success"
-      npx jest --json --outputFile=ci-results/test-unit.json 2>&1 | tee ci-results/test-output.txt || TEST_RESULT="failure"
+      npx jest --coverage --coverageReporters=json-summary --json --outputFile=ci-results/test-unit.json 2>&1 | tee ci-results/test-output.txt || TEST_RESULT="failure"
+      cp coverage/coverage-summary.json ci-results/coverage-summary.json 2>/dev/null || true
       echo "$TEST_RESULT" > ci-results/test-result.txt
 
     # E2E Test

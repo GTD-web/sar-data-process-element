@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SDPE CI/CD 워크플로우</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #1a1a2e; padding: 48px 24px; }
+  .container { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .sub { color: #6b7280; font-size: 13px; margin-bottom: 36px; }
+  h2 { font-size: 15px; font-weight: 700; color: #374151; margin-bottom: 16px; border-left: 3px solid #3b82f6; padding-left: 10px; }
+  .section { margin-bottom: 40px; }
+  svg text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>SDPE CI/CD 워크플로우</h1>
+<p class="sub">SAR Data Process Element - 파이프라인 및 보고서 흐름도</p>
+
+<!-- ===== 1. 전체 흐름 ===== -->
+<div class="section">
+<h2>CI/CD 파이프라인 흐름</h2>
+<svg viewBox="0 0 1020 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#9ca3af"/></marker>
+    <marker id="ag" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#22c55e"/></marker>
+    <marker id="ar" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#ef4444"/></marker>
+  </defs>
+
+  <!-- Step 1: 개발자 -->
+  <rect x="0" y="155" width="120" height="56" rx="8" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="60" y="178" text-anchor="middle" style="font-size:12px;font-weight:700;fill:#1e40af">개발자</text>
+  <text x="60" y="196" text-anchor="middle" style="font-size:10px;fill:#6b7280">코드 작성 & Push</text>
+
+  <!-- Arrow dev -> gitlab -->
+  <path d="M120,183 L168,183" stroke="#9ca3af" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+
+  <!-- Step 2: GitLab -->
+  <rect x="174" y="155" width="110" height="56" rx="8" fill="#fff7ed" stroke="#f97316" stroke-width="1.5"/>
+  <text x="229" y="178" text-anchor="middle" style="font-size:12px;font-weight:700;fill:#c2410c">GitLab</text>
+  <text x="229" y="196" text-anchor="middle" style="font-size:10px;fill:#6b7280">192.168.10.11</text>
+
+  <!-- Arrow gitlab -> test (넓힌 간격) -->
+  <path d="M284,183 L348,183" stroke="#9ca3af" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+  <text x="316" y="175" text-anchor="middle" style="font-size:9px;fill:#9ca3af">자동 실행</text>
+
+  <!-- Step 3: Test Stage -->
+  <rect x="354" y="20" width="230" height="330" rx="10" fill="none" stroke="#e5e7eb" stroke-width="1" stroke-dasharray="4 2"/>
+  <text x="364" y="42" style="font-size:10px;fill:#9ca3af;font-weight:600">테스트 단계 (병렬 실행)</text>
+
+  <rect x="372" y="56" width="194" height="70" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="469" y="78" text-anchor="middle" style="font-size:12px;font-weight:700;fill:#166534">TypeScript</text>
+  <text x="469" y="94" text-anchor="middle" style="font-size:10px;fill:#6b7280">빌드 > 린트 > 테스트 > E2E</text>
+  <text x="469" y="110" text-anchor="middle" style="font-size:10px;fill:#6b7280">+ 커버리지 수집</text>
+
+  <rect x="372" y="140" width="194" height="56" rx="8" fill="#fefce8" stroke="#eab308" stroke-width="1.5"/>
+  <text x="469" y="162" text-anchor="middle" style="font-size:12px;font-weight:700;fill:#854d0e">Python</text>
+  <text x="469" y="180" text-anchor="middle" style="font-size:10px;fill:#6b7280">린트 > 포맷 > mypy > 커버리지</text>
+
+  <rect x="372" y="210" width="194" height="56" rx="8" fill="#f0f9ff" stroke="#0ea5e9" stroke-width="1.5"/>
+  <text x="469" y="232" text-anchor="middle" style="font-size:12px;font-weight:700;fill:#0369a1">Go (Native)</text>
+  <text x="469" y="250" text-anchor="middle" style="font-size:10px;fill:#6b7280">build > vet > test > 커버리지</text>
+
+  <rect x="372" y="280" width="194" height="56" rx="8" fill="#fdf2f8" stroke="#ec4899" stroke-width="1.5"/>
+  <text x="469" y="302" text-anchor="middle" style="font-size:12px;font-weight:700;fill:#9d174d">C (Native)</text>
+  <text x="469" y="320" text-anchor="middle" style="font-size:10px;fill:#6b7280">gcc build > ctest > 커버리지</text>
+
+  <!-- Arrow test -> report (넓힌 간격, y=183) -->
+  <path d="M584,183 L648,183" stroke="#9ca3af" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+  <text x="616" y="175" text-anchor="middle" style="font-size:9px;fill:#9ca3af">결과 전달</text>
+
+  <!-- Step 4: Report -->
+  <rect x="654" y="140" width="130" height="86" rx="8" fill="#faf5ff" stroke="#a855f7" stroke-width="1.5"/>
+  <text x="719" y="167" text-anchor="middle" style="font-size:12px;font-weight:700;fill:#7e22ce">보고서 생성</text>
+  <text x="719" y="185" text-anchor="middle" style="font-size:10px;fill:#6b7280">HTML 리포트</text>
+  <text x="719" y="201" text-anchor="middle" style="font-size:10px;fill:#6b7280">+ 커버리지</text>
+
+  <!-- Arrow report -> pages (넓힌 간격, y=183) -->
+  <path d="M784,183 L848,183" stroke="#22c55e" stroke-width="1.5" fill="none" marker-end="url(#ag)"/>
+  <text x="816" y="175" text-anchor="middle" style="font-size:9px;fill:#22c55e">배포</text>
+
+  <!-- Step 5: Pages -->
+  <rect x="854" y="155" width="100" height="56" rx="8" fill="#ecfdf5" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="904" y="178" text-anchor="middle" style="font-size:12px;font-weight:700;fill:#166534">Pages</text>
+  <text x="904" y="196" text-anchor="middle" style="font-size:10px;fill:#6b7280">웹에서 열람</text>
+
+  <!-- Email notification -->
+  <!-- Failure email -->
+  <path d="M719,226 L719,275 L848,275" stroke="#ef4444" stroke-width="1.5" fill="none" stroke-dasharray="4 2" marker-end="url(#ar)"/>
+  <rect x="854" y="250" width="130" height="50" rx="8" fill="#fef2f2" stroke="#ef4444" stroke-width="1.5"/>
+  <text x="919" y="272" text-anchor="middle" style="font-size:11px;font-weight:700;fill:#b91c1c">실패 알림 메일</text>
+  <text x="919" y="288" text-anchor="middle" style="font-size:9px;fill:#6b7280">실패 상세 포함</text>
+
+  <text x="785" y="269" text-anchor="middle" style="font-size:9px;fill:#ef4444">실패 시</text>
+</svg>
+</div>
+
+<!-- ===== 2. 보고서 UI 예시 ===== -->
+<div class="section">
+<h2>보고서 UI 미리보기</h2>
+<svg viewBox="0 0 880 780" xmlns="http://www.w3.org/2000/svg">
+  <!-- BG -->
+  <rect width="880" height="780" rx="12" fill="#f8f9fa" stroke="#e5e7eb" stroke-width="1"/>
+
+  <!-- ===== Header ===== -->
+  <rect x="24" y="20" width="832" height="76" rx="10" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="44" y="46" style="font-size:17px;font-weight:700;fill:#111827">CI/CD 보고서</text>
+  <text x="44" y="64" style="font-size:11px;fill:#6b7280">2026-04-09 16:47 KST | 브랜치: main | 커밋: 607a210</text>
+  <rect x="44" y="72" width="90" height="18" rx="9" fill="#dcfce7"/>
+  <text x="89" y="85" text-anchor="middle" style="font-size:10px;font-weight:700;fill:#166534">ALL PASSED</text>
+
+  <!-- ===== CI/CD 파이프라인 ===== -->
+  <rect x="24" y="112" width="832" height="200" rx="10" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="44" y="136" style="font-size:13px;font-weight:700;fill:#111827">CI/CD 파이프라인</text>
+
+  <g transform="translate(44, 148)">
+    <rect width="792" height="24" rx="5" fill="#f9fafb"/>
+    <text x="10" y="16" style="font-size:12px;fill:#22c55e;font-weight:700">&#10003;</text>
+    <text x="26" y="16" style="font-size:11px;fill:#374151">빌드 (nest build)</text>
+    <rect x="728" y="3" width="42" height="18" rx="9" fill="#dcfce7"/>
+    <text x="749" y="16" text-anchor="middle" style="font-size:9px;font-weight:700;fill:#166534">PASS</text>
+
+    <rect y="28" width="792" height="24" rx="5" fill="#f9fafb"/>
+    <text x="10" y="44" style="font-size:12px;fill:#22c55e;font-weight:700">&#10003;</text>
+    <text x="26" y="44" style="font-size:11px;fill:#374151">린트 (ESLint)</text>
+    <rect x="728" y="31" width="42" height="18" rx="9" fill="#dcfce7"/>
+    <text x="749" y="44" text-anchor="middle" style="font-size:9px;font-weight:700;fill:#166534">PASS</text>
+
+    <rect y="56" width="792" height="24" rx="5" fill="#f9fafb"/>
+    <text x="10" y="72" style="font-size:12px;fill:#22c55e;font-weight:700">&#10003;</text>
+    <text x="26" y="72" style="font-size:11px;fill:#374151">단위 테스트 (88개 통과)</text>
+    <rect x="728" y="59" width="42" height="18" rx="9" fill="#dcfce7"/>
+    <text x="749" y="72" text-anchor="middle" style="font-size:9px;font-weight:700;fill:#166534">PASS</text>
+
+    <rect y="84" width="792" height="24" rx="5" fill="#f9fafb"/>
+    <text x="10" y="100" style="font-size:12px;fill:#22c55e;font-weight:700">&#10003;</text>
+    <text x="26" y="100" style="font-size:11px;fill:#374151">E2E 테스트 (7개 통과)</text>
+    <rect x="728" y="87" width="42" height="18" rx="9" fill="#dcfce7"/>
+    <text x="749" y="100" text-anchor="middle" style="font-size:9px;font-weight:700;fill:#166534">PASS</text>
+
+    <rect y="112" width="792" height="24" rx="5" fill="#f9fafb"/>
+    <text x="10" y="128" style="font-size:12px;fill:#22c55e;font-weight:700">&#10003;</text>
+    <text x="26" y="128" style="font-size:11px;fill:#374151">Python 린트 (ruff + mypy)</text>
+    <rect x="728" y="115" width="42" height="18" rx="9" fill="#dcfce7"/>
+    <text x="749" y="128" text-anchor="middle" style="font-size:9px;font-weight:700;fill:#166534">PASS</text>
+
+    <rect y="140" width="792" height="24" rx="5" fill="#f9fafb"/>
+    <text x="10" y="156" style="font-size:12px;fill:#22c55e;font-weight:700">&#10003;</text>
+    <text x="26" y="156" style="font-size:11px;fill:#374151">Go/C Native (go build + go test)</text>
+    <rect x="728" y="143" width="42" height="18" rx="9" fill="#dcfce7"/>
+    <text x="749" y="156" text-anchor="middle" style="font-size:9px;font-weight:700;fill:#166534">PASS</text>
+  </g>
+
+  <!-- ===== 테스트 커버리지 ===== -->
+  <rect x="24" y="328" width="832" height="120" rx="10" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="44" y="350" style="font-size:13px;font-weight:700;fill:#111827">테스트 커버리지</text>
+
+  <g transform="translate(44, 362)">
+    <rect width="185" height="72" rx="8" fill="#f9fafb"/>
+    <text x="92" y="16" text-anchor="middle" style="font-size:9px;fill:#9ca3af;letter-spacing:1px">STATEMENTS</text>
+    <text x="92" y="40" text-anchor="middle" style="font-size:22px;font-weight:700;fill:#22c55e">78.5%</text>
+    <rect x="16" y="50" width="153" height="4" rx="2" fill="#e5e7eb"/>
+    <rect x="16" y="50" width="120" height="4" rx="2" fill="#22c55e"/>
+    <text x="92" y="66" text-anchor="middle" style="font-size:9px;fill:#9ca3af">412 / 525</text>
+
+    <rect x="200" width="185" height="72" rx="8" fill="#f9fafb"/>
+    <text x="292" y="16" text-anchor="middle" style="font-size:9px;fill:#9ca3af;letter-spacing:1px">BRANCHES</text>
+    <text x="292" y="40" text-anchor="middle" style="font-size:22px;font-weight:700;fill:#eab308">62.3%</text>
+    <rect x="216" y="50" width="153" height="4" rx="2" fill="#e5e7eb"/>
+    <rect x="216" y="50" width="95" height="4" rx="2" fill="#eab308"/>
+    <text x="292" y="66" text-anchor="middle" style="font-size:9px;fill:#9ca3af">76 / 122</text>
+
+    <rect x="400" width="185" height="72" rx="8" fill="#f9fafb"/>
+    <text x="492" y="16" text-anchor="middle" style="font-size:9px;fill:#9ca3af;letter-spacing:1px">FUNCTIONS</text>
+    <text x="492" y="40" text-anchor="middle" style="font-size:22px;font-weight:700;fill:#22c55e">85.2%</text>
+    <rect x="416" y="50" width="153" height="4" rx="2" fill="#e5e7eb"/>
+    <rect x="416" y="50" width="130" height="4" rx="2" fill="#22c55e"/>
+    <text x="492" y="66" text-anchor="middle" style="font-size:9px;fill:#9ca3af">98 / 115</text>
+
+    <rect x="600" width="185" height="72" rx="8" fill="#f9fafb"/>
+    <text x="692" y="16" text-anchor="middle" style="font-size:9px;fill:#9ca3af;letter-spacing:1px">LINES</text>
+    <text x="692" y="40" text-anchor="middle" style="font-size:22px;font-weight:700;fill:#22c55e">79.1%</text>
+    <rect x="616" y="50" width="153" height="4" rx="2" fill="#e5e7eb"/>
+    <rect x="616" y="50" width="121" height="4" rx="2" fill="#22c55e"/>
+    <text x="692" y="66" text-anchor="middle" style="font-size:9px;fill:#9ca3af">398 / 503</text>
+  </g>
+
+  <!-- ===== 테스트 케이스 상세 ===== -->
+  <rect x="24" y="464" width="832" height="260" rx="10" fill="#fff" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="44" y="488" style="font-size:13px;font-weight:700;fill:#111827">테스트 케이스 상세</text>
+
+  <!-- Suite: dag-builder.service.spec.ts -->
+  <g transform="translate(44, 500)">
+    <rect width="792" height="24" rx="5" fill="#f0fdf4"/>
+    <text x="10" y="16" style="font-size:12px;fill:#22c55e;font-weight:700">&#10003;</text>
+    <text x="26" y="16" style="font-size:11px;font-weight:600;fill:#374151">dag-builder.service.spec.ts</text>
+    <text x="660" y="16" style="font-size:10px;fill:#22c55e">3 passed</text>
+    <text x="740" y="16" style="font-size:10px;fill:#9ca3af">5.5s</text>
+  </g>
+
+  <!-- Test cases (indent) -->
+  <g transform="translate(44, 528)">
+    <rect width="792" height="20" rx="3" fill="#fff"/>
+    <text x="30" y="14" style="font-size:10px;fill:#22c55e">&#10003;</text>
+    <text x="46" y="14" style="font-size:10px;fill:#374151">DAG Builder > 선형 의존성 그래프를 올바르게 생성한다</text>
+    <text x="740" y="14" style="font-size:9px;fill:#9ca3af">0.12s</text>
+
+    <rect y="22" width="792" height="20" rx="3" fill="#f9fafb"/>
+    <text x="30" y="36" style="font-size:10px;fill:#22c55e">&#10003;</text>
+    <text x="46" y="36" style="font-size:10px;fill:#374151">DAG Builder > 병렬 실행 가능한 단계를 식별한다</text>
+    <text x="740" y="36" style="font-size:9px;fill:#9ca3af">0.08s</text>
+
+    <rect y="44" width="792" height="20" rx="3" fill="#fff"/>
+    <text x="30" y="58" style="font-size:10px;fill:#22c55e">&#10003;</text>
+    <text x="46" y="58" style="font-size:10px;fill:#374151">DAG Builder > 순환 의존성을 감지하여 에러를 던진다</text>
+    <text x="740" y="58" style="font-size:9px;fill:#9ca3af">0.05s</text>
+  </g>
+
+  <!-- Suite: handle-step-failed.use-case.spec.ts -->
+  <g transform="translate(44, 600)">
+    <rect width="792" height="24" rx="5" fill="#f0fdf4"/>
+    <text x="10" y="16" style="font-size:12px;fill:#22c55e;font-weight:700">&#10003;</text>
+    <text x="26" y="16" style="font-size:11px;font-weight:600;fill:#374151">handle-step-failed.use-case.spec.ts</text>
+    <text x="660" y="16" style="font-size:10px;fill:#22c55e">4 passed</text>
+    <text x="740" y="16" style="font-size:10px;fill:#9ca3af">5.9s</text>
+  </g>
+
+  <g transform="translate(44, 628)">
+    <rect width="792" height="20" rx="3" fill="#fff"/>
+    <text x="30" y="14" style="font-size:10px;fill:#22c55e">&#10003;</text>
+    <text x="46" y="14" style="font-size:10px;fill:#374151">HandleStepFailed > 재시도 횟수가 남아있으면 재시도한다</text>
+    <text x="740" y="14" style="font-size:9px;fill:#9ca3af">0.15s</text>
+
+    <rect y="22" width="792" height="20" rx="3" fill="#f9fafb"/>
+    <text x="30" y="36" style="font-size:10px;fill:#22c55e">&#10003;</text>
+    <text x="46" y="36" style="font-size:10px;fill:#374151">HandleStepFailed > 3회 재시도 소진 시 JOB_FAILED 발행</text>
+    <text x="740" y="36" style="font-size:9px;fill:#9ca3af">0.11s</text>
+
+    <rect y="44" width="792" height="20" rx="3" fill="#fff"/>
+    <text x="30" y="58" style="font-size:10px;fill:#22c55e">&#10003;</text>
+    <text x="46" y="58" style="font-size:10px;fill:#374151">HandleStepFailed > 영구 실패 시 Alert을 발행한다</text>
+    <text x="740" y="58" style="font-size:9px;fill:#9ca3af">0.09s</text>
+
+    <rect y="66" width="792" height="20" rx="3" fill="#f9fafb"/>
+    <text x="30" y="80" style="font-size:10px;fill:#9ca3af;font-style:italic">... 외 85개 테스트 케이스 (20 suites 전체 통과)</text>
+  </g>
+
+  <!-- ===== Footer ===== -->
+  <text x="440" y="744" text-anchor="middle" style="font-size:10px;fill:#9ca3af">Generated by SDPE CI/CD Report Generator</text>
+  <text x="440" y="760" text-anchor="middle" style="font-size:9px;fill:#d1d5db">커버리지 색상: 초록 (80%+) / 노랑 (50~79%) / 빨강 (50% 미만)</text>
+</svg>
+</div>
+
+<p style="text-align:center;color:#9ca3af;font-size:11px;margin-top:24px">SDPE CI/CD 워크플로우 | 192.168.10.11 | 2026-04-09</p>
+</div>
+</body>
+</html>

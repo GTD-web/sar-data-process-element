@@ -72,7 +72,8 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npx jest --json --outputFile=ci-results/test-unit.json 2>&1 | tee ci-results/test-output.txt
+          npx jest --coverage --coverageReporters=json-summary --json --outputFile=ci-results/test-unit.json 2>&1 | tee ci-results/test-output.txt
+          cp coverage/coverage-summary.json ci-results/coverage-summary.json 2>/dev/null || true
 
       - name: E2E Test
         id: e2e

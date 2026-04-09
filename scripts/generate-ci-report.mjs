@@ -401,7 +401,22 @@ function parseTestResults(resultsDir) {
   return parsed;
 }
 
-// ── 5. 실패 로그 수집 ──
+// ── 5-1. 커버리지 파싱 ──
+
+function parseCoverage(resultsDir) {
+  const summary = readJsonOrNull(join(resultsDir, 'coverage-summary.json'));
+  if (!summary || !summary.total) return null;
+
+  const t = summary.total;
+  return {
+    statements: { pct: t.statements?.pct ?? 0, covered: t.statements?.covered ?? 0, total: t.statements?.total ?? 0 },
+    branches: { pct: t.branches?.pct ?? 0, covered: t.branches?.covered ?? 0, total: t.branches?.total ?? 0 },
+    functions: { pct: t.functions?.pct ?? 0, covered: t.functions?.covered ?? 0, total: t.functions?.total ?? 0 },
+    lines: { pct: t.lines?.pct ?? 0, covered: t.lines?.covered ?? 0, total: t.lines?.total ?? 0 },
+  };
+}
+
+// ── 5-2. 실패 로그 수집 ──
 
 function collectFailureLogs(resultsDir) {
   const logs = [];
@@ -467,7 +482,7 @@ function colorizeDiff(diff) {
     .join('\n');
 }
 
-function generateHtml(git, impact, ci, testResults, failureLogs) {
+function generateHtml(git, impact, ci, testResults, coverage, failureLogs) {
   const now = toKST(new Date());
   const dateStr = kstDateStr(now);
   const timeStr = kstTimeStr(now);
@@ -603,6 +618,21 @@ section h2 { font-size: 18px; margin-bottom: 16px; padding-bottom: 8px; border-b
 .suite-status-bar .bar-pass { background: var(--pass); }
 .suite-status-bar .bar-fail { background: var(--fail); }
 .suite-status-bar .bar-skip { background: var(--skip); }
+
+/* Coverage */
+.coverage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 16px; }
+.coverage-card { background: var(--bg); border-radius: 8px; padding: 16px; text-align: center; }
+.coverage-card .cov-label { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px; }
+.coverage-card .cov-pct { font-size: 32px; font-weight: 700; }
+.coverage-card .cov-detail { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+.cov-bar { height: 6px; background: #e9ecef; border-radius: 3px; margin-top: 8px; overflow: hidden; }
+.cov-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+.cov-high { color: var(--pass); }
+.cov-mid { color: #e6a817; }
+.cov-low { color: var(--fail); }
+.cov-bar-high { background: var(--pass); }
+.cov-bar-mid { background: #e6a817; }
+.cov-bar-low { background: var(--fail); }
 
 /* Failure */
 .failure-block { margin-bottom: 16px; }
@@ -787,9 +817,28 @@ ${
     : ''
 }
 
-<!-- 6. 실패 분석 -->
+${coverage ? `<!-- 6. 테스트 커버리지 -->
 <section>
-  <h2>${testResults.length > 0 ? '6' : '5'}. 실패 분석</h2>
+  <h2>${testResults.length > 0 ? '6' : '5'}. 테스트 커버리지</h2>
+  <div class="coverage-grid">
+    ${['statements', 'branches', 'functions', 'lines'].map(key => {
+      const c = coverage[key];
+      const pct = c.pct;
+      const cls = pct >= 80 ? 'high' : pct >= 50 ? 'mid' : 'low';
+      const label = { statements: 'Statements', branches: 'Branches', functions: 'Functions', lines: 'Lines' }[key];
+      return `<div class="coverage-card">
+      <div class="cov-label">${label}</div>
+      <div class="cov-pct cov-${cls}">${pct}%</div>
+      <div class="cov-bar"><div class="cov-bar-fill cov-bar-${cls}" style="width:${pct}%"></div></div>
+      <div class="cov-detail">${c.covered} / ${c.total}</div>
+    </div>`;
+    }).join('\n    ')}
+  </div>
+</section>` : ''}
+
+<!-- ${coverage ? '7' : '6'}. 실패 분석 -->
+<section>
+  <h2>${coverage ? '7' : testResults.length > 0 ? '6' : '5'}. 실패 분석</h2>
   ${
     failedSteps.length === 0
       ? '<div class="no-failures">모든 CI/CD 단계가 성공적으로 통과했습니다.</div>'
@@ -825,9 +874,10 @@ function main() {
   const impact = analyzeImpact(git.changedFiles);
   const ci = collectCIResults();
   const testResults = parseTestResults(resultsDir);
+  const coverage = parseCoverage(resultsDir);
   const failureLogs = collectFailureLogs(resultsDir);
 
-  const html = generateHtml(git, impact, ci, testResults, failureLogs);
+  const html = generateHtml(git, impact, ci, testResults, coverage, failureLogs);
 
   // reports/YYYY-MM-DD/ 구조로 저장 (한국 시간 기준)
   const now = toKST(new Date());
