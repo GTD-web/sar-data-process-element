@@ -1,0 +1,654 @@
+#!/usr/bin/env node
+
+/**
+ * CI/CD HTML 보고서 생성 스크립트.
+ *
+ * 환경변수로 전달된 CI 파이프라인 결과와 git 정보를 수집하여
+ * reports/YYYY-MM-DD/ 경로에 HTML 보고서를 생성한다.
+ */
+
+import { execSync } from 'node:child_process';
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+
+// ── 유틸리티 ──
+
+function exec(cmd) {
+  try {
+    return execSync(cmd, { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }).trim();
+  } catch {
+    return '';
+  }
+}
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function readFileOrNull(path) {
+  try {
+    if (existsSync(path)) return readFileSync(path, 'utf-8');
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function readJsonOrNull(path) {
+  const content = readFileOrNull(path);
+  if (!content) return null;
+  try {
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+// ── 1. Git 정보 수집 ──
+
+function collectGitInfo() {
+  const sha = exec('git rev-parse HEAD');
+  const shortSha = exec('git rev-parse --short HEAD');
+  const branch = exec('git rev-parse --abbrev-ref HEAD');
+  const author = exec('git log -1 --format=%an');
+  const authorEmail = exec('git log -1 --format=%ae');
+  const commitDate = exec('git log -1 --format=%ci');
+  const commitMessage = exec('git log -1 --format=%B');
+  const parentCount = exec('git rev-list --parents -n 1 HEAD').split(' ').length - 1;
+  const isMerge = parentCount > 1;
+
+  // 변경 파일 목록 (부모 커밋 대비)
+  const diffStat = exec('git diff HEAD~1 --stat 2>/dev/null') || exec('git diff --stat 2>/dev/null');
+  const changedFiles = exec('git diff HEAD~1 --name-status 2>/dev/null') || '';
+  const diffNumstat = exec('git diff HEAD~1 --numstat 2>/dev/null') || '';
+
+  return {
+    sha,
+    shortSha,
+    branch,
+    author,
+    authorEmail,
+    commitDate,
+    commitMessage,
+    isMerge,
+    diffStat,
+    changedFiles: changedFiles
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [status, ...pathParts] = line.split('\t');
+        return { status, path: pathParts.join('\t') };
+      }),
+    diffNumstat: diffNumstat
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [added, deleted, file] = line.split('\t');
+        return { added: parseInt(added) || 0, deleted: parseInt(deleted) || 0, file };
+      }),
+  };
+}
+
+// ── 2. 영향 분석 ──
+
+const MODULE_MAP = {
+  'apps/pipeline-workflow-subsystem': {
+    name: 'Pipeline Workflow Subsystem',
+    desc: '파이프라인 워크플로우 (메인 앱)',
+    impact: '파이프라인 오케스트레이션 흐름에 직접 영향',
+  },
+  'apps/data-collecting-subsystem': {
+    name: 'Data Collecting Subsystem',
+    desc: '데이터 수집',
+    impact: '데이터 수집 로직 영향',
+  },
+  'apps/sar-processing-subsystem': {
+    name: 'SAR Processing Subsystem',
+    desc: 'SAR 처리',
+    impact: 'SAR 데이터 처리 로직 영향',
+  },
+  'apps/post-processing-tool': {
+    name: 'Post-Processing Tool',
+    desc: '후처리 도구',
+    impact: '후처리 로직 영향',
+  },
+  'apps/data-service-subsystem': {
+    name: 'Data Service Subsystem',
+    desc: '데이터 서비스',
+    impact: '데이터 서비스 API 영향',
+  },
+  'libs/sdpe-shared': {
+    name: 'SDPE Shared',
+    desc: '공유 라이브러리 (@sdpe/shared)',
+    impact: '공유 모델/타입 변경으로 모든 앱에 영향 가능',
+  },
+  'libs/sdpe-database': {
+    name: 'SDPE Database',
+    desc: 'DB 모듈 (@sdpe/database)',
+    impact: '데이터베이스 계층 변경으로 데이터 모델 영향 가능',
+  },
+  'libs/sdpe-infrastructure': {
+    name: 'SDPE Infrastructure',
+    desc: '인프라 모듈 (PGMQ 등)',
+    impact: '메시징/인프라 계층 변경으로 통신 흐름 영향 가능',
+  },
+  'libs/csu-08.03-pipeline-scheduler': {
+    name: 'Pipeline Scheduler (CSU-08.03)',
+    desc: 'DAG 기반 파이프라인 스케줄러',
+    impact: '파이프라인 스케줄링 로직 영향',
+  },
+  'libs/csu-08.04-task-queue': {
+    name: 'Task Queue (CSU-08.04)',
+    desc: '작업 큐 관리',
+    impact: '작업 할당/해결 로직 영향',
+  },
+  'libs/csu-08.05-processing-monitor': {
+    name: 'Processing Monitor (CSU-08.05)',
+    desc: '처리 모니터링',
+    impact: '재시도/메트릭 로직 영향',
+  },
+  'libs/csu-08.06-audit-log': {
+    name: 'Audit Log (CSU-08.06)',
+    desc: '감사 로그',
+    impact: '감사 로그 기록 로직 영향',
+  },
+  'libs/csu-08.07-alert': {
+    name: 'Alert (CSU-08.07)',
+    desc: '경고/알림',
+    impact: '알림 발행 로직 영향',
+  },
+  'libs/csu-08.08-processing-profile': {
+    name: 'Processing Profile (CSU-08.08)',
+    desc: '처리 프로파일',
+    impact: '프로파일 선택 로직 영향',
+  },
+  'libs/csu-08.09-performance-analyzer': {
+    name: 'Performance Analyzer (CSU-08.09)',
+    desc: '성능 분석',
+    impact: '성능 분석 로직 영향',
+  },
+  'libs/csu-02.01-reception-event': {
+    name: 'Reception Event (CSU-02.01)',
+    desc: '수신 이벤트 처리',
+    impact: '수신 이벤트 흐름 영향',
+  },
+  'algorithms/': {
+    name: 'Python Algorithms',
+    desc: 'SAR 알고리즘 (Python)',
+    impact: 'SAR 처리 알고리즘 영향',
+  },
+  '.github/': {
+    name: 'CI/CD',
+    desc: 'GitHub Actions 워크플로우',
+    impact: 'CI/CD 파이프라인 자체에 영향',
+  },
+  'deploy/': {
+    name: 'Deployment',
+    desc: '배포 설정 (K8s, Docker)',
+    impact: '배포 환경 설정 영향',
+  },
+};
+
+function analyzeImpact(changedFiles) {
+  const affected = new Map();
+  let hasTestOnly = true;
+  let hasConfigOnly = true;
+
+  for (const { path } of changedFiles) {
+    const isTest = path.includes('.spec.') || path.includes('.e2e-spec.') || path.includes('/test/');
+    const isConfig =
+      path.endsWith('.json') ||
+      path.endsWith('.yml') ||
+      path.endsWith('.yaml') ||
+      path.endsWith('.mjs') ||
+      path.endsWith('.md');
+
+    if (!isTest) hasTestOnly = false;
+    if (!isConfig) hasConfigOnly = false;
+
+    for (const [prefix, info] of Object.entries(MODULE_MAP)) {
+      if (path.startsWith(prefix)) {
+        if (!affected.has(prefix)) {
+          affected.set(prefix, { ...info, files: [], hasSourceChange: false });
+        }
+        affected.get(prefix).files.push(path);
+        if (!isTest && !isConfig) {
+          affected.get(prefix).hasSourceChange = true;
+        }
+        break;
+      }
+    }
+  }
+
+  return {
+    modules: [...affected.values()],
+    hasTestOnly,
+    hasConfigOnly,
+    summary: hasTestOnly
+      ? '테스트 코드만 변경되어 프로덕션 코드에 직접적인 영향 없음'
+      : hasConfigOnly
+        ? '설정 파일만 변경됨'
+        : `${affected.size}개 모듈에 영향`,
+  };
+}
+
+// ── 3. CI 결과 수집 ──
+
+function collectCIResults() {
+  const env = process.env;
+
+  const steps = [
+    { id: 'build', name: 'Build (nest build)', result: env.STEP_BUILD || 'skipped' },
+    { id: 'lint', name: 'Lint (ESLint)', result: env.STEP_LINT || 'skipped' },
+    { id: 'test', name: 'Unit Test (Jest)', result: env.STEP_TEST || 'skipped' },
+    { id: 'e2e', name: 'E2E Test (Jest)', result: env.STEP_E2E || 'skipped' },
+    { id: 'ruff-check', name: 'Python Lint (ruff check)', result: env.STEP_RUFF_CHECK || 'skipped' },
+    { id: 'ruff-format', name: 'Python Format (ruff format)', result: env.STEP_RUFF_FORMAT || 'skipped' },
+    { id: 'mypy', name: 'Python Type Check (mypy)', result: env.STEP_MYPY || 'skipped' },
+  ];
+
+  const overallResult = steps.some((s) => s.result === 'failure')
+    ? 'failure'
+    : steps.every((s) => s.result === 'success' || s.result === 'skipped')
+      ? 'success'
+      : 'unknown';
+
+  return { steps, overallResult };
+}
+
+// ── 4. 테스트 결과 파싱 ──
+
+function parseTestResults(resultsDir) {
+  const unit = readJsonOrNull(join(resultsDir, 'test-unit.json'));
+  const e2e = readJsonOrNull(join(resultsDir, 'test-e2e.json'));
+
+  const parsed = [];
+
+  for (const [label, data] of [
+    ['Unit Test', unit],
+    ['E2E Test', e2e],
+  ]) {
+    if (!data) continue;
+
+    const suites = (data.testResults || []).map((suite) => ({
+      name: suite.name?.replace(/^.*[/\\]/, '') || 'unknown',
+      status: suite.status,
+      duration: ((suite.endTime || 0) - (suite.startTime || 0)) / 1000,
+      failureMessages: suite.message || '',
+      tests: (suite.assertionResults || []).map((t) => ({
+        title: t.ancestorTitles?.join(' > ') + ' > ' + t.title,
+        status: t.status,
+        failureMessages: (t.failureMessages || []).join('\n'),
+        duration: (t.duration || 0) / 1000,
+      })),
+    }));
+
+    parsed.push({
+      label,
+      passed: data.numPassedTests || 0,
+      failed: data.numFailedTests || 0,
+      skipped: data.numPendingTests || 0,
+      total: data.numTotalTests || 0,
+      suites: data.numPassedTestSuites || 0,
+      suitesTotal: data.numTotalTestSuites || 0,
+      duration: ((data.testResults || []).reduce((a, s) => a + ((s.endTime || 0) - (s.startTime || 0)), 0) / 1000).toFixed(1),
+      details: suites,
+    });
+  }
+
+  return parsed;
+}
+
+// ── 5. 실패 로그 수집 ──
+
+function collectFailureLogs(resultsDir) {
+  const logs = [];
+  const files = ['build-output.txt', 'lint-output.txt', 'test-output.txt', 'test-e2e-output.txt', 'python-output.txt'];
+
+  for (const file of files) {
+    const content = readFileOrNull(join(resultsDir, file));
+    if (content && content.length > 0) {
+      // 파일 이름에서 단계명 추출
+      const stepName = file
+        .replace('-output.txt', '')
+        .replace('test-e2e', 'E2E Test')
+        .replace('test', 'Unit Test')
+        .replace('build', 'Build')
+        .replace('lint', 'Lint')
+        .replace('python', 'Python');
+      logs.push({ step: stepName, content });
+    }
+  }
+
+  return logs;
+}
+
+// ── 6. HTML 생성 ──
+
+function statusBadge(result) {
+  const colors = {
+    success: { bg: '#d4edda', text: '#155724', label: 'PASS' },
+    failure: { bg: '#f8d7da', text: '#721c24', label: 'FAIL' },
+    skipped: { bg: '#e2e3e5', text: '#383d41', label: 'SKIP' },
+    unknown: { bg: '#fff3cd', text: '#856404', label: '???' },
+  };
+  const c = colors[result] || colors.unknown;
+  return `<span class="badge" style="background:${c.bg};color:${c.text}">${c.label}</span>`;
+}
+
+function statusIcon(result) {
+  if (result === 'success') return '<span class="icon-pass">&#10003;</span>';
+  if (result === 'failure') return '<span class="icon-fail">&#10007;</span>';
+  return '<span class="icon-skip">&#8212;</span>';
+}
+
+function fileStatusLabel(status) {
+  const map = { M: '수정', A: '추가', D: '삭제', R: '이름변경', C: '복사' };
+  return map[status] || status;
+}
+
+function fileStatusClass(status) {
+  const map = { M: 'file-modified', A: 'file-added', D: 'file-deleted' };
+  return map[status] || '';
+}
+
+function generateHtml(git, impact, ci, testResults, failureLogs) {
+  const now = new Date();
+  const dateStr = now.toISOString().split('T')[0];
+  const timeStr = now.toTimeString().split(' ')[0];
+  const overallClass = ci.overallResult === 'success' ? 'overall-pass' : 'overall-fail';
+  const overallLabel = ci.overallResult === 'success' ? 'ALL PASSED' : 'FAILED';
+
+  const totalAdded = git.diffNumstat.reduce((a, f) => a + f.added, 0);
+  const totalDeleted = git.diffNumstat.reduce((a, f) => a + f.deleted, 0);
+
+  const failedSteps = ci.steps.filter((s) => s.result === 'failure');
+
+  return `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CI/CD Report - ${dateStr} - ${git.shortSha}</title>
+<style>
+:root {
+  --pass: #28a745; --fail: #dc3545; --skip: #6c757d;
+  --bg: #f8f9fa; --card: #fff; --border: #dee2e6;
+  --text: #212529; --text-secondary: #6c757d;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.6; padding: 24px; }
+.container { max-width: 1100px; margin: 0 auto; }
+
+/* Header */
+.header { background: var(--card); border-radius: 12px; padding: 32px; margin-bottom: 24px;
+  border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.header h1 { font-size: 24px; margin-bottom: 8px; }
+.header-meta { display: flex; gap: 24px; flex-wrap: wrap; color: var(--text-secondary); font-size: 14px; }
+.overall-status { display: inline-block; padding: 6px 20px; border-radius: 20px; font-weight: 700;
+  font-size: 14px; letter-spacing: 0.5px; margin-top: 12px; }
+.overall-pass { background: #d4edda; color: #155724; }
+.overall-fail { background: #f8d7da; color: #721c24; }
+
+/* Section */
+section { background: var(--card); border-radius: 12px; padding: 24px; margin-bottom: 20px;
+  border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+section h2 { font-size: 18px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid var(--bg); }
+
+/* Commit info */
+.commit-hash { font-family: var(--mono); font-size: 13px; background: var(--bg); padding: 2px 8px;
+  border-radius: 4px; }
+.commit-message { background: var(--bg); padding: 12px 16px; border-radius: 8px; margin-top: 8px;
+  font-size: 14px; white-space: pre-wrap; border-left: 4px solid var(--border); }
+.commit-meta { display: grid; grid-template-columns: 120px 1fr; gap: 8px 16px; font-size: 14px; margin-top: 12px; }
+.commit-meta dt { font-weight: 600; color: var(--text-secondary); }
+
+/* Files */
+.file-list { list-style: none; font-size: 13px; font-family: var(--mono); }
+.file-list li { padding: 6px 12px; border-radius: 4px; display: flex; align-items: center; gap: 8px; }
+.file-list li:nth-child(odd) { background: var(--bg); }
+.file-status { display: inline-block; width: 44px; text-align: center; font-size: 11px; font-weight: 600;
+  padding: 1px 6px; border-radius: 3px; font-family: var(--font); }
+.file-modified .file-status { background: #fff3cd; color: #856404; }
+.file-added .file-status { background: #d4edda; color: #155724; }
+.file-deleted .file-status { background: #f8d7da; color: #721c24; }
+.diff-stat { margin-left: auto; white-space: nowrap; font-size: 12px; }
+.diff-stat .added { color: var(--pass); }
+.diff-stat .deleted { color: var(--fail); }
+.change-summary { font-size: 14px; color: var(--text-secondary); margin-bottom: 12px; }
+
+/* Impact */
+.impact-card { background: var(--bg); border-radius: 8px; padding: 14px 16px; margin-bottom: 10px;
+  border-left: 4px solid var(--border); }
+.impact-card.source-changed { border-left-color: #ffc107; }
+.impact-card h3 { font-size: 14px; margin-bottom: 4px; }
+.impact-card p { font-size: 13px; color: var(--text-secondary); margin: 0; }
+.impact-summary { background: #e8f4fd; padding: 12px 16px; border-radius: 8px; font-size: 14px;
+  color: #0c5460; margin-bottom: 16px; }
+
+/* Pipeline */
+.pipeline { display: flex; flex-direction: column; gap: 8px; }
+.pipeline-step { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 8px;
+  background: var(--bg); font-size: 14px; }
+.pipeline-step .step-name { flex: 1; }
+.icon-pass { color: var(--pass); font-weight: 700; font-size: 16px; }
+.icon-fail { color: var(--fail); font-weight: 700; font-size: 16px; }
+.icon-skip { color: var(--skip); font-size: 16px; }
+.badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 11px;
+  font-weight: 700; letter-spacing: 0.3px; }
+
+/* Test results */
+.test-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px; margin-bottom: 16px; }
+.test-stat { text-align: center; padding: 16px; background: var(--bg); border-radius: 8px; }
+.test-stat .number { font-size: 28px; font-weight: 700; }
+.test-stat .label { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; }
+.test-stat.passed .number { color: var(--pass); }
+.test-stat.failed .number { color: var(--fail); }
+.test-stat.skipped .number { color: var(--skip); }
+
+.test-suite { margin-top: 12px; }
+.test-suite summary { cursor: pointer; font-size: 14px; padding: 8px; border-radius: 4px; }
+.test-suite summary:hover { background: var(--bg); }
+.test-case { font-size: 13px; padding: 4px 0 4px 24px; display: flex; gap: 8px; align-items: center; }
+.test-case.test-failed { color: var(--fail); }
+
+/* Failure */
+.failure-block { margin-bottom: 16px; }
+.failure-block h3 { font-size: 14px; color: var(--fail); margin-bottom: 8px; }
+.failure-output { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 8px;
+  font-family: var(--mono); font-size: 12px; line-height: 1.5; overflow-x: auto;
+  white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; }
+.no-failures { color: var(--pass); font-size: 14px; padding: 16px; text-align: center;
+  background: #d4edda; border-radius: 8px; }
+
+/* Footer */
+.footer { text-align: center; padding: 24px; color: var(--text-secondary); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- Header -->
+<div class="header">
+  <h1>CI/CD 보고서</h1>
+  <div class="header-meta">
+    <span>${dateStr} ${timeStr}</span>
+    <span>Branch: <strong>${escapeHtml(git.branch)}</strong></span>
+    <span>Commit: <code class="commit-hash">${git.shortSha}</code></span>
+    <span>Author: ${escapeHtml(git.author)}</span>
+  </div>
+  <div class="overall-status ${overallClass}">${overallLabel}</div>
+</div>
+
+<!-- 1. 커밋 정보 -->
+<section>
+  <h2>1. 커밋 정보</h2>
+  <dl class="commit-meta">
+    <dt>커밋 해시</dt><dd><code class="commit-hash">${escapeHtml(git.sha)}</code></dd>
+    <dt>브랜치</dt><dd>${escapeHtml(git.branch)}</dd>
+    <dt>작성자</dt><dd>${escapeHtml(git.author)} &lt;${escapeHtml(git.authorEmail)}&gt;</dd>
+    <dt>일시</dt><dd>${escapeHtml(git.commitDate)}</dd>
+    <dt>유형</dt><dd>${git.isMerge ? 'Merge 커밋' : '일반 커밋'}</dd>
+  </dl>
+  <div class="commit-message">${escapeHtml(git.commitMessage)}</div>
+</section>
+
+<!-- 2. 변경 사항 -->
+<section>
+  <h2>2. 변경 사항</h2>
+  <div class="change-summary">
+    ${git.changedFiles.length}개 파일 변경 |
+    <span style="color:var(--pass)">+${totalAdded}</span>
+    <span style="color:var(--fail)">-${totalDeleted}</span>
+  </div>
+  <ul class="file-list">
+    ${git.changedFiles
+      .map((f) => {
+        const numstat = git.diffNumstat.find((n) => n.file === f.path) || { added: 0, deleted: 0 };
+        return `<li class="${fileStatusClass(f.status)}">
+      <span class="file-status">${fileStatusLabel(f.status)}</span>
+      <span>${escapeHtml(f.path)}</span>
+      <span class="diff-stat"><span class="added">+${numstat.added}</span> <span class="deleted">-${numstat.deleted}</span></span>
+    </li>`;
+      })
+      .join('\n    ')}
+  </ul>
+</section>
+
+<!-- 3. 영향 분석 -->
+<section>
+  <h2>3. 영향 분석</h2>
+  <div class="impact-summary">${escapeHtml(impact.summary)}</div>
+  ${impact.modules
+    .map(
+      (m) => `<div class="impact-card ${m.hasSourceChange ? 'source-changed' : ''}">
+    <h3>${escapeHtml(m.name)}</h3>
+    <p>${escapeHtml(m.desc)} &mdash; ${escapeHtml(m.impact)}</p>
+    <p style="font-size:12px;margin-top:4px;color:#888">${m.files.length}개 파일: ${m.files.map((f) => escapeHtml(f.split('/').pop())).join(', ')}</p>
+  </div>`,
+    )
+    .join('\n  ')}
+</section>
+
+<!-- 4. CI/CD 파이프라인 -->
+<section>
+  <h2>4. CI/CD 파이프라인</h2>
+  <div class="pipeline">
+    ${ci.steps
+      .map(
+        (s) => `<div class="pipeline-step">
+      ${statusIcon(s.result)}
+      <span class="step-name">${escapeHtml(s.name)}</span>
+      ${statusBadge(s.result)}
+    </div>`,
+      )
+      .join('\n    ')}
+  </div>
+</section>
+
+<!-- 5. 테스트 결과 -->
+${
+  testResults.length > 0
+    ? `<section>
+  <h2>5. 테스트 결과</h2>
+  ${testResults
+    .map(
+      (tr) => `
+  <h3 style="font-size:15px;margin:12px 0 8px">${escapeHtml(tr.label)}</h3>
+  <div class="test-summary">
+    <div class="test-stat passed"><div class="number">${tr.passed}</div><div class="label">Passed</div></div>
+    <div class="test-stat failed"><div class="number">${tr.failed}</div><div class="label">Failed</div></div>
+    <div class="test-stat skipped"><div class="number">${tr.skipped}</div><div class="label">Skipped</div></div>
+    <div class="test-stat"><div class="number">${tr.total}</div><div class="label">Total</div></div>
+    <div class="test-stat"><div class="number">${tr.duration}s</div><div class="label">Duration</div></div>
+  </div>
+  ${tr.details
+    .filter((s) => s.status === 'failed')
+    .map(
+      (s) => `<details class="test-suite" open>
+    <summary>${statusIcon('failure')} ${escapeHtml(s.name)}</summary>
+    ${s.tests
+      .filter((t) => t.status === 'failed')
+      .map(
+        (t) => `<div class="test-case test-failed">
+      ${statusIcon('failure')} ${escapeHtml(t.title)}
+      ${t.failureMessages ? `<pre class="failure-output" style="margin-top:4px;max-height:150px">${escapeHtml(t.failureMessages)}</pre>` : ''}
+    </div>`,
+      )
+      .join('\n    ')}
+  </details>`,
+    )
+    .join('\n  ')}`,
+    )
+    .join('\n  ')}
+</section>`
+    : ''
+}
+
+<!-- 6. 실패 분석 -->
+<section>
+  <h2>${testResults.length > 0 ? '6' : '5'}. 실패 분석</h2>
+  ${
+    failedSteps.length === 0
+      ? '<div class="no-failures">모든 CI/CD 단계가 성공적으로 통과했습니다.</div>'
+      : `<div style="margin-bottom:16px;padding:12px 16px;background:#fff3cd;border-radius:8px;font-size:14px;color:#856404">
+    ${failedSteps.length}개 단계에서 실패가 감지되었습니다: ${failedSteps.map((s) => `<strong>${escapeHtml(s.name)}</strong>`).join(', ')}
+  </div>
+  ${failureLogs
+    .map(
+      (log) => `<div class="failure-block">
+    <h3>${escapeHtml(log.step)} 출력</h3>
+    <pre class="failure-output">${escapeHtml(log.content.slice(-5000))}</pre>
+  </div>`,
+    )
+    .join('\n  ')}`
+  }
+</section>
+
+<div class="footer">
+  Generated by SDPE CI/CD Report Generator
+</div>
+
+</div>
+</body>
+</html>`;
+}
+
+// ── Main ──
+
+function main() {
+  const resultsDir = process.env.CI_RESULTS_DIR || 'ci-results';
+
+  const git = collectGitInfo();
+  const impact = analyzeImpact(git.changedFiles);
+  const ci = collectCIResults();
+  const testResults = parseTestResults(resultsDir);
+  const failureLogs = collectFailureLogs(resultsDir);
+
+  const html = generateHtml(git, impact, ci, testResults, failureLogs);
+
+  // reports/YYYY-MM-DD/ 구조로 저장
+  const now = new Date();
+  const dateDir = now.toISOString().split('T')[0];
+  const outDir = join('reports', dateDir);
+  mkdirSync(outDir, { recursive: true });
+
+  const filename = `report-${git.shortSha}.html`;
+  const outPath = join(outDir, filename);
+  writeFileSync(outPath, html, 'utf-8');
+
+  // 최신 보고서 링크 (index.html)
+  writeFileSync(join('reports', 'latest.html'), html, 'utf-8');
+
+  console.log(`Report generated: ${outPath}`);
+  console.log(`Latest report: reports/latest.html`);
+}
+
+main();
