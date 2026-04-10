@@ -405,34 +405,44 @@ async function resolveRecipients() {
 
   if (apiUrl && projectId && jobToken) {
     for (const level of [50, 40]) {
+      const levelName = level === 50 ? 'Owner' : 'Maintainer';
       try {
-        const res = await fetch(`${apiUrl}/projects/${projectId}/members?access_level=${level}&per_page=100`, {
+        const url = `${apiUrl}/projects/${projectId}/members/all?access_level=${level}&per_page=100`;
+        console.log(`Fetching ${levelName}s: ${url}`);
+        const res = await fetch(url, {
           headers: { 'JOB-TOKEN': jobToken },
         });
+        console.log(`  Response: ${res.status} ${res.statusText}`);
         if (res.ok) {
           const members = await res.json();
+          console.log(`  Found ${members.length} ${levelName}(s): ${members.map((m) => m.username).join(', ')}`);
           for (const m of members) {
             if (m.state === 'active') {
-              // member API에 email이 없을 수 있으므로 user API로 조회
               try {
                 const userRes = await fetch(`${apiUrl}/users/${m.id}`, {
                   headers: { 'JOB-TOKEN': jobToken },
                 });
                 if (userRes.ok) {
                   const user = await userRes.json();
-                  if (user.email) recipients.add(user.email);
-                  else if (user.public_email) recipients.add(user.public_email);
+                  const email = user.email || user.public_email || user.commit_email;
+                  console.log(`  User ${m.username}: email=${email || '(none)'}`);
+                  if (email) recipients.add(email);
                 }
-              } catch {
-                /* skip */
+              } catch (e) {
+                console.log(`  Failed to get user ${m.username}: ${e.message}`);
               }
             }
           }
+        } else {
+          const body = await res.text();
+          console.log(`  Error body: ${body.slice(0, 200)}`);
         }
-      } catch {
-        /* skip */
+      } catch (e) {
+        console.log(`  Fetch error: ${e.message}`);
       }
     }
+  } else {
+    console.log(`API not available: apiUrl=${apiUrl}, projectId=${projectId}, jobToken=${jobToken ? '(set)' : '(not set)'}`);
   }
 
   // MAIL_TO 환경변수를 fallback으로 사용
