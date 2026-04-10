@@ -84,6 +84,33 @@ if (!hasFail) {
 
 const testJson = readJsonOr(`${ciDir}/test-unit.json`, null);
 const e2eJson = readJsonOr(`${ciDir}/test-e2e.json`, null);
+const coverageJson = readJsonOr(`${ciDir}/coverage-summary.json`, null);
+
+function parseCoverage(json) {
+  if (!json?.total) return null;
+  const { lines, statements, functions, branches } = json.total;
+  return {
+    lines: lines?.pct ?? null,
+    statements: statements?.pct ?? null,
+    functions: functions?.pct ?? null,
+    branches: branches?.pct ?? null,
+  };
+}
+const coverage = parseCoverage(coverageJson);
+
+function coverageColor(pct) {
+  if (pct == null) return '#f9fafb';
+  if (pct >= 80) return '#f0fdf4'; // 초록
+  if (pct >= 50) return '#fef9c3'; // 노랑
+  return '#fef2f2'; // 빨강
+}
+
+function coverageTextColor(pct) {
+  if (pct == null) return '#9ca3af';
+  if (pct >= 80) return '#22c55e';
+  if (pct >= 50) return '#ca8a04';
+  return '#ef4444';
+}
 
 function parseJestResults(json) {
   if (!json) return null;
@@ -361,6 +388,39 @@ const html = `<!DOCTYPE html>
         <td style="background:#f9fafb;padding:10px;border-radius:8px;width:25%">
           <div style="color:#9ca3af;font-size:10px;letter-spacing:1px">DURATION</div>
           <div style="font-size:18px;font-weight:700;color:#374151">${unitResults?.totalDuration || e2eResults?.totalDuration || '-'}s</div>
+        </td>
+      </tr>
+    </table>
+  </div>`
+      : ''
+  }
+
+  <!-- Coverage -->
+  ${
+    coverage
+      ? `
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px 20px;margin-bottom:20px">
+    <div style="font-size:13px;font-weight:700;color:#111827;margin-bottom:10px">테스트 커버리지</div>
+    <table style="width:100%;border-collapse:collapse;text-align:center">
+      <tr>
+        <td style="background:${coverageColor(coverage.lines)};padding:10px;border-radius:8px;width:25%">
+          <div style="color:#9ca3af;font-size:10px;letter-spacing:1px">LINES</div>
+          <div style="font-size:18px;font-weight:700;color:${coverageTextColor(coverage.lines)}">${coverage.lines ?? '-'}%</div>
+        </td>
+        <td style="width:8px"></td>
+        <td style="background:${coverageColor(coverage.statements)};padding:10px;border-radius:8px;width:25%">
+          <div style="color:#9ca3af;font-size:10px;letter-spacing:1px">STATEMENTS</div>
+          <div style="font-size:18px;font-weight:700;color:${coverageTextColor(coverage.statements)}">${coverage.statements ?? '-'}%</div>
+        </td>
+        <td style="width:8px"></td>
+        <td style="background:${coverageColor(coverage.functions)};padding:10px;border-radius:8px;width:25%">
+          <div style="color:#9ca3af;font-size:10px;letter-spacing:1px">FUNCTIONS</div>
+          <div style="font-size:18px;font-weight:700;color:${coverageTextColor(coverage.functions)}">${coverage.functions ?? '-'}%</div>
+        </td>
+        <td style="width:8px"></td>
+        <td style="background:${coverageColor(coverage.branches)};padding:10px;border-radius:8px;width:25%">
+          <div style="color:#9ca3af;font-size:10px;letter-spacing:1px">BRANCHES</div>
+          <div style="font-size:18px;font-weight:700;color:${coverageTextColor(coverage.branches)}">${coverage.branches ?? '-'}%</div>
         </td>
       </tr>
     </table>
