@@ -401,48 +401,45 @@ async function resolveRecipients() {
   // GitLab API로 Owner(50) + Maintainer(40) 조회
   const apiUrl = process.env.CI_API_V4_URL;
   const projectId = process.env.CI_PROJECT_ID;
-  const jobToken = process.env.CI_JOB_TOKEN;
+  const apiToken = process.env.GITLAB_API_TOKEN || process.env.CI_JOB_TOKEN;
+  const authHeader = process.env.GITLAB_API_TOKEN
+    ? { 'PRIVATE-TOKEN': process.env.GITLAB_API_TOKEN }
+    : { 'JOB-TOKEN': process.env.CI_JOB_TOKEN };
 
-  if (apiUrl && projectId && jobToken) {
+  if (apiUrl && projectId && apiToken) {
     for (const level of [50, 40]) {
       const levelName = level === 50 ? 'Owner' : 'Maintainer';
       try {
         const url = `${apiUrl}/projects/${projectId}/members/all?access_level=${level}&per_page=100`;
-        console.log(`Fetching ${levelName}s: ${url}`);
-        const res = await fetch(url, {
-          headers: { 'JOB-TOKEN': jobToken },
-        });
-        console.log(`  Response: ${res.status} ${res.statusText}`);
+        console.log(`Fetching ${levelName}s...`);
+        const res = await fetch(url, { headers: authHeader });
         if (res.ok) {
           const members = await res.json();
           console.log(`  Found ${members.length} ${levelName}(s): ${members.map((m) => m.username).join(', ')}`);
           for (const m of members) {
             if (m.state === 'active') {
               try {
-                const userRes = await fetch(`${apiUrl}/users/${m.id}`, {
-                  headers: { 'JOB-TOKEN': jobToken },
-                });
+                const userRes = await fetch(`${apiUrl}/users/${m.id}`, { headers: authHeader });
                 if (userRes.ok) {
                   const user = await userRes.json();
                   const email = user.email || user.public_email || user.commit_email;
-                  console.log(`  User ${m.username}: email=${email || '(none)'}`);
-                  if (email) recipients.add(email);
+                  if (email) {
+                    console.log(`  ${m.username}: ${email}`);
+                    recipients.add(email);
+                  }
                 }
-              } catch (e) {
-                console.log(`  Failed to get user ${m.username}: ${e.message}`);
+              } catch {
+                /* skip */
               }
             }
           }
         } else {
-          const body = await res.text();
-          console.log(`  Error body: ${body.slice(0, 200)}`);
+          console.log(`  ${levelName} fetch failed: ${res.status}`);
         }
       } catch (e) {
         console.log(`  Fetch error: ${e.message}`);
       }
     }
-  } else {
-    console.log(`API not available: apiUrl=${apiUrl}, projectId=${projectId}, jobToken=${jobToken ? '(set)' : '(not set)'}`);
   }
 
   // MAIL_TO 환경변수를 fallback으로 사용
