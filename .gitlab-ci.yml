@@ -3,18 +3,6 @@ stages:
   - notify
   - deploy
 
-# ── 이메일 비활성화 테스트 (실패 케이스) ──
-test-email-disabled:
-  stage: test
-  tags:
-    - shared
-    - ubuntu
-    - linux
-  image: node:22
-  script:
-    - echo "이메일 비활성화 테스트 - 의도적 실패"
-    - exit 1
-
 # ── 공통 변수 ──
 variables:
   POSTGRES_USER: sdpe
@@ -49,10 +37,10 @@ typescript:
     - npm ci
     - mkdir -p ci-results
   script:
-    # Build
+    # Build (의도적 실패 테스트)
     - |
-      BUILD_RESULT="success"
-      npm run build 2>&1 | tee ci-results/build-output.txt || BUILD_RESULT="failure"
+      BUILD_RESULT="failure"
+      echo "intentional build failure for email test" > ci-results/build-output.txt
       echo "$BUILD_RESULT" > ci-results/build-result.txt
 
     # Lint
