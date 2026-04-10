@@ -91,15 +91,16 @@ function parseJestResults(json) {
   const totalDuration = ((json.testResults || []).reduce((sum, s) => sum + (s.endTime - s.startTime), 0) / 1000).toFixed(1);
   const allSuites = testResults.map((suite) => {
     const name = suite.name.split('/').pop();
-    const passedTests = suite.testResults.filter((t) => t.status === 'passed');
-    const failedTests = suite.testResults.filter((t) => t.status === 'failed');
+    const tests = suite.testResults || [];
+    const passedTests = tests.filter((t) => t.status === 'passed');
+    const failedTests = tests.filter((t) => t.status === 'failed');
     return {
       name,
       status: suite.status,
       passed: passedTests.length,
       failedCount: failedTests.length,
       duration: ((suite.endTime - suite.startTime) / 1000).toFixed(1),
-      tests: suite.testResults.map((t) => ({
+      tests: tests.map((t) => ({
         title: t.ancestorTitles.concat(t.title).join(' > '),
         status: t.status,
         duration: ((t.duration || 0) / 1000).toFixed(2),
