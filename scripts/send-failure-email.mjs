@@ -384,21 +384,83 @@ const html = `<!DOCTYPE html>
 </body>
 </html>`;
 
-// ── 6. 이메일 발송 ──
+// ── 6. 수신자 결정 (Owner/Maintainer + 커밋 푸시자) ──
+
+async function resolveRecipients() {
+  const recipients = new Set();
+
+  // 커밋 푸시자 이메일
+  const pusherEmail = process.env.GITLAB_USER_EMAIL;
+  if (pusherEmail) recipients.add(pusherEmail);
+
+  // CI_COMMIT_AUTHOR 에서 이메일 추출 (형식: "Name <email>")
+  const commitAuthor = process.env.CI_COMMIT_AUTHOR || '';
+  const authorMatch = commitAuthor.match(/<(.+?)>/);
+  if (authorMatch) recipients.add(authorMatch[1]);
+
+  // GitLab API로 Owner(50) + Maintainer(40) 조회
+  const apiUrl = process.env.CI_API_V4_URL;
+  const projectId = process.env.CI_PROJECT_ID;
+  const jobToken = process.env.CI_JOB_TOKEN;
+
+  if (apiUrl && projectId && jobToken) {
+    for (const level of [50, 40]) {
+      try {
+        const res = await fetch(`${apiUrl}/projects/${projectId}/members?access_level=${level}&per_page=100`, {
+          headers: { 'JOB-TOKEN': jobToken },
+        });
+        if (res.ok) {
+          const members = await res.json();
+          for (const m of members) {
+            if (m.state === 'active') {
+              // member API에 email이 없을 수 있으므로 user API로 조회
+              try {
+                const userRes = await fetch(`${apiUrl}/users/${m.id}`, {
+                  headers: { 'JOB-TOKEN': jobToken },
+                });
+                if (userRes.ok) {
+                  const user = await userRes.json();
+                  if (user.email) recipients.add(user.email);
+                  else if (user.public_email) recipients.add(user.public_email);
+                }
+              } catch {
+                /* skip */
+              }
+            }
+          }
+        }
+      } catch {
+        /* skip */
+      }
+    }
+  }
+
+  // MAIL_TO 환경변수를 fallback으로 사용
+  if (recipients.size === 0) {
+    const fallback = process.env.MAIL_TO || 'dev-team@sdpe.local';
+    fallback.split(',').forEach((s) => recipients.add(s.trim()));
+  }
+
+  return [...recipients];
+}
+
+const mailTo = await resolveRecipients();
+console.log(`Recipients: ${mailTo.join(', ')}`);
+
+// ── 7. 이메일 발송 ──
 
 const smtpHost = process.env.SMTP_HOST;
 const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
 const smtpUser = process.env.SMTP_USER;
 const smtpPass = process.env.SMTP_PASS;
 const mailFrom = process.env.MAIL_FROM || 'ci-bot@sdpe.local';
-const mailTo = (process.env.MAIL_TO || 'dev-team@sdpe.local').split(',').map((s) => s.trim());
 
 if (!smtpHost) {
   console.error('SMTP_HOST is not set. Skipping email.');
+  console.log(`Recipients would be: ${mailTo.join(', ')}`);
   console.log('--- Generated email subject ---');
   console.log(subjectLine);
   console.log('--- Generated email saved to ci-results/failure-email.html ---');
-  // SMTP 미설정 시에도 HTML 파일은 저장
   const { writeFileSync: wf } = await import('node:fs');
   wf('ci-results/failure-email.html', html);
   process.exit(0);
