@@ -37,10 +37,10 @@ typescript:
     - npm ci
     - mkdir -p ci-results
   script:
-    # Build (의도적 실패 테스트)
+    # Build
     - |
-      BUILD_RESULT="failure"
-      echo "intentional build failure for email test" > ci-results/build-output.txt
+      BUILD_RESULT="success"
+      npm run build 2>&1 | tee ci-results/build-output.txt || BUILD_RESULT="failure"
       echo "$BUILD_RESULT" > ci-results/build-result.txt
 
     # Lint
