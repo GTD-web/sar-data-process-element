@@ -1,6 +1,19 @@
 stages:
   - test
+  - notify
   - deploy
+
+# ── 이메일 비활성화 테스트 (실패 케이스) ──
+test-email-disabled:
+  stage: test
+  tags:
+    - shared
+    - ubuntu
+    - linux
+  image: node:22
+  script:
+    - echo "이메일 비활성화 테스트 - 의도적 실패"
+    - exit 1
 
 # ── 공통 변수 ──
 variables:
@@ -117,6 +130,42 @@ python:
       - ci-results/
     expire_in: 7 days
   allow_failure: true
+
+# ── 실패 시 이메일 알림 ──
+notify:failure:
+  stage: notify
+  tags:
+    - shared
+    - ubuntu
+    - linux
+  image: node:22
+  needs:
+    - job: typescript
+      artifacts: true
+    - job: python
+      artifacts: true
+  when: always
+  script:
+    - |
+      # 실패가 없으면 스킵
+      FAIL_FOUND=false
+      for f in ci-results/*-result.txt; do
+        if [ -f "$f" ] && grep -q "failure" "$f"; then
+          FAIL_FOUND=true
+          break
+        fi
+      done
+      if [ "$FAIL_FOUND" = "false" ]; then
+        echo "No failures detected — skipping email."
+        exit 0
+      fi
+    - npm install nodemailer --no-save
+    - node scripts/send-failure-email.mjs
+  artifacts:
+    when: always
+    paths:
+      - ci-results/failure-email.html
+    expire_in: 7 days
 
 # ── GitLab Pages 보고서 ──
 pages:
