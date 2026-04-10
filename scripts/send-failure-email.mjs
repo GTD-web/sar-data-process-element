@@ -89,26 +89,26 @@ function parseJestResults(json) {
   if (!json) return null;
   const { numPassedTests = 0, numFailedTests = 0, numTotalTests = 0, testResults = [] } = json;
   const totalDuration = ((json.testResults || []).reduce((sum, s) => sum + (s.endTime - s.startTime), 0) / 1000).toFixed(1);
-  const failedSuites = testResults
-    .filter((s) => s.status === 'failed')
-    .map((suite) => {
-      const name = suite.name.split('/').pop();
-      const passedTests = suite.testResults.filter((t) => t.status === 'passed');
-      const failedTests = suite.testResults.filter((t) => t.status === 'failed');
-      return {
-        name,
-        passed: passedTests.length,
-        failedCount: failedTests.length,
-        duration: ((suite.endTime - suite.startTime) / 1000).toFixed(1),
-        tests: suite.testResults.map((t) => ({
-          title: t.ancestorTitles.concat(t.title).join(' > '),
-          status: t.status,
-          duration: ((t.duration || 0) / 1000).toFixed(2),
-          message: t.status === 'failed' ? (t.failureMessages || []).join('\n').slice(0, 500) : '',
-        })),
-      };
-    });
-  return { numPassedTests, numFailedTests, numTotalTests, totalDuration, failedSuites };
+  const allSuites = testResults.map((suite) => {
+    const name = suite.name.split('/').pop();
+    const passedTests = suite.testResults.filter((t) => t.status === 'passed');
+    const failedTests = suite.testResults.filter((t) => t.status === 'failed');
+    return {
+      name,
+      status: suite.status,
+      passed: passedTests.length,
+      failedCount: failedTests.length,
+      duration: ((suite.endTime - suite.startTime) / 1000).toFixed(1),
+      tests: suite.testResults.map((t) => ({
+        title: t.ancestorTitles.concat(t.title).join(' > '),
+        status: t.status,
+        duration: ((t.duration || 0) / 1000).toFixed(2),
+        message: t.status === 'failed' ? (t.failureMessages || []).join('\n').slice(0, 500) : '',
+      })),
+    };
+  });
+  const failedSuites = allSuites.filter((s) => s.status === 'failed');
+  return { numPassedTests, numFailedTests, numTotalTests, totalDuration, allSuites, failedSuites };
 }
 
 const unitResults = parseJestResults(testJson);
@@ -178,18 +178,23 @@ function buildE2eDetail() {
   return `(${e2eResults.numTotalTests} passed)`;
 }
 
-function failedTestSection(results, label) {
-  if (!results?.failedSuites?.length) return '';
+function testDetailSection(results) {
+  if (!results?.allSuites?.length) return '';
   let html = '';
-  for (const suite of results.failedSuites) {
+  for (const suite of results.allSuites) {
+    const isFailed = suite.status === 'failed';
+    const headerBg = isFailed ? '#fef2f2' : '#f0fdf4';
+    const icon = isFailed ? '<span style="color:#ef4444;font-weight:700">&#10007;</span>' : '<span style="color:#22c55e;font-weight:700">&#10003;</span>';
+    const nameColor = isFailed ? '#b91c1c' : '#374151';
+
     // 스위트 헤더
     html += `
       <div style="margin-bottom:16px">
-        <div style="background:#fef2f2;padding:8px 12px;border-radius:5px;margin-bottom:4px">
-          <span style="color:#ef4444;font-weight:700">&#10007;</span>
-          <span style="color:#b91c1c;font-weight:600;margin-left:6px">${escapeHtml(suite.name)}</span>
+        <div style="background:${headerBg};padding:8px 12px;border-radius:5px;margin-bottom:4px">
+          ${icon}
+          <span style="color:${nameColor};font-weight:600;margin-left:6px">${escapeHtml(suite.name)}</span>
           <span style="color:#22c55e;font-size:12px;margin-left:12px">${suite.passed} passed</span>
-          <span style="color:#ef4444;font-size:12px;margin-left:8px">${suite.failedCount} failed</span>
+          ${isFailed ? `<span style="color:#ef4444;font-size:12px;margin-left:8px">${suite.failedCount} failed</span>` : ''}
           <span style="color:#9ca3af;font-size:12px;margin-left:8px">${suite.duration}s</span>
         </div>`;
     // 개별 테스트 케이스
@@ -205,7 +210,7 @@ function failedTestSection(results, label) {
           </div>`;
       } else {
         html += `
-          <div style="background:${rowBg};padding:6px 10px 6px 28px;border-radius:3px">
+          <div style="background:#fef2f2;padding:6px 10px 6px 28px;border-radius:3px">
             <span style="color:#ef4444;font-weight:700">&#10007;</span>
             <span style="color:#b91c1c;font-weight:600;font-size:12px;margin-left:4px">${escapeHtml(t.title)}</span>
             <span style="color:#9ca3af;font-size:11px;margin-left:8px">${t.duration}s</span>
@@ -311,17 +316,17 @@ const html = `<!DOCTYPE html>
     </table>
   </div>
 
-  <!-- Failed Test Details -->
+  <!-- Test Details -->
   ${
-    unitResults?.failedSuites?.length || e2eResults?.failedSuites?.length
+    unitResults?.allSuites?.length || e2eResults?.allSuites?.length
       ? `
   <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px 20px;margin-bottom:20px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div style="font-size:13px;font-weight:700;color:#111827">실패 테스트 상세</div>
-      <span style="background:#fef2f2;color:#b91c1c;padding:2px 12px;border-radius:10px;font-size:11px;font-weight:700">${failedSuiteCount} suites / ${totalFailed} failures</span>
+      <div style="font-size:13px;font-weight:700;color:#111827">테스트 상세</div>
+      ${totalFailed > 0 ? `<span style="background:#fef2f2;color:#b91c1c;padding:2px 12px;border-radius:10px;font-size:11px;font-weight:700">${failedSuiteCount} suites / ${totalFailed} failures</span>` : `<span style="background:#f0fdf4;color:#166534;padding:2px 12px;border-radius:10px;font-size:11px;font-weight:700">${unitResults?.allSuites?.length || 0} suites / all passed</span>`}
     </div>
-    ${failedTestSection(unitResults, 'Unit')}
-    ${failedTestSection(e2eResults, 'E2E')}
+    ${testDetailSection(unitResults)}
+    ${testDetailSection(e2eResults)}
   </div>`
       : ''
   }
