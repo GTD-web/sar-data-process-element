@@ -186,9 +186,24 @@ pages:
     # 보고서 생성 (reports/ 에 HTML 생성됨)
     - node scripts/generate-ci-report.mjs
 
-    # GitLab Pages는 public/ 디렉토리를 서빙
+    # 호스트 영구 저장소에 이번 보고서 누적 (Runner volume mount 필요: /var/lib/sdpe-reports:/sdpe-reports)
+    - |
+      if [ -d /sdpe-reports ]; then
+        mkdir -p /sdpe-reports
+        cp -r reports/* /sdpe-reports/ 2>/dev/null || true
+        echo "Reports archived to /sdpe-reports (host: /var/lib/sdpe-reports)"
+      else
+        echo "WARNING: /sdpe-reports mount not found. Check runner config.toml volumes."
+      fi
+
+    # GitLab Pages는 public/ 디렉토리를 서빙 — 호스트 저장소의 전체 히스토리를 복사
     - mkdir -p public
-    - cp -r reports/* public/
+    - |
+      if [ -d /sdpe-reports ] && [ "$(ls -A /sdpe-reports 2>/dev/null)" ]; then
+        cp -r /sdpe-reports/* public/
+      else
+        cp -r reports/* public/
+      fi
 
     # index.html 생성 (보고서 목록 페이지)
     - |
