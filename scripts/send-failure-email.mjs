@@ -88,25 +88,27 @@ const e2eJson = readJsonOr(`${ciDir}/test-e2e.json`, null);
 function parseJestResults(json) {
   if (!json) return null;
   const { numPassedTests = 0, numFailedTests = 0, numTotalTests = 0, testResults = [] } = json;
+  const totalDuration = ((json.testResults || []).reduce((sum, s) => sum + (s.endTime - s.startTime), 0) / 1000).toFixed(1);
   const failedSuites = testResults
     .filter((s) => s.status === 'failed')
     .map((suite) => {
       const name = suite.name.split('/').pop();
-      const passed = suite.testResults.filter((t) => t.status === 'passed').length;
-      const failed = suite.testResults.filter((t) => t.status === 'failed');
+      const passedTests = suite.testResults.filter((t) => t.status === 'passed');
+      const failedTests = suite.testResults.filter((t) => t.status === 'failed');
       return {
         name,
-        passed,
-        failedCount: failed.length,
+        passed: passedTests.length,
+        failedCount: failedTests.length,
         duration: ((suite.endTime - suite.startTime) / 1000).toFixed(1),
-        failures: failed.map((t) => ({
+        tests: suite.testResults.map((t) => ({
           title: t.ancestorTitles.concat(t.title).join(' > '),
+          status: t.status,
           duration: ((t.duration || 0) / 1000).toFixed(2),
-          message: (t.failureMessages || []).join('\n').slice(0, 500),
+          message: t.status === 'failed' ? (t.failureMessages || []).join('\n').slice(0, 500) : '',
         })),
       };
     });
-  return { numPassedTests, numFailedTests, numTotalTests, failedSuites };
+  return { numPassedTests, numFailedTests, numTotalTests, totalDuration, failedSuites };
 }
 
 const unitResults = parseJestResults(testJson);
@@ -180,6 +182,7 @@ function failedTestSection(results, label) {
   if (!results?.failedSuites?.length) return '';
   let html = '';
   for (const suite of results.failedSuites) {
+    // 스위트 헤더
     html += `
       <div style="margin-bottom:16px">
         <div style="background:#fef2f2;padding:8px 12px;border-radius:5px;margin-bottom:4px">
@@ -189,16 +192,26 @@ function failedTestSection(results, label) {
           <span style="color:#ef4444;font-size:12px;margin-left:8px">${suite.failedCount} failed</span>
           <span style="color:#9ca3af;font-size:12px;margin-left:8px">${suite.duration}s</span>
         </div>`;
-    for (const fail of suite.failures) {
-      html += `
-        <div style="padding:4px 12px 4px 28px">
-          <div style="background:#fef2f2;padding:6px 10px;border-radius:3px;margin-bottom:4px">
+    // 개별 테스트 케이스
+    for (let i = 0; i < suite.tests.length; i++) {
+      const t = suite.tests[i];
+      const rowBg = t.status === 'failed' ? '#fef2f2' : i % 2 === 0 ? '#fff' : '#f9fafb';
+      if (t.status === 'passed') {
+        html += `
+          <div style="background:${rowBg};padding:6px 10px 6px 28px;border-radius:3px">
+            <span style="color:#22c55e;font-weight:700">&#10003;</span>
+            <span style="color:#374151;font-size:12px;margin-left:4px">${escapeHtml(t.title)}</span>
+            <span style="color:#9ca3af;font-size:11px;margin-left:8px">${t.duration}s</span>
+          </div>`;
+      } else {
+        html += `
+          <div style="background:${rowBg};padding:6px 10px 6px 28px;border-radius:3px">
             <span style="color:#ef4444;font-weight:700">&#10007;</span>
-            <span style="color:#b91c1c;font-weight:600;margin-left:4px;font-size:12px">${escapeHtml(fail.title)}</span>
-            <span style="color:#9ca3af;font-size:11px;margin-left:8px">${fail.duration}s</span>
+            <span style="color:#b91c1c;font-weight:600;font-size:12px;margin-left:4px">${escapeHtml(t.title)}</span>
+            <span style="color:#9ca3af;font-size:11px;margin-left:8px">${t.duration}s</span>
           </div>
-          <pre style="background:#1e1e2e;color:#e5e7eb;padding:12px;border-radius:6px;font-size:11px;overflow-x:auto;margin:4px 0 8px 0;line-height:1.5">${escapeHtml(fail.message)}</pre>
-        </div>`;
+          <pre style="background:#1e1e2e;color:#e5e7eb;padding:12px;border-radius:6px;font-size:11px;overflow-x:auto;margin:4px 28px 8px 28px;line-height:1.5">${escapeHtml(t.message)}</pre>`;
+      }
     }
     html += '</div>';
   }
@@ -337,6 +350,11 @@ const html = `<!DOCTYPE html>
         <td style="background:#fef2f2;padding:10px;border-radius:8px;width:25%">
           <div style="color:#9ca3af;font-size:10px;letter-spacing:1px">FAILED</div>
           <div style="font-size:18px;font-weight:700;color:#ef4444">${totalFailed}</div>
+        </td>
+        <td style="width:8px"></td>
+        <td style="background:#f9fafb;padding:10px;border-radius:8px;width:25%">
+          <div style="color:#9ca3af;font-size:10px;letter-spacing:1px">DURATION</div>
+          <div style="font-size:18px;font-weight:700;color:#374151">${unitResults?.totalDuration || e2eResults?.totalDuration || '-'}s</div>
         </td>
       </tr>
     </table>
