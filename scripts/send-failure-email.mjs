@@ -248,8 +248,13 @@ const subjectLine = `[FAILED] CI/CD 파이프라인 실패 - ${branch}@${shortSh
 
 const html = `<!DOCTYPE html>
 <html lang="ko">
-<head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1a1a2e">
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
+</style>
+</head>
+<body style="margin:0;padding:0;background:#f8f9fa;font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1a1a2e">
 <div style="max-width:880px;margin:0 auto;padding:24px">
 
   <!-- Alert Banner -->
