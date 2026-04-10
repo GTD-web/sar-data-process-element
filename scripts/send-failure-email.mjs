@@ -389,60 +389,22 @@ const html = `<!DOCTYPE html>
 async function resolveRecipients() {
   const recipients = new Set();
 
-  // 커밋 푸시자 이메일
+  // 1. Owner/Maintainer 이메일 (환경변수로 관리)
+  const owners = process.env.MAIL_OWNERS || '';
+  if (owners) {
+    owners.split(',').map((s) => s.trim()).filter(Boolean).forEach((e) => recipients.add(e));
+  }
+
+  // 2. 커밋 푸시자 이메일
   const pusherEmail = process.env.GITLAB_USER_EMAIL;
   if (pusherEmail) recipients.add(pusherEmail);
 
-  // CI_COMMIT_AUTHOR 에서 이메일 추출 (형식: "Name <email>")
+  // 3. 커밋 작성자 이메일
   const commitAuthor = process.env.CI_COMMIT_AUTHOR || '';
   const authorMatch = commitAuthor.match(/<(.+?)>/);
   if (authorMatch) recipients.add(authorMatch[1]);
 
-  // GitLab API로 Owner(50) + Maintainer(40) 조회
-  const apiUrl = process.env.CI_API_V4_URL;
-  const projectId = process.env.CI_PROJECT_ID;
-  const apiToken = process.env.GITLAB_API_TOKEN || process.env.CI_JOB_TOKEN;
-  const authHeader = process.env.GITLAB_API_TOKEN
-    ? { 'PRIVATE-TOKEN': process.env.GITLAB_API_TOKEN }
-    : { 'JOB-TOKEN': process.env.CI_JOB_TOKEN };
-
-  if (apiUrl && projectId && apiToken) {
-    for (const level of [50, 40]) {
-      const levelName = level === 50 ? 'Owner' : 'Maintainer';
-      try {
-        const url = `${apiUrl}/projects/${projectId}/members/all?access_level=${level}&per_page=100`;
-        console.log(`Fetching ${levelName}s...`);
-        const res = await fetch(url, { headers: authHeader });
-        if (res.ok) {
-          const members = await res.json();
-          console.log(`  Found ${members.length} ${levelName}(s): ${members.map((m) => m.username).join(', ')}`);
-          for (const m of members) {
-            if (m.state === 'active') {
-              try {
-                const userRes = await fetch(`${apiUrl}/users/${m.id}`, { headers: authHeader });
-                if (userRes.ok) {
-                  const user = await userRes.json();
-                  const email = user.email || user.public_email || user.commit_email;
-                  if (email) {
-                    console.log(`  ${m.username}: ${email}`);
-                    recipients.add(email);
-                  }
-                }
-              } catch {
-                /* skip */
-              }
-            }
-          }
-        } else {
-          console.log(`  ${levelName} fetch failed: ${res.status}`);
-        }
-      } catch (e) {
-        console.log(`  Fetch error: ${e.message}`);
-      }
-    }
-  }
-
-  // MAIL_TO 환경변수를 fallback으로 사용
+  // fallback
   if (recipients.size === 0) {
     const fallback = process.env.MAIL_TO || 'dev-team@sdpe.local';
     fallback.split(',').forEach((s) => recipients.add(s.trim()));
