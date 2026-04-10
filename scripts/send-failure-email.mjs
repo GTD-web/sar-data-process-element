@@ -410,12 +410,13 @@ async function resolveRecipients() {
     for (const level of [50, 40]) {
       const levelName = level === 50 ? 'Owner' : 'Maintainer';
       try {
-        const url = `${apiUrl}/projects/${projectId}/members/all?access_level=${level}&per_page=100`;
+        const url = `${apiUrl}/projects/${projectId}/members?access_level=${level}&per_page=100`;
         console.log(`Fetching ${levelName}s...`);
         const res = await fetch(url, { headers: authHeader });
         if (res.ok) {
-          const members = await res.json();
-          console.log(`  Found ${members.length} ${levelName}(s): ${members.map((m) => m.username).join(', ')}`);
+          const allMembers = await res.json();
+          const members = allMembers.filter((m) => m.access_level >= level);
+          console.log(`  Found ${members.length} ${levelName}(s): ${members.map((m) => `${m.username}(${m.access_level})`).join(', ')}`);
           for (const m of members) {
             if (m.state === 'active') {
               try {
