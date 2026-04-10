@@ -91,7 +91,7 @@ function parseJestResults(json) {
   const totalDuration = ((json.testResults || []).reduce((sum, s) => sum + (s.endTime - s.startTime), 0) / 1000).toFixed(1);
   const allSuites = testResults.map((suite) => {
     const name = suite.name.split('/').pop();
-    const tests = suite.testResults || [];
+    const tests = suite.assertionResults || suite.testResults || [];
     const passedTests = tests.filter((t) => t.status === 'passed');
     const failedTests = tests.filter((t) => t.status === 'failed');
     return {
