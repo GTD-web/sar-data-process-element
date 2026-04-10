@@ -380,6 +380,7 @@ const transporter = createTransport({
   port: smtpPort,
   secure: smtpPort === 465,
   auth: smtpUser ? { user: smtpUser, pass: smtpPass } : undefined,
+  tls: { rejectUnauthorized: false },
 });
 
 try {
