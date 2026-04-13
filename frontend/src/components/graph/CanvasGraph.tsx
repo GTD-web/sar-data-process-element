@@ -144,24 +144,11 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
         const tgtPos = outEdge ? positionsRef.current.get(outEdge.target) : null;
 
         if (srcPos && tgtPos) {
-          const gap = tgtPos.x - srcPos.x;
-          const midY = (srcPos.y + tgtPos.y) / 2;
-          const shiftAmount = gap;
-          const toShift = new Set<number>();
-          const queue = [outEdge!.target];
-          while (queue.length > 0) {
-            const current = queue.shift()!;
-            if (toShift.has(current)) continue;
-            toShift.add(current);
-            for (const e of pipelineEdges) {
-              if (e.source === current) queue.push(e.target);
-            }
-          }
-          for (const order of toShift) {
-            const pos = positionsRef.current.get(order);
-            if (pos) positionsRef.current.set(order, { x: pos.x + shiftAmount, y: pos.y });
-          }
-          positionsRef.current.set(step.order, { x: srcPos.x + gap, y: midY });
+          // Place at the midpoint between source and target — no shifting
+          positionsRef.current.set(step.order, {
+            x: (srcPos.x + tgtPos.x) / 2,
+            y: (srcPos.y + tgtPos.y) / 2,
+          });
         } else if (srcPos) {
           const siblings = pipelineEdges.filter((e) => e.source === inEdge!.source);
           const branchIdx = siblings.findIndex((e) => e.target === step.order);
@@ -242,10 +229,11 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
         fitView proOptions={{ hideAttribution: true }}
         minZoom={0.2} maxZoom={2} className="bg-background"
         nodesDraggable={editable} nodesConnectable={editable} elementsSelectable
+        snapToGrid snapGrid={[20, 20]}
         connectionLineStyle={{ stroke: '#3b82f6', strokeWidth: 2 }}
         defaultEdgeOptions={{ style: { stroke: 'transparent', strokeWidth: 0 } }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#1e293b" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1e293b" />
         <Controls showInteractive={false} position="bottom-left" className="!bg-card !border-border !shadow-lg [&>button]:!bg-muted [&>button]:!border-border [&>button]:!text-foreground" />
         <MiniMap
           nodeColor={(n) => { const d = n.data as PipelineNodeData; return d.status === 'COMPLETED' ? '#10b981' : d.status === 'RUNNING' ? '#3b82f6' : d.status === 'FAILED' ? '#ef4444' : '#334155'; }}
