@@ -24,16 +24,21 @@ const CSC_OPTIONS: CscOption[] = [
 
 interface AddStepPanelProps {
   insertAfterOrder: number;
+  insertBeforeOrder?: number;
   onSelect: (afterOrder: number, targetCsc: TargetCsc, productLevel: ProductLevel) => void;
 }
 
-export default function AddStepPanel({ insertAfterOrder, onSelect }: AddStepPanelProps) {
+export default function AddStepPanel({ insertAfterOrder, insertBeforeOrder, onSelect }: AddStepPanelProps) {
+  const description = insertBeforeOrder !== undefined
+    ? `단계 #${insertAfterOrder}과 #${insertBeforeOrder} 사이에 추가할 단계를 선택하세요.`
+    : insertAfterOrder === 0
+      ? '파이프라인 맨 앞에 추가할 단계를 선택하세요.'
+      : `단계 #${insertAfterOrder} 뒤에 추가할 단계를 선택하세요.`;
+
   return (
     <div className="p-4 space-y-3">
       <div className="text-xs text-muted-foreground">
-        {insertAfterOrder === 0
-          ? '파이프라인 맨 앞에 추가할 단계를 선택하세요.'
-          : `단계 #${insertAfterOrder} 뒤에 추가할 단계를 선택하세요.`}
+        {description}
       </div>
 
       <div className="space-y-2">

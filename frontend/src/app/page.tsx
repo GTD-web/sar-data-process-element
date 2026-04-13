@@ -148,9 +148,18 @@ export default function ConsolePage() {
     [selectedPipeline, updatePipeline, consoleMode],
   );
 
+  const handleDeleteEdge = useCallback(
+    (sourceOrder: number, targetOrder: number) => {
+      if (!selectedPipeline) return;
+      const newEdges = selectedPipeline.edges.filter((e) => !(e.source === sourceOrder && e.target === targetOrder));
+      updatePipeline({ edges: newEdges });
+    },
+    [selectedPipeline, updatePipeline],
+  );
+
   const handleAddNode = useCallback(
-    (afterOrder: number) => {
-      setConsoleMode({ type: 'addStep', afterOrder });
+    (afterOrder: number, beforeOrder?: number) => {
+      setConsoleMode({ type: 'addStep', afterOrder, beforeOrder });
       setRightTab('console');
       setRightCollapsed(false);
     },
@@ -165,14 +174,23 @@ export default function ConsolePage() {
         { targetCsc, productLevel },
       ];
       const newOrder = newSteps.length; // new step gets the last order
-      const newEdges = [...selectedPipeline.edges];
-      if (afterOrder > 0) {
+      const beforeOrder = consoleMode.type === 'addStep' ? consoleMode.beforeOrder : undefined;
+      let newEdges = [...selectedPipeline.edges];
+      if (beforeOrder !== undefined) {
+        // Inserting between two nodes: remove old edge, add two new edges
+        newEdges = newEdges.filter((e) => !(e.source === afterOrder && e.target === beforeOrder));
         newEdges.push({ source: afterOrder, target: newOrder });
+        newEdges.push({ source: newOrder, target: beforeOrder });
+      } else {
+        // Appending after a node
+        if (afterOrder > 0) {
+          newEdges.push({ source: afterOrder, target: newOrder });
+        }
       }
       updatePipeline({ steps: newSteps, edges: newEdges });
       setConsoleMode({ type: 'idle' });
     },
-    [selectedPipeline, updatePipeline],
+    [selectedPipeline, updatePipeline, consoleMode],
   );
 
   const handleSaveNode = useCallback(
@@ -253,29 +271,28 @@ export default function ConsolePage() {
   }, [service]);
 
   return (
-    <div className="h-full flex flex-col">
-      <TopBar pipeline={selectedPipeline} queues={queues} />
+    <div className="h-full flex overflow-hidden">
+      {/* Left: Pipelines + Settings */}
+      <LeftSidebar
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed((v) => !v)}
+        pipelines={pipelines}
+        selectedPipelineId={selectedPipelineId}
+        selectedPipelineName={selectedPipeline?.name ?? null}
+        onSelectPipeline={(id) => {
+          setSelectedPipelineId(id);
+          setSelectedJob(null);
+          setConsoleMode({ type: 'idle' });
+        }}
+        onCreatePipeline={handleCreatePipeline}
+        stats={stats}
+        alertCount={unackedAlerts.length}
+        onAlertClick={() => setAlertModalOpen(true)}
+      />
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left: Pipelines + Settings */}
-        <LeftSidebar
-          collapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed((v) => !v)}
-          pipelines={pipelines}
-          selectedPipelineId={selectedPipelineId}
-          onSelectPipeline={(id) => {
-            setSelectedPipelineId(id);
-            setSelectedJob(null);
-            setConsoleMode({ type: 'idle' });
-          }}
-          onCreatePipeline={handleCreatePipeline}
-          stats={stats}
-          alertCount={unackedAlerts.length}
-          onAlertClick={() => setAlertModalOpen(true)}
-        />
-
-        {/* Center: Canvas */}
-        <div className="flex-1 relative overflow-hidden">
+      {/* Center: Canvas */}
+      <div className="flex-1 relative overflow-hidden">
+        <TopBar queues={queues} />
           {graphSteps.length > 0 ? (
             <CanvasGraph
               pipelineId={selectedPipelineId}
@@ -286,6 +303,7 @@ export default function ConsolePage() {
               onDeleteNode={handleDeleteNode}
               onAddNode={handleAddNode}
               onConnect={handleConnect}
+              onDeleteEdge={handleDeleteEdge}
             />
           ) : (
             <div className="h-full flex flex-col items-center justify-center bg-background text-muted-foreground gap-3">
@@ -300,8 +318,8 @@ export default function ConsolePage() {
           )}
         </div>
 
-        {/* Right: Tabbed Panel */}
-        <RightTabbedPanel
+      {/* Right: Tabbed Panel */}
+      <RightTabbedPanel
           collapsed={rightCollapsed}
           onToggle={() => setRightCollapsed((v) => !v)}
           activeTab={rightTab}
@@ -333,8 +351,7 @@ export default function ConsolePage() {
           {rightTab === 'audit' && (
             <AuditTab events={auditEvents} onSelectJob={handleSelectJob} />
           )}
-        </RightTabbedPanel>
-      </div>
+      </RightTabbedPanel>
 
       {/* Alert Modal */}
       <AlertModal

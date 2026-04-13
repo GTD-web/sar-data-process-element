@@ -62,27 +62,20 @@ body {
   animation: status-pulse 2s ease-in-out infinite;
 }
 
-/* Add-node button: invisible by default, visible on hover via a larger hit area */
-.react-flow__node-addButton {
-  padding: 20px;
-  margin: -20px;
-}
-.react-flow__node-addButton .add-node-trigger {
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-.react-flow__node-addButton:hover .add-node-trigger {
-  opacity: 1;
-}
-
 /* Node handles: semi-transparent by default, visible on hover */
 .react-flow__node-pipeline .react-flow__handle {
   opacity: 0.4;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.2s ease, transform 0.15s ease, background-color 0.15s ease;
+  z-index: 10;
 }
 .react-flow__node-pipeline:hover .react-flow__handle,
 .react-flow__node-pipeline.selected .react-flow__handle {
   opacity: 1;
+}
+
+/* Edge paths: smooth color/width transition on hover */
+.react-flow__edge path.react-flow__edge-path {
+  transition: stroke 0.25s ease, stroke-width 0.25s ease;
 }
 
 /* Connection line styling */
@@ -91,7 +84,13 @@ body {
   stroke-width: 2px;
 }
 
-/* Edge labels area — no background for cleaner look */
+/* Wider hover hit area for edges */
 .react-flow__edge-interaction {
   stroke-width: 20px;
+}
+
+/* Prevent edge selection from changing stroke color */
+.react-flow__edge.selected path.react-flow__edge-path,
+.react-flow__edge.selected path {
+  stroke: inherit;
 }

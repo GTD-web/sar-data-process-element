@@ -10,7 +10,7 @@ import { GitBranch, MousePointer } from 'lucide-react';
 export type ConsoleMode =
   | { type: 'idle' }
   | { type: 'node'; step: PipelineStepDefinition }
-  | { type: 'addStep'; afterOrder: number }
+  | { type: 'addStep'; afterOrder: number; beforeOrder?: number }
   | { type: 'job'; job: JobDetail }
   | { type: 'pipelineProps'; pipeline: PipelineDefinition };
 
@@ -50,6 +50,7 @@ export default function ConsoleTab({
     return (
       <AddStepPanel
         insertAfterOrder={mode.afterOrder}
+        insertBeforeOrder={mode.beforeOrder}
         onSelect={onConfirmAddStep}
       />
     );
