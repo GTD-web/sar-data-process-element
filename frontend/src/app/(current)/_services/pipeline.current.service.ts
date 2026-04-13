@@ -1,0 +1,148 @@
+/**
+ * Pipeline Current Service (Current 환경)
+ *
+ * 실제 백엔드 API와 연결되는 서비스 구현체.
+ * TODO: API route handler 연결 시 각 메서드를 실제 fetch 호출로 교체.
+ */
+
+import type { IPipelineUIService } from '@/services/pipeline.service.interface';
+import type {
+  Alert,
+  AuditEvent,
+  CreatePipelineData,
+  DashboardStats,
+  JobDetail,
+  JobSummary,
+  PaginatedResponse,
+  PipelineDefinition,
+  QueueHealth,
+  ServiceResponse,
+  ServiceResponseWithData,
+  UpdatePipelineData,
+} from '@/types/pipeline';
+
+const API_BASE = '/api/pipeline';
+
+async function handleResponse<T>(res: Response, errorMsg: string): Promise<ServiceResponseWithData<T>> {
+  if (!res.ok) {
+    return { success: false, message: `${errorMsg}: ${res.status}` };
+  }
+  const data = (await res.json()) as T;
+  return { success: true, message: 'OK', data };
+}
+
+export const pipelineCurrentService: IPipelineUIService = {
+  async 대시보드_통계를_조회한다(): Promise<ServiceResponseWithData<DashboardStats>> {
+    const res = await fetch(`${API_BASE}/dashboard/stats`);
+    return handleResponse(res, '대시보드 통계 조회 실패');
+  },
+
+  async Job_목록을_조회한다(params?: {
+    status?: string;
+    from?: string;
+    to?: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<ServiceResponseWithData<PaginatedResponse<JobSummary>>> {
+    const query = new URLSearchParams();
+    if (params?.status) query.set('status', params.status);
+    if (params?.from) query.set('from', params.from);
+    if (params?.to) query.set('to', params.to);
+    if (params?.cursor) query.set('cursor', params.cursor);
+    if (params?.limit) query.set('limit', String(params.limit));
+    const res = await fetch(`${API_BASE}/jobs?${query}`);
+    return handleResponse(res, 'Job 목록 조회 실패');
+  },
+
+  async Job_상세를_조회한다(jobId: string): Promise<ServiceResponseWithData<JobDetail>> {
+    const res = await fetch(`${API_BASE}/jobs/${jobId}`);
+    return handleResponse(res, 'Job 상세 조회 실패');
+  },
+
+  async Job을_재처리한다(jobId: string, targetLevel?: string): Promise<ServiceResponse> {
+    const res = await fetch(`${API_BASE}/jobs/${jobId}/reprocess`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetLevel }),
+    });
+    if (!res.ok) return { success: false, message: `Job 재처리 실패: ${res.status}` };
+    return { success: true, message: 'OK' };
+  },
+
+  async Job을_취소한다(jobId: string): Promise<ServiceResponse> {
+    const res = await fetch(`${API_BASE}/jobs/${jobId}/cancel`, { method: 'POST' });
+    if (!res.ok) return { success: false, message: `Job 취소 실패: ${res.status}` };
+    return { success: true, message: 'OK' };
+  },
+
+  async Alert_목록을_조회한다(params?: {
+    acknowledged?: boolean;
+  }): Promise<ServiceResponseWithData<Alert[]>> {
+    const query = new URLSearchParams();
+    if (params?.acknowledged !== undefined) query.set('acknowledged', String(params.acknowledged));
+    const res = await fetch(`${API_BASE}/alerts?${query}`);
+    return handleResponse(res, 'Alert 목록 조회 실패');
+  },
+
+  async Alert을_확인한다(alertId: string): Promise<ServiceResponse> {
+    const res = await fetch(`${API_BASE}/alerts/${alertId}/acknowledge`, { method: 'POST' });
+    if (!res.ok) return { success: false, message: `Alert 확인 실패: ${res.status}` };
+    return { success: true, message: 'OK' };
+  },
+
+  async 감사로그를_조회한다(params?: {
+    jobId?: string;
+    from?: string;
+    to?: string;
+    page?: number;
+    size?: number;
+  }): Promise<ServiceResponseWithData<PaginatedResponse<AuditEvent>>> {
+    const query = new URLSearchParams();
+    if (params?.jobId) query.set('jobId', params.jobId);
+    if (params?.from) query.set('from', params.from);
+    if (params?.to) query.set('to', params.to);
+    if (params?.page) query.set('page', String(params.page));
+    if (params?.size) query.set('size', String(params.size));
+    const res = await fetch(`${API_BASE}/audit?${query}`);
+    return handleResponse(res, '감사로그 조회 실패');
+  },
+
+  async 큐_상태를_조회한다(): Promise<ServiceResponseWithData<QueueHealth[]>> {
+    const res = await fetch(`${API_BASE}/queues/health`);
+    return handleResponse(res, '큐 상태 조회 실패');
+  },
+
+  async 파이프라인_목록을_조회한다(): Promise<ServiceResponseWithData<PipelineDefinition[]>> {
+    const res = await fetch(`${API_BASE}/pipelines`);
+    return handleResponse(res, '파이프라인 목록 조회 실패');
+  },
+
+  async 파이프라인을_조회한다(id: string): Promise<ServiceResponseWithData<PipelineDefinition>> {
+    const res = await fetch(`${API_BASE}/pipelines/${id}`);
+    return handleResponse(res, '파이프라인 조회 실패');
+  },
+
+  async 파이프라인을_생성한다(data: CreatePipelineData): Promise<ServiceResponseWithData<PipelineDefinition>> {
+    const res = await fetch(`${API_BASE}/pipelines`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res, '파이프라인 생성 실패');
+  },
+
+  async 파이프라인을_수정한다(id: string, data: UpdatePipelineData): Promise<ServiceResponseWithData<PipelineDefinition>> {
+    const res = await fetch(`${API_BASE}/pipelines/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res, '파이프라인 수정 실패');
+  },
+
+  async 파이프라인을_삭제한다(id: string): Promise<ServiceResponse> {
+    const res = await fetch(`${API_BASE}/pipelines/${id}`, { method: 'DELETE' });
+    if (!res.ok) return { success: false, message: `파이프라인 삭제 실패: ${res.status}` };
+    return { success: true, message: 'OK' };
+  },
+};

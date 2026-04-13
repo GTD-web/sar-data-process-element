@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { usePipelineService } from '@/services/usePipelineService';
+import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import TopBar from '@/components/panels/TopBar';
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import RightTabbedPanel, { type RightTab } from '@/components/panels/RightTabbedPanel';

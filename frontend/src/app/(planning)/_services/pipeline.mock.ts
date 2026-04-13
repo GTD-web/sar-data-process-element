@@ -1,4 +1,4 @@
-import type { IPipelineUIService } from './pipeline.service.interface';
+import type { IPipelineUIService } from '@/services/pipeline.service.interface';
 import type {
   Alert,
   AuditEvent,
@@ -215,7 +215,7 @@ function generateQueueHealth(): QueueHealth[] {
   });
 }
 
-/** 순차 steps → steps + edges 변환 */
+/** 순차 steps -> steps + edges 변환 */
 function toDAGSteps(flat: { targetCsc: TargetCsc; productLevel: ProductLevel }[]) {
   const steps = flat.map((s, i) => ({
     order: i + 1,

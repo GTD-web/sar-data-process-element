@@ -16,6 +16,7 @@ libs/
   sdpe-database/  # DB 모듈 (@sdpe/database) - TypeORM + PostgreSQL
 algorithms/
   csc03_range_compression/       # Python SAR 알고리즘 (mypy + ruff)
+frontend/                        # Next.js 프론트엔드 (별도 CLAUDE.md 참고)
 ```
 
 ## 주요 명령어
