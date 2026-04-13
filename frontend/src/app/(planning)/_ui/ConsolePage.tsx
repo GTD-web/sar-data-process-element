@@ -86,14 +86,18 @@ export default function ConsolePage() {
   const canvasEditable = !selectedJob;
 
   const graphSteps: PipelineStep[] = selectedPipeline
-    ? selectedPipeline.steps.map((s) => ({
-        order: s.order,
-        targetCsc: s.targetCsc,
-        productLevel: s.productLevel,
-        status: selectedJob ? (selectedJob.steps.find((js) => js.order === s.order)?.status ?? 'PENDING') : 'PENDING',
-        durationMs: selectedJob ? selectedJob.steps.find((js) => js.order === s.order)?.durationMs : undefined,
-        errorMessage: selectedJob ? selectedJob.steps.find((js) => js.order === s.order)?.errorMessage : undefined,
-      }))
+    ? selectedPipeline.steps.map((s) => {
+        const jobStep = selectedJob ? selectedJob.steps.find((js) => js.order === s.order) : undefined;
+        return {
+          order: s.order,
+          kind: s.kind,
+          targetCsc: s.targetCsc,
+          productLevel: s.productLevel,
+          status: jobStep?.status ?? 'PENDING',
+          durationMs: jobStep?.durationMs,
+          errorMessage: jobStep?.errorMessage,
+        };
+      })
     : [];
 
   const graphEdges = selectedPipeline?.edges ?? [];
@@ -111,8 +115,22 @@ export default function ConsolePage() {
   // --- Canvas handlers ---
   const handleNodeClick = useCallback(
     (stepOrder: number) => {
-      if (selectedJob) return;
       const step = selectedPipeline?.steps.find((s) => s.order === stepOrder);
+
+      // D-01: TRIGGER 노드 클릭 — job 선택 여부와 관계없이 수신 정보 표시
+      if (step?.kind === 'TRIGGER') {
+        setConsoleMode({
+          type: 'trigger',
+          receivedAt: selectedJob?.receivedAt ?? '—',
+          rawDataPath: selectedJob?.rawDataPath ?? '—',
+        });
+        setRightTab('console');
+        setRightCollapsed(false);
+        return;
+      }
+
+      if (selectedJob) return;
+
       if (step) {
         setConsoleMode({ type: 'node', step });
         setRightTab('console');
@@ -137,6 +155,8 @@ export default function ConsolePage() {
   const handleDeleteNode = useCallback(
     (order: number) => {
       if (!selectedPipeline || selectedPipeline.steps.length <= 1) return;
+      const step = selectedPipeline.steps.find((s) => s.order === order);
+      if (step?.kind === 'TRIGGER') return; // D-01: TRIGGER 노드는 삭제 불가
       const newSteps = selectedPipeline.steps
         .filter((s) => s.order !== order)
         .map((s) => ({ targetCsc: s.targetCsc, productLevel: s.productLevel }));
@@ -240,6 +260,18 @@ export default function ConsolePage() {
     if (jsRes.data) setJobs(jsRes.data.items);
   }, [service, selectedJob]);
 
+  // D-02: 부분 재처리
+  const handlePartialReprocess = useCallback(async (targetLevel: ProductLevel) => {
+    if (!selectedJob) return;
+    // 해당 레벨의 첫 번째 CSC 스텝을 대상으로 지정
+    const targetStep = selectedJob.steps.find((s) => s.kind !== 'TRIGGER' && s.productLevel === targetLevel);
+    const targetCsc = targetStep?.targetCsc ?? 'CSC-03';
+    await service.부분_재처리를_요청한다(selectedJob.jobId, { targetLevel, targetCsc });
+    const [jRes, jsRes] = await Promise.all([service.Job_상세를_조회한다(selectedJob.jobId), service.Job_목록을_조회한다({ limit: 50 })]);
+    if (jRes.data) { setSelectedJob(jRes.data); setConsoleMode({ type: 'job', job: jRes.data }); }
+    if (jsRes.data) setJobs(jsRes.data.items);
+  }, [service, selectedJob]);
+
   // --- Pipeline handlers ---
   const handleSavePipeline = useCallback(async (data: { name: string; satelliteId: string; mode: string; steps: { targetCsc: TargetCsc; productLevel: ProductLevel }[] }) => {
     if (!selectedPipelineId) return;
@@ -334,6 +366,7 @@ export default function ConsolePage() {
               onDeleteNode={handleDeleteNode}
               onConfirmAddStep={handleConfirmAddStep}
               onReprocessJob={handleReprocessJob}
+              onPartialReprocess={handlePartialReprocess}
               onCancelJob={handleCancelJob}
               onSavePipeline={handleSavePipeline}
               pipelineSaving={editSaving}

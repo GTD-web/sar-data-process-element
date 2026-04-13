@@ -108,18 +108,23 @@ function buildNodes(
 ): Node[] {
   const sources = new Set(pipelineEdges.map((e) => e.source));
   const targets = new Set(pipelineEdges.map((e) => e.target));
-  return steps.map((step) => ({
-    id: `step-${step.order}`,
-    type: 'pipeline',
-    position: positions.get(step.order) ?? { x: step.order * 260, y: 0 },
-    draggable: editable,
-    data: {
-      targetCsc: step.targetCsc, productLevel: step.productLevel, status: step.status,
-      order: step.order, durationMs: step.durationMs, errorMessage: step.errorMessage,
-      editable, isLeaf: !sources.has(step.order), isHead: !targets.has(step.order),
-      onDelete: onDeleteNode, onAddAfter,
-    } satisfies PipelineNodeData,
-  }));
+  return steps.map((step) => {
+    const isTrigger = step.kind === 'TRIGGER';
+    const nodeEditable = editable && !isTrigger;
+    return {
+      id: `step-${step.order}`,
+      type: 'pipeline',
+      position: positions.get(step.order) ?? { x: step.order * 260, y: 0 },
+      draggable: nodeEditable,
+      data: {
+        kind: step.kind,
+        targetCsc: step.targetCsc, productLevel: step.productLevel, status: step.status,
+        order: step.order, durationMs: step.durationMs, errorMessage: step.errorMessage,
+        editable: nodeEditable, isLeaf: !sources.has(step.order), isHead: !targets.has(step.order),
+        onDelete: onDeleteNode, onAddAfter,
+      } satisfies PipelineNodeData,
+    };
+  });
 }
 
 function buildEdges(

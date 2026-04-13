@@ -7,9 +7,11 @@ import type {
   JobSummary,
   PaginatedResponse,
   PipelineDefinition,
+  ProductLevel,
   QueueHealth,
   ServiceResponse,
   ServiceResponseWithData,
+  TargetCsc,
   UpdatePipelineData,
 } from '@/types/pipeline';
 
@@ -43,6 +45,12 @@ export interface IPipelineUIService {
   Job을_재처리한다(
     jobId: string,
     targetLevel?: string,
+  ): Promise<ServiceResponse>;
+
+  /** OPS-06: 특정 레벨부터 부분 재처리 요청 (SI-07) */
+  부분_재처리를_요청한다(
+    jobId: string,
+    params: { targetLevel: ProductLevel; targetCsc: TargetCsc },
   ): Promise<ServiceResponse>;
 
   Job을_취소한다(jobId: string): Promise<ServiceResponse>;

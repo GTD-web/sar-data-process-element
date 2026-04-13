@@ -15,9 +15,11 @@ import type {
   JobSummary,
   PaginatedResponse,
   PipelineDefinition,
+  ProductLevel,
   QueueHealth,
   ServiceResponse,
   ServiceResponseWithData,
+  TargetCsc,
   UpdatePipelineData,
 } from '@/types/pipeline';
 
@@ -66,6 +68,16 @@ export const pipelineCurrentService: IPipelineUIService = {
       body: JSON.stringify({ targetLevel }),
     });
     if (!res.ok) return { success: false, message: `Job 재처리 실패: ${res.status}` };
+    return { success: true, message: 'OK' };
+  },
+
+  async 부분_재처리를_요청한다(jobId: string, params: { targetLevel: ProductLevel; targetCsc: TargetCsc }): Promise<ServiceResponse> {
+    const res = await fetch(`${API_BASE}/jobs/${jobId}/reprocess/partial`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) return { success: false, message: `부분 재처리 실패: ${res.status}` };
     return { success: true, message: 'OK' };
   },
 

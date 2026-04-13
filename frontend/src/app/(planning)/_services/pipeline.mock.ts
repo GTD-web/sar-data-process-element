@@ -19,6 +19,7 @@ import type {
   TargetCsc,
   AlertKind,
   AuditEventType,
+  PipelineNodeKind,
 } from '@/types/pipeline';
 
 // =============================================================================
@@ -49,7 +50,13 @@ const SCENE_IDS = [
 const SATELLITE_IDS = ['KS-5', 'KS-6', 'KS-7'];
 const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
 
-const PIPELINE_STEPS: { targetCsc: TargetCsc; productLevel: ProductLevel }[] = [
+type StepDef = { kind?: PipelineNodeKind; targetCsc: TargetCsc; productLevel: ProductLevel };
+
+/** D-01: 파이프라인 첫 노드 — RAW_DATA_RECEIVED 트리거 (EI-01) */
+const TRIGGER_STEP: StepDef = { kind: 'TRIGGER', targetCsc: 'CSC-02', productLevel: 'LEVEL_0' };
+
+const PIPELINE_STEPS: StepDef[] = [
+  TRIGGER_STEP,
   { targetCsc: 'CSC-02', productLevel: 'LEVEL_0' },
   { targetCsc: 'CSC-03', productLevel: 'LEVEL_0' },
   { targetCsc: 'CSC-04', productLevel: 'LEVEL_1' },
@@ -59,41 +66,51 @@ const PIPELINE_STEPS: { targetCsc: TargetCsc; productLevel: ProductLevel }[] = [
 ];
 
 function buildSteps(status: JobStatus, retryCount: number): PipelineStep[] {
+  // TRIGGER 스텝은 항상 COMPLETED. 나머지 CSC 스텝에만 completedCount 적용
+  const cscSteps = PIPELINE_STEPS.filter((s) => s.kind !== 'TRIGGER');
   const completedCount =
-    status === 'COMPLETED' ? 6
-    : status === 'ASSIGNED' ? Math.floor(Math.random() * 5)
-    : status === 'FAILED' ? Math.floor(Math.random() * 5)
-    : status === 'CREATED' ? 0
+    status === 'COMPLETED' ? cscSteps.length
+    : status === 'ASSIGNED' ? Math.floor(Math.random() * (cscSteps.length - 1))
+    : status === 'FAILED' ? Math.floor(Math.random() * (cscSteps.length - 1))
     : 0;
 
+  let cscIdx = 0;
   return PIPELINE_STEPS.map((def, i): PipelineStep => {
     let stepStatus: StepStatus;
-    if (i < completedCount) {
+
+    if (def.kind === 'TRIGGER') {
+      // D-01: TRIGGER 노드는 RAW_DATA_RECEIVED — 항상 COMPLETED
       stepStatus = 'COMPLETED';
-    } else if (i === completedCount && status === 'ASSIGNED') {
-      stepStatus = 'RUNNING';
-    } else if (i === completedCount && status === 'FAILED') {
-      stepStatus = 'FAILED';
     } else {
-      stepStatus = 'PENDING';
+      const idx = cscIdx++;
+      if (idx < completedCount) {
+        stepStatus = 'COMPLETED';
+      } else if (idx === completedCount && status === 'ASSIGNED') {
+        stepStatus = 'RUNNING';
+      } else if (idx === completedCount && status === 'FAILED') {
+        stepStatus = 'FAILED';
+      } else {
+        stepStatus = 'PENDING';
+      }
     }
 
     const baseTime = new Date();
-    baseTime.setHours(baseTime.getHours() - (6 - i) * 0.5);
+    baseTime.setHours(baseTime.getHours() - (PIPELINE_STEPS.length - i) * 0.5);
 
     return {
       order: i + 1,
+      kind: def.kind,
       targetCsc: def.targetCsc,
       productLevel: def.productLevel,
       status: stepStatus,
       startedAt: stepStatus !== 'PENDING' ? baseTime.toISOString() : undefined,
       finishedAt: stepStatus === 'COMPLETED' ? new Date(baseTime.getTime() + (600 + Math.random() * 3000) * 1000).toISOString() : undefined,
-      durationMs: stepStatus === 'COMPLETED' ? Math.floor((600 + Math.random() * 3000) * 1000) : undefined,
+      durationMs: stepStatus === 'COMPLETED' && def.kind !== 'TRIGGER' ? Math.floor((600 + Math.random() * 3000) * 1000) : undefined,
       errorCode: stepStatus === 'FAILED' ? `ERR_${def.targetCsc.replace('-', '')}_${1000 + Math.floor(Math.random() * 100)}` : undefined,
       errorMessage: stepStatus === 'FAILED'
         ? retryCount >= 3 ? `Max retry exceeded for ${def.targetCsc}` : `Processing timeout at ${def.targetCsc}`
         : undefined,
-      outputPath: stepStatus === 'COMPLETED' ? `/mnt/nas/sdpe/output/${def.productLevel.toLowerCase()}/scene_xxx.h5` : undefined,
+      outputPath: stepStatus === 'COMPLETED' && def.kind !== 'TRIGGER' ? `/mnt/nas/sdpe/output/${def.productLevel.toLowerCase()}/scene_xxx.h5` : undefined,
     };
   });
 }
@@ -216,9 +233,10 @@ function generateQueueHealth(): QueueHealth[] {
 }
 
 /** 순차 steps -> steps + edges 변환 */
-function toDAGSteps(flat: { targetCsc: TargetCsc; productLevel: ProductLevel }[]) {
+function toDAGSteps(flat: StepDef[]) {
   const steps = flat.map((s, i) => ({
     order: i + 1,
+    kind: s.kind,
     targetCsc: s.targetCsc,
     productLevel: s.productLevel,
   }));
@@ -230,15 +248,17 @@ function toDAGSteps(flat: { targetCsc: TargetCsc; productLevel: ProductLevel }[]
 }
 
 /** 모드별로 서로 다른 파이프라인 구성 */
-const MODE_STEP_VARIANTS: Record<string, { targetCsc: TargetCsc; productLevel: ProductLevel }[]> = {
-  Stripmap: PIPELINE_STEPS, // full 6-step
+const MODE_STEP_VARIANTS: Record<string, StepDef[]> = {
+  Stripmap: PIPELINE_STEPS, // TRIGGER + full 6-step CSC
   ScanSAR: [
+    TRIGGER_STEP,
     { targetCsc: 'CSC-02', productLevel: 'LEVEL_0' },
     { targetCsc: 'CSC-03', productLevel: 'LEVEL_0' },
     { targetCsc: 'CSC-04', productLevel: 'LEVEL_1' },
     { targetCsc: 'CSC-07', productLevel: 'LEVEL_1' },
   ],
   Spotlight: [
+    TRIGGER_STEP,
     { targetCsc: 'CSC-02', productLevel: 'LEVEL_0' },
     { targetCsc: 'CSC-03', productLevel: 'LEVEL_0' },
     { targetCsc: 'CSC-04', productLevel: 'LEVEL_1' },
@@ -356,8 +376,23 @@ class MockPipelineUIService implements IPipelineUIService {
     job.status = 'CREATED';
     job.retryCount = 0;
     job.updatedAt = new Date().toISOString();
-    job.steps.forEach((s) => { s.status = 'PENDING'; });
+    job.steps.forEach((s) => { s.status = s.kind === 'TRIGGER' ? 'COMPLETED' : 'PENDING'; });
     return { success: true, message: `Job ${jobId} 재처리가 요청되었습니다` };
+  }
+
+  async 부분_재처리를_요청한다(jobId: string, params: { targetLevel: ProductLevel; targetCsc: TargetCsc }): Promise<ServiceResponse> {
+    const job = this.jobs.find((j) => j.jobId === jobId);
+    if (!job) return { success: false, message: 'Job을 찾을 수 없습니다' };
+    // targetLevel 이후 스텝을 PENDING으로 리셋 (TRIGGER는 항상 COMPLETED 유지)
+    let resetActive = false;
+    job.steps.forEach((s) => {
+      if (s.kind === 'TRIGGER') return;
+      if (s.productLevel === params.targetLevel) resetActive = true;
+      if (resetActive) s.status = 'PENDING';
+    });
+    job.status = 'CREATED';
+    job.updatedAt = new Date().toISOString();
+    return { success: true, message: `Job ${jobId} 부분 재처리(${params.targetLevel}부터)가 요청되었습니다` };
   }
 
   async Job을_취소한다(jobId: string): Promise<ServiceResponse> {
