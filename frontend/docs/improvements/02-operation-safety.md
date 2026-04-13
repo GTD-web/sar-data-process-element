@@ -93,10 +93,10 @@ const [createPipelineDialogOpen, setCreatePipelineDialogOpen] = useState(false);
 
 ### 완료 기준
 
-- [ ] 프로젝트 내 `confirm()` / `prompt()` 사용 0건
-- [ ] 재처리 버튼 클릭 → shadcn Dialog 열림
-- [ ] 취소 버튼 클릭 → shadcn Dialog 열림
-- [ ] 파이프라인 생성 버튼 클릭 → 위성/모드 선택 폼 Dialog 열림
+- [x] 프로젝트 내 `confirm()` / `prompt()` 사용 0건
+- [x] 재처리 버튼 클릭 → shadcn Dialog 열림
+- [x] 취소 버튼 클릭 → shadcn Dialog 열림
+- [x] 파이프라인 생성 버튼 클릭 → 위성/모드 선택 폼 Dialog 열림
 
 ---
 
@@ -144,10 +144,10 @@ const isConfirmEnabled = inputJobId === jobId;
 
 ### 완료 기준
 
-- [ ] 전체 재처리 다이얼로그에 Job ID 입력 필드 존재
-- [ ] Job ID 불일치 시 "재처리 요청" 버튼 비활성화
-- [ ] Job ID 일치 시 버튼 활성화
-- [ ] LEVEL_0 부분 재처리에도 동일 로직 적용
+- [x] 전체 재처리 다이얼로그에 Job ID 입력 필드 존재
+- [x] Job ID 불일치 시 "재처리 요청" 버튼 비활성화
+- [x] Job ID 일치 시 버튼 활성화
+- [x] LEVEL_0 부분 재처리에도 동일 로직 적용
 
 ---
 
@@ -224,7 +224,7 @@ const isConfirmEnabled = inputJobId === jobId;
 
 ### 완료 기준
 
-- [ ] `Alert` 타입에 `version` 필드 추가
-- [ ] Mock에서 이중 ack 시 409 응답 반환
-- [ ] 409 수신 시 토스트로 "이미 확인된 알림입니다" 표시
-- [ ] 충돌 후 Alert 목록 자동 갱신
+- [x] `Alert` 타입에 `version` 필드 추가
+- [x] Mock에서 이중 ack 시 409 응답 반환
+- [x] 409 수신 시 토스트로 "이미 확인된 알림입니다" 표시
+- [x] 충돌 후 Alert 목록 자동 갱신
