@@ -14,12 +14,12 @@ interface CscOption {
 }
 
 const CSC_OPTIONS: CscOption[] = [
-  { csc: 'CSC-02', defaultLevel: 'LEVEL_0', icon: Satellite, color: 'text-sky-400', bgColor: 'bg-sky-400/10 border-sky-400/20', description: '위성으로부터 원시 데이터를 수신합니다' },
-  { csc: 'CSC-03', defaultLevel: 'LEVEL_0', icon: Radio, color: 'text-violet-400', bgColor: 'bg-violet-400/10 border-violet-400/20', description: 'SAR 신호의 Range 방향 압축을 수행합니다' },
-  { csc: 'CSC-04', defaultLevel: 'LEVEL_1', icon: Cpu, color: 'text-amber-400', bgColor: 'bg-amber-400/10 border-amber-400/20', description: 'Azimuth 압축 등 핵심 SAR 신호처리를 수행합니다' },
-  { csc: 'CSC-05', defaultLevel: 'LEVEL_2', icon: SlidersHorizontal, color: 'text-teal-400', bgColor: 'bg-teal-400/10 border-teal-400/20', description: '방사 보정, 기하 보정 등 후처리를 수행합니다' },
-  { csc: 'CSC-06', defaultLevel: 'LEVEL_3', icon: Globe, color: 'text-indigo-400', bgColor: 'bg-indigo-400/10 border-indigo-400/20', description: '지리 좌표계로 변환(Geocoding)합니다' },
-  { csc: 'CSC-07', defaultLevel: 'LEVEL_3', icon: Database, color: 'text-pink-400', bgColor: 'bg-pink-400/10 border-pink-400/20', description: '산출물을 카탈로그에 등록합니다' },
+  { csc: 'CSC-02', defaultLevel: 'LEVEL_0', icon: Satellite, color: 'text-foreground', bgColor: 'bg-muted/30 border-border', description: '위성으로부터 원시 데이터를 수신합니다' },
+  { csc: 'CSC-03', defaultLevel: 'LEVEL_0', icon: Radio, color: 'text-foreground', bgColor: 'bg-muted/30 border-border', description: 'SAR 신호의 Range 방향 압축을 수행합니다' },
+  { csc: 'CSC-04', defaultLevel: 'LEVEL_1', icon: Cpu, color: 'text-foreground', bgColor: 'bg-muted/30 border-border', description: 'Azimuth 압축 등 핵심 SAR 신호처리를 수행합니다' },
+  { csc: 'CSC-05', defaultLevel: 'LEVEL_2', icon: SlidersHorizontal, color: 'text-foreground', bgColor: 'bg-muted/30 border-border', description: '방사 보정, 기하 보정 등 후처리를 수행합니다' },
+  { csc: 'CSC-06', defaultLevel: 'LEVEL_3', icon: Globe, color: 'text-foreground', bgColor: 'bg-muted/30 border-border', description: '지리 좌표계로 변환(Geocoding)합니다' },
+  { csc: 'CSC-07', defaultLevel: 'LEVEL_3', icon: Database, color: 'text-foreground', bgColor: 'bg-muted/30 border-border', description: '산출물을 카탈로그에 등록합니다' },
 ];
 
 interface AddStepPanelProps {

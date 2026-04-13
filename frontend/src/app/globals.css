@@ -1,23 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0f172a;
-  --foreground: #e2e8f0;
-  --card: #1e293b;
-  --card-foreground: #e2e8f0;
-  --border: #334155;
-  --muted: #334155;
-  --muted-foreground: #94a3b8;
-  --accent: #3b82f6;
-  --accent-foreground: #ffffff;
+  --background: #1a1a1a;
+  --foreground: #f5f5f5;
+  --card: #262626;
+  --card-foreground: #f5f5f5;
+  --border: #3a3a3a;
+  --muted: #3a3a3a;
+  --muted-foreground: #a0a0a0;
+  --accent: #34d399;
+  --accent-foreground: #1a1a1a;
   --destructive: #ef4444;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --sidebar: #0f172a;
-  --sidebar-foreground: #cbd5e1;
-  --sidebar-border: #1e293b;
-  --sidebar-accent: #1e293b;
-  --ring: #3b82f6;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --sidebar: #1a1a1a;
+  --sidebar-foreground: #a0a0a0;
+  --sidebar-border: #262626;
+  --sidebar-accent: #262626;
+  --ring: #34d399;
 }
 
 @theme inline {
@@ -73,14 +73,15 @@ body {
   opacity: 1;
 }
 
-/* Edge paths: smooth color/width transition on hover */
+/* Edge paths: smooth transition + emerald glow */
 .react-flow__edge path.react-flow__edge-path {
-  transition: stroke 0.25s ease, stroke-width 0.25s ease;
+  transition: stroke 0.25s ease, stroke-width 0.25s ease, filter 0.25s ease;
+  filter: drop-shadow(0 0 4px rgba(52, 211, 153, 0.3));
 }
 
 /* Connection line styling */
 .react-flow__connection-path {
-  stroke: #3b82f6 !important;
+  stroke: var(--accent) !important;
   stroke-width: 2px;
 }
 

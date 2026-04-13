@@ -56,12 +56,12 @@ export default function BottomPanel({
             >
               {tab.label}
               {tab.id === 'jobs' && jobCount !== undefined && jobCount > 0 && (
-                <span className="ml-1.5 px-1.5 py-0 rounded-full text-[10px] bg-blue-500/20 text-blue-400">
+                <span className="ml-1.5 px-1.5 py-0 rounded-full text-[10px] bg-accent/15 text-accent">
                   {jobCount}
                 </span>
               )}
               {tab.id === 'alerts' && alertCount !== undefined && alertCount > 0 && (
-                <span className="ml-1.5 px-1.5 py-0 rounded-full text-[10px] bg-red-500/20 text-red-400">
+                <span className="ml-1.5 px-1.5 py-0 rounded-full text-[10px] bg-destructive/15 text-destructive">
                   {alertCount}
                 </span>
               )}

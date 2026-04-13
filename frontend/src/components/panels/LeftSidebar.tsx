@@ -88,10 +88,10 @@ export default function LeftSidebar({
           {stats && (
             <div className="px-2 py-2 border-b border-border">
               <div className="grid grid-cols-4 gap-0.5 text-center">
-                <MiniStat icon={Activity} value={stats.inflightJobs} label="진행" color="text-blue-400" />
-                <MiniStat icon={CheckCircle} value={stats.completedLast24h} label="완료" color="text-emerald-400" />
-                <MiniStat icon={XCircle} value={stats.failedLast24h} label="실패" color="text-red-400" />
-                <MiniStat icon={AlertTriangle} value={stats.unacknowledgedAlerts} label="Alert" color="text-orange-400" />
+                <MiniStat icon={Activity} value={stats.inflightJobs} label="진행" color="text-accent" />
+                <MiniStat icon={CheckCircle} value={stats.completedLast24h} label="완료" color="text-success" />
+                <MiniStat icon={XCircle} value={stats.failedLast24h} label="실패" color="text-destructive" />
+                <MiniStat icon={AlertTriangle} value={stats.unacknowledgedAlerts} label="Alert" color="text-destructive" />
               </div>
             </div>
           )}

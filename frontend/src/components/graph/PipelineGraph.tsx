@@ -9,15 +9,22 @@ import {
   type Node,
   type Edge,
   type NodeTypes,
+  type EdgeTypes,
   BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
 import { PipelineNode, type PipelineNodeData } from './PipelineNode';
+import { SmoothEdge } from './SmoothEdge';
 import type { PipelineStep } from '@/types/pipeline';
+import * as t from '@/styles/design-tokens';
 
 const nodeTypes: NodeTypes = {
   pipeline: PipelineNode,
+};
+
+const edgeTypes: EdgeTypes = {
+  smooth: SmoothEdge,
 };
 
 const NODE_WIDTH = 200;
@@ -82,8 +89,9 @@ function getLayoutedElements(steps: PipelineStep[]) {
       id: 'e-reception-1',
       source: 'reception',
       target: 'step-1',
+      type: 'smooth',
       animated: steps[0]?.status === 'RUNNING',
-      style: { stroke: steps[0]?.status === 'COMPLETED' ? '#10b981' : '#334155' },
+      style: { stroke: steps[0]?.status === 'COMPLETED' ? t.edgeSuccess : t.edge },
     },
   ];
 
@@ -94,8 +102,9 @@ function getLayoutedElements(steps: PipelineStep[]) {
       id: `e-${i}-${i + 1}`,
       source: `step-${i}`,
       target: `step-${i + 1}`,
+      type: 'smooth',
       animated: running,
-      style: { stroke: completed ? '#10b981' : '#334155' },
+      style: { stroke: completed ? t.edgeSuccess : t.edge },
     });
   }
 
@@ -115,20 +124,21 @@ export default function PipelineGraph({ steps }: { steps: PipelineStep[] }) {
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onInit={onInit}
         fitView
         proOptions={{ hideAttribution: true }}
         minZoom={0.3}
-        maxZoom={1.5}
+        maxZoom={4}
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1e293b" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color={t.canvasDot} />
         <Controls
           showInteractive={false}
           className="!bg-card !border-border !shadow-none [&>button]:!bg-muted [&>button]:!border-border [&>button]:!text-foreground"
         />
         <MiniMap
-          nodeColor="#334155"
-          maskColor="rgba(15, 23, 42, 0.8)"
+          nodeColor={t.nodeDefault}
+          maskColor="rgba(26, 26, 26, 0.8)"
           className="!bg-card !border-border"
         />
       </ReactFlow>

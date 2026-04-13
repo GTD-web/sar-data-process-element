@@ -17,7 +17,7 @@ export default function QueuesTab({ queues }: QueuesTabProps) {
             <span className="text-[11px] font-mono text-foreground">{q.queue.replace('sdpe.', '')}</span>
             <span className={cn(
               'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium',
-              q.healthy ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400',
+              q.healthy ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive',
             )}>
               {q.healthy ? 'Healthy' : 'Unhealthy'}
             </span>

@@ -92,7 +92,7 @@ export default function JobDetailPanel({ job, onReprocess, onCancel }: JobDetail
                 {step.durationMs !== undefined && ` · ${formatDuration(step.durationMs)}`}
               </div>
               {step.errorMessage && (
-                <div className="text-[10px] text-red-400 mt-0.5">{step.errorMessage}</div>
+                <div className="text-[10px] text-destructive mt-0.5">{step.errorMessage}</div>
               )}
               {step.outputPath && (
                 <div className="text-[10px] text-muted-foreground mt-0.5 font-mono truncate">{step.outputPath}</div>

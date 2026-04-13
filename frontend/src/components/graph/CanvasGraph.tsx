@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useEffect, useState } from 'react';
+import { useCallback, useRef, useEffect, useState, useMemo } from 'react';
 import {
   ReactFlow,
   Background,
@@ -8,11 +8,13 @@ import {
   MiniMap,
   useNodesState,
   useEdgesState,
+  useStore,
   type Node,
   type Edge,
   type NodeTypes,
   type EdgeTypes,
   type Connection,
+  type Viewport,
   BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -21,6 +23,7 @@ import { PipelineNode, type PipelineNodeData } from './PipelineNode';
 import { DeletableEdge, type DeletableEdgeData } from './DeletableEdge';
 import { EdgeHoverContext } from './EdgeHoverContext';
 import type { PipelineStep, PipelineEdge } from '@/types/pipeline';
+import * as t from '@/styles/design-tokens';
 
 const nodeTypes: NodeTypes = {
   pipeline: PipelineNode,
@@ -32,6 +35,47 @@ const edgeTypes: EdgeTypes = {
 
 const NODE_WIDTH = 64;
 const NODE_HEIGHT = 64;
+
+/** Radial glow that covers all nodes, expanding with completion ratio */
+function CanvasGlow({ completionRatio }: { completionRatio: number }) {
+  const nodesFromStore = useStore((s) => s.nodes);
+  const [px, py, zoom] = useStore((s) => s.transform);
+
+  if (nodesFromStore.length === 0) return null;
+
+  // Bounding box of all nodes in screen coordinates
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of nodesFromStore) {
+    const sx = (n.position?.x ?? 0) * zoom + px;
+    const sy = (n.position?.y ?? 0) * zoom + py;
+    if (sx < minX) minX = sx;
+    if (sy < minY) minY = sy;
+    if (sx + NODE_WIDTH * zoom > maxX) maxX = sx + NODE_WIDTH * zoom;
+    if (sy + NODE_HEIGHT * zoom > maxY) maxY = sy + NODE_HEIGHT * zoom;
+  }
+
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const bboxW = maxX - minX;
+  const bboxH = maxY - minY;
+
+  // Padding scales with completion: 150px base → +250px at 100%
+  const padding = 150 + completionRatio * 250;
+  const radiusX = bboxW / 2 + padding;
+  const radiusY = bboxH / 2 + padding;
+
+  const glowOpacity = 0.06 + completionRatio * 0.09; // 0.06 → 0.15
+
+  return (
+    <div
+      style={{
+        position: 'absolute', inset: 0,
+        pointerEvents: 'none', zIndex: 0,
+        background: `radial-gradient(${radiusX}px ${radiusY}px at ${cx}px ${cy}px, rgba(52,211,153,${glowOpacity}) 0%, rgba(52,211,153,${glowOpacity * 0.4}) 50%, transparent 100%)`,
+      }}
+    />
+  );
+}
 
 function computeInitialPositions(steps: PipelineStep[], pipelineEdges: PipelineEdge[]): Map<number, { x: number; y: number }> {
   const g = new dagre.graphlib.Graph();
@@ -63,6 +107,7 @@ function buildNodes(
   onAddAfter?: (afterOrder: number) => void,
 ): Node[] {
   const sources = new Set(pipelineEdges.map((e) => e.source));
+  const targets = new Set(pipelineEdges.map((e) => e.target));
   return steps.map((step) => ({
     id: `step-${step.order}`,
     type: 'pipeline',
@@ -71,7 +116,8 @@ function buildNodes(
     data: {
       targetCsc: step.targetCsc, productLevel: step.productLevel, status: step.status,
       order: step.order, durationMs: step.durationMs, errorMessage: step.errorMessage,
-      editable, isLeaf: !sources.has(step.order), onDelete: onDeleteNode, onAddAfter,
+      editable, isLeaf: !sources.has(step.order), isHead: !targets.has(step.order),
+      onDelete: onDeleteNode, onAddAfter,
     } satisfies PipelineNodeData,
   }));
 }
@@ -91,7 +137,7 @@ function buildEdges(
     const tgtStep = stepMap.get(target);
     const completed = srcStep?.status === 'COMPLETED';
     const running = tgtStep?.status === 'RUNNING';
-    const stroke = completed ? '#10b981' : running ? '#3b82f6' : '#cbd5e1';
+    const stroke = completed ? t.edgeSuccess : running ? t.accent : t.edge;
     const edgeId = `e-${source}-${target}`;
     return {
       id: edgeId,
@@ -128,6 +174,12 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
   const lastPipelineIdRef = useRef<string | null | undefined>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const edgeLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Glow intensity scales with completion ratio
+  const completionRatio = useMemo(() => {
+    if (steps.length === 0) return 0;
+    return steps.filter((s) => s.status === 'COMPLETED').length / steps.length;
+  }, [steps]);
 
   const pipelineChanged = pipelineId !== lastPipelineIdRef.current;
   if (pipelineChanged) {
@@ -220,6 +272,7 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
 
   return (
     <EdgeHoverContext.Provider value={hoveredEdgeId}>
+      <div className="relative w-full h-full">
       <ReactFlow
         nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
         onNodesChange={onNodesChange} onInit={onInit}
@@ -227,19 +280,21 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
         onEdgeMouseEnter={handleEdgeMouseEnter} onEdgeMouseLeave={handleEdgeMouseLeave}
         onConnect={handleConnect}
         fitView proOptions={{ hideAttribution: true }}
-        minZoom={0.2} maxZoom={2} className="bg-background"
+        minZoom={0.2} maxZoom={4} className="bg-background"
         nodesDraggable={editable} nodesConnectable={editable} elementsSelectable
         snapToGrid snapGrid={[20, 20]}
-        connectionLineStyle={{ stroke: '#3b82f6', strokeWidth: 2 }}
+        connectionLineStyle={{ stroke: t.accent, strokeWidth: 2 }}
         defaultEdgeOptions={{ style: { stroke: 'transparent', strokeWidth: 0 } }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1e293b" />
+        <CanvasGlow completionRatio={completionRatio} />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color={t.canvasDot} />
         <Controls showInteractive={false} position="bottom-left" className="!bg-card !border-border !shadow-lg [&>button]:!bg-muted [&>button]:!border-border [&>button]:!text-foreground" />
         <MiniMap
-          nodeColor={(n) => { const d = n.data as PipelineNodeData; return d.status === 'COMPLETED' ? '#10b981' : d.status === 'RUNNING' ? '#3b82f6' : d.status === 'FAILED' ? '#ef4444' : '#334155'; }}
-          maskColor="rgba(15, 23, 42, 0.8)" className="!bg-card/90 !border-border !rounded-lg" position="bottom-right"
+          nodeColor={(n) => { const d = n.data as PipelineNodeData; return d.status === 'COMPLETED' ? t.success : d.status === 'RUNNING' ? t.accent : d.status === 'FAILED' ? t.accent : t.nodeDefault; }}
+          maskColor="rgba(26, 26, 26, 0.8)" className="!bg-card/90 !border-border !rounded-lg" position="bottom-right"
         />
       </ReactFlow>
+      </div>
     </EdgeHoverContext.Provider>
   );
 }

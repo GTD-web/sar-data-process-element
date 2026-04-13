@@ -31,68 +31,76 @@ export interface PipelineNodeData {
   errorMessage?: string;
   editable?: boolean;
   isLeaf?: boolean;
+  isHead?: boolean;
   onDelete?: (order: number) => void;
   onAddAfter?: (afterOrder: number) => void;
   [key: string]: unknown;
 }
 
-const CSC_ICON_CONFIG: Record<TargetCsc, { icon: React.ElementType; color: string; bg: string }> = {
-  'CSC-02': { icon: Satellite, color: 'text-sky-400', bg: 'bg-sky-400/15' },
-  'CSC-03': { icon: Radio, color: 'text-violet-400', bg: 'bg-violet-400/15' },
-  'CSC-04': { icon: Cpu, color: 'text-amber-400', bg: 'bg-amber-400/15' },
-  'CSC-05': { icon: SlidersHorizontal, color: 'text-teal-400', bg: 'bg-teal-400/15' },
-  'CSC-06': { icon: Globe, color: 'text-indigo-400', bg: 'bg-indigo-400/15' },
-  'CSC-07': { icon: Database, color: 'text-pink-400', bg: 'bg-pink-400/15' },
+const CSC_ICON_CONFIG: Record<TargetCsc, { icon: React.ElementType }> = {
+  'CSC-02': { icon: Satellite },
+  'CSC-03': { icon: Radio },
+  'CSC-04': { icon: Cpu },
+  'CSC-05': { icon: SlidersHorizontal },
+  'CSC-06': { icon: Globe },
+  'CSC-07': { icon: Database },
 };
 
 const STATUS_BORDER: Record<StepStatus, string> = {
-  PENDING: 'border-slate-600',
-  RUNNING: 'border-blue-500',
-  COMPLETED: 'border-emerald-500',
-  FAILED: 'border-red-500',
-  SKIPPED: 'border-zinc-600',
+  PENDING: 'border-accent/40',
+  RUNNING: 'border-accent',
+  COMPLETED: 'border-accent',
+  FAILED: 'border-destructive',
+  SKIPPED: 'border-accent/20',
+};
+
+const STATUS_GLOW: Record<StepStatus, string> = {
+  PENDING: '0 0 12px rgba(52, 211, 153, 0.15)',
+  RUNNING: '0 0 20px rgba(52, 211, 153, 0.35)',
+  COMPLETED: '0 0 16px rgba(52, 211, 153, 0.25)',
+  FAILED: '0 0 16px rgba(239, 68, 68, 0.25)',
+  SKIPPED: 'none',
 };
 
 const STATUS_INDICATOR: Record<StepStatus, { icon: React.ElementType; color: string }> = {
-  PENDING: { icon: Circle, color: 'text-slate-500' },
-  RUNNING: { icon: Loader, color: 'text-blue-400' },
-  COMPLETED: { icon: CheckCircle, color: 'text-emerald-400' },
-  FAILED: { icon: XCircle, color: 'text-red-400' },
-  SKIPPED: { icon: Ban, color: 'text-zinc-500' },
+  PENDING: { icon: Circle, color: 'text-muted-foreground' },
+  RUNNING: { icon: Loader, color: 'text-accent' },
+  COMPLETED: { icon: CheckCircle, color: 'text-success' },
+  FAILED: { icon: XCircle, color: 'text-destructive' },
+  SKIPPED: { icon: Ban, color: 'text-muted-foreground' },
 };
 
 const NODE_SIZE = 64;
 
 function PipelineNodeComponent({ data, selected }: NodeProps) {
   const nodeData = data as unknown as PipelineNodeData;
-  const { targetCsc, productLevel, status, order, durationMs, errorMessage, editable, isLeaf, onDelete, onAddAfter } = nodeData;
-  const csc = CSC_ICON_CONFIG[targetCsc];
-  const CscIcon = csc.icon;
+  const { targetCsc, productLevel, status, order, durationMs, errorMessage, editable, isLeaf, isHead, onDelete, onAddAfter } = nodeData;
+  const CscIcon = CSC_ICON_CONFIG[targetCsc].icon;
   const statusInd = STATUS_INDICATOR[status];
   const StatusIcon = statusInd.icon;
 
   return (
     <div className="flex items-start group">
       <div className="flex flex-col items-center">
-        {/* Status badge — top-left of box */}
-        {status !== 'PENDING' && (
-          <div className="absolute -top-1.5 -left-1.5 z-10">
-            <StatusIcon className={cn('w-4 h-4', statusInd.color, status === 'RUNNING' && 'animate-spin')} />
-          </div>
-        )}
-
         {/* Icon Box — n8n style square */}
         <div
           className={cn(
             'relative rounded-xl border-2 flex items-center justify-center transition-all',
             STATUS_BORDER[status],
-            csc.bg,
+            'bg-card',
             selected && 'ring-2 ring-accent ring-offset-2 ring-offset-background',
             editable && 'cursor-grab active:cursor-grabbing',
             status === 'RUNNING' && 'animate-status-pulse',
           )}
-          style={{ width: NODE_SIZE, height: NODE_SIZE }}
+          style={{ width: NODE_SIZE, height: NODE_SIZE, boxShadow: STATUS_GLOW[status] }}
         >
+          {/* Status badge — top-left of icon box */}
+          {status !== 'PENDING' && (
+            <div className="absolute -top-3 -left-3 z-10">
+              <StatusIcon className={cn('w-4 h-4', statusInd.color, status === 'RUNNING' && 'animate-spin')} />
+            </div>
+          )}
+
           {/* Delete button — positioned relative to the icon box */}
           {editable && onDelete && (
             <button
@@ -103,14 +111,16 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
             </button>
           )}
 
-          {/* Target handle — left */}
-          <Handle
-            type="target"
-            position={Position.Left}
-            className="!bg-muted-foreground/50 !w-3 !h-3 !border-2 !border-card !-left-1.5 hover:!bg-accent hover:!scale-125 !transition-all"
-          />
+          {/* Target handle — left (hidden for head nodes) */}
+          {!isHead && (
+            <Handle
+              type="target"
+              position={Position.Left}
+              className="!bg-accent/50 !w-3 !h-3 !border-2 !border-card !-left-1.5 hover:!bg-accent hover:!scale-125 !transition-all"
+            />
+          )}
 
-          <CscIcon className={cn('w-7 h-7', csc.color)} />
+          <CscIcon className="w-7 h-7 text-accent" />
 
           {/* Source handle — right */}
           <Handle
@@ -118,7 +128,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
             position={Position.Right}
             className={cn(
               '!w-3 !h-3 !border-2 !border-card !-right-1.5 hover:!bg-accent hover:!scale-125 !transition-all',
-              isLeaf && editable ? '!bg-accent !opacity-100' : '!bg-muted-foreground/50',
+              isLeaf && editable ? '!bg-accent !opacity-100' : '!bg-accent/50',
             )}
           />
         </div>
@@ -128,10 +138,10 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
           <div className="text-[11px] font-semibold text-foreground leading-tight">{CSC_LABELS[targetCsc]}</div>
           <div className="text-[10px] text-muted-foreground">{targetCsc} · {PRODUCT_LEVEL_LABELS[productLevel]}</div>
           {durationMs !== undefined && (
-            <div className="text-[9px] text-emerald-400 font-mono">{formatDuration(durationMs)}</div>
+            <div className="text-[9px] text-success font-mono">{formatDuration(durationMs)}</div>
           )}
           {errorMessage && (
-            <div className="text-[9px] text-red-400 truncate" title={errorMessage}>{errorMessage}</div>
+            <div className="text-[9px] text-destructive truncate" title={errorMessage}>{errorMessage}</div>
           )}
         </div>
       </div>
@@ -143,7 +153,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
           style={{ marginTop: NODE_SIZE / 2 - 14, marginLeft: -2 }}
         >
           <svg width="52" height="2" className="flex-shrink-0">
-            <line x1="0" y1="1" x2="52" y2="1" stroke="#cbd5e1" strokeWidth="2" />
+            <line x1="0" y1="1" x2="52" y2="1" stroke="var(--accent)" strokeWidth="2" style={{ opacity: 0.4 }} />
           </svg>
           <button
             onClick={(e) => { e.stopPropagation(); onAddAfter(order); }}

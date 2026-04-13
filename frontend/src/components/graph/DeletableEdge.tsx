@@ -1,8 +1,9 @@
 'use client';
 
-import { EdgeLabelRenderer, getBezierPath, type Edge, type EdgeProps } from '@xyflow/react';
+import { EdgeLabelRenderer, type Edge, type EdgeProps } from '@xyflow/react';
 import { Plus, Trash2 } from 'lucide-react';
 import { useEdgeHover } from './EdgeHoverContext';
+import * as t from '@/styles/design-tokens';
 
 export type DeletableEdgeData = {
   stroke: string;
@@ -26,23 +27,19 @@ export function DeletableEdge({
   sourceY,
   targetX,
   targetY,
-  sourcePosition,
-  targetPosition,
   data,
 }: EdgeProps<DeletableEdgeType>) {
-  const stroke = data?.stroke ?? '#334155';
+  const stroke = data?.stroke ?? t.edge;
   const strokeWidth = data?.strokeWidth ?? 2;
   const editable = data?.editable ?? false;
   const hovered = useEdgeHover(id as string | undefined);
 
-  const [edgePath, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-  });
+  // n8n-style horizontal-fixed bezier: control points extend only horizontally
+  const dx = Math.abs(targetX - sourceX);
+  const offset = Math.max(dx * 0.4, 80);
+  const edgePath = `M ${sourceX},${sourceY} C ${sourceX + offset},${sourceY} ${targetX - offset},${targetY} ${targetX},${targetY}`;
+  const labelX = (sourceX + targetX) / 2;
+  const labelY = (sourceY + targetY) / 2;
 
   const showActions = hovered && editable;
 
@@ -61,7 +58,7 @@ export function DeletableEdge({
     width: 26,
     height: 26,
     borderRadius: '50%',
-    border: '2px solid #1e293b',
+    border: `2px solid ${t.surface}`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -87,10 +84,16 @@ export function DeletableEdge({
         d={edgePath}
         fill="none"
         className="react-flow__edge-path"
-        stroke={showActions ? '#ffffff' : stroke}
-        strokeWidth={showActions ? 3 : strokeWidth}
+        strokeLinecap="round"
         style={{
-          transition: 'stroke 0.3s ease, stroke-width 0.3s ease',
+          stroke: showActions ? t.edgeActive : stroke,
+          strokeWidth: showActions ? 3 : strokeWidth,
+          transition: 'stroke 0.3s ease, stroke-width 0.3s ease, filter 0.3s ease',
+          filter: showActions
+            ? 'drop-shadow(0 0 8px rgba(52, 211, 153, 0.6))'
+            : stroke === t.edgeSuccess
+              ? 'drop-shadow(0 0 6px rgba(52, 211, 153, 0.5)) drop-shadow(0 0 14px rgba(52, 211, 153, 0.25))'
+              : undefined,
           pointerEvents: 'none',
         }}
       />
@@ -112,17 +115,17 @@ export function DeletableEdge({
           >
             <button
               onClick={handleInsert}
-              style={{ ...btnBase, background: '#3b82f6', color: '#fff' }}
+              style={{ ...btnBase, background: t.surfaceRaised, color: t.textSecondary }}
               title="노드 추가"
             >
-              <Plus size={14} strokeWidth={3} />
+              <Plus size={14} strokeWidth={2.5} />
             </button>
             <button
               onClick={handleDelete}
-              style={{ ...btnBase, background: '#ef4444', color: '#fff' }}
+              style={{ ...btnBase, background: t.surfaceRaised, color: t.textSecondary }}
               title="연결 삭제"
             >
-              <Trash2 size={13} strokeWidth={2.5} />
+              <Trash2 size={14} strokeWidth={2.5} />
             </button>
           </div>
         </EdgeLabelRenderer>

@@ -4,13 +4,13 @@ import { formatKST } from '@/lib/utils';
 import type { AuditEvent, AuditEventType } from '@/types/pipeline';
 
 const EVENT_COLORS: Record<AuditEventType, string> = {
-  JOB_CREATED: 'bg-slate-500/20 text-slate-400',
-  JOB_ASSIGNED: 'bg-blue-500/20 text-blue-400',
-  JOB_COMPLETED: 'bg-emerald-500/20 text-emerald-400',
-  JOB_FAILED: 'bg-red-500/20 text-red-400',
-  PIPELINE_STARTED: 'bg-purple-500/20 text-purple-400',
-  PIPELINE_REPROCESSED: 'bg-amber-500/20 text-amber-400',
-  ALERT_DISPATCHED: 'bg-orange-500/20 text-orange-400',
+  JOB_CREATED: 'bg-muted/50 text-muted-foreground',
+  JOB_ASSIGNED: 'bg-accent/15 text-accent',
+  JOB_COMPLETED: 'bg-success/15 text-success',
+  JOB_FAILED: 'bg-destructive/15 text-destructive',
+  PIPELINE_STARTED: 'bg-accent/15 text-accent',
+  PIPELINE_REPROCESSED: 'bg-muted/50 text-muted-foreground',
+  ALERT_DISPATCHED: 'bg-destructive/15 text-destructive',
 };
 
 interface AuditTabProps {

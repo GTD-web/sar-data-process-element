@@ -73,10 +73,10 @@ export default function RightTabbedPanel({
               >
                 {tab.label}
                 {tab.id === 'alerts' && alertCount > 0 && (
-                  <span className="ml-1 px-1 rounded-full text-[9px] bg-red-500/20 text-red-400">{alertCount}</span>
+                  <span className="ml-1 px-1 rounded-full text-[9px] bg-destructive/15 text-destructive">{alertCount}</span>
                 )}
                 {tab.id === 'jobs' && jobCount > 0 && (
-                  <span className="ml-1 px-1 rounded-full text-[9px] bg-blue-500/20 text-blue-400">{jobCount}</span>
+                  <span className="ml-1 px-1 rounded-full text-[9px] bg-accent/15 text-accent">{jobCount}</span>
                 )}
               </button>
             ))}

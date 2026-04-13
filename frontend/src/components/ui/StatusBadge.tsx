@@ -6,19 +6,19 @@ import { JOB_STATUS_DISPLAY } from '@/types/pipeline';
 import { AlertCircle, CheckCircle, Circle, Loader, RefreshCw, XCircle, Ban } from 'lucide-react';
 
 const JOB_STATUS_STYLES: Record<JobStatus, { bg: string; text: string; icon: React.ElementType }> = {
-  CREATED: { bg: 'bg-slate-500/20', text: 'text-slate-400', icon: Circle },
-  ASSIGNED: { bg: 'bg-blue-500/20', text: 'text-blue-400', icon: Loader },
-  COMPLETED: { bg: 'bg-emerald-500/20', text: 'text-emerald-400', icon: CheckCircle },
-  FAILED: { bg: 'bg-red-500/20', text: 'text-red-400', icon: AlertCircle },
-  CANCELED: { bg: 'bg-zinc-500/20', text: 'text-zinc-400', icon: Ban },
+  CREATED: { bg: 'bg-muted/50', text: 'text-muted-foreground', icon: Circle },
+  ASSIGNED: { bg: 'bg-accent/15', text: 'text-accent', icon: Loader },
+  COMPLETED: { bg: 'bg-success/15', text: 'text-success', icon: CheckCircle },
+  FAILED: { bg: 'bg-destructive/15', text: 'text-destructive', icon: AlertCircle },
+  CANCELED: { bg: 'bg-muted/50', text: 'text-muted-foreground', icon: Ban },
 };
 
 const STEP_STATUS_STYLES: Record<StepStatus, { bg: string; text: string; icon: React.ElementType }> = {
-  PENDING: { bg: 'bg-slate-500/20', text: 'text-slate-400', icon: Circle },
-  RUNNING: { bg: 'bg-blue-500/20', text: 'text-blue-400', icon: Loader },
-  COMPLETED: { bg: 'bg-emerald-500/20', text: 'text-emerald-400', icon: CheckCircle },
-  FAILED: { bg: 'bg-red-500/20', text: 'text-red-400', icon: XCircle },
-  SKIPPED: { bg: 'bg-zinc-500/20', text: 'text-zinc-400', icon: Ban },
+  PENDING: { bg: 'bg-muted/50', text: 'text-muted-foreground', icon: Circle },
+  RUNNING: { bg: 'bg-accent/15', text: 'text-accent', icon: Loader },
+  COMPLETED: { bg: 'bg-success/15', text: 'text-success', icon: CheckCircle },
+  FAILED: { bg: 'bg-destructive/15', text: 'text-destructive', icon: XCircle },
+  SKIPPED: { bg: 'bg-muted/50', text: 'text-muted-foreground', icon: Ban },
 };
 
 export function JobStatusBadge({ status, retryCount }: { status: JobStatus; retryCount?: number }) {
@@ -48,14 +48,8 @@ export function StepStatusBadge({ status }: { status: StepStatus }) {
 }
 
 export function AlertKindBadge({ kind }: { kind: string }) {
-  const styles: Record<string, string> = {
-    MAX_RETRY: 'bg-red-500/20 text-red-400',
-    PIPELINE_DELAY: 'bg-amber-500/20 text-amber-400',
-    QUALITY_FAIL: 'bg-orange-500/20 text-orange-400',
-    RESOURCE_THRESHOLD: 'bg-purple-500/20 text-purple-400',
-  };
   return (
-    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium', styles[kind] ?? 'bg-muted text-muted-foreground')}>
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-accent/15 text-accent">
       {kind}
     </span>
   );

@@ -17,7 +17,7 @@ function AddNodeButtonComponent({ data }: NodeProps) {
     <div className="flex items-center" style={{ height: 32 }}>
       {/* Short connecting line */}
       <svg width="48" height="2" className="flex-shrink-0">
-        <line x1="0" y1="1" x2="48" y2="1" stroke="#334155" strokeWidth="2" />
+        <line x1="0" y1="1" x2="48" y2="1" stroke="var(--muted-foreground)" strokeWidth="2" />
       </svg>
       {/* Plus button */}
       <button
