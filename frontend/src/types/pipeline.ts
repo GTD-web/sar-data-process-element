@@ -95,6 +95,8 @@ export interface JobDetail extends JobSummary {
 
 export interface Alert {
   id: string;
+  /** S-03: Optimistic concurrency — ETag 역할. If-Match 헤더 동반 전송용. */
+  version: number;
   jobId: string;
   kind: AlertKind;
   message: string;
@@ -176,6 +178,8 @@ export interface ProcessingProfile {
 export interface ServiceResponse {
   success: boolean;
   message: string;
+  /** HTTP 상태 코드 (예: 409 충돌). 에러 시에만 포함. */
+  code?: number;
 }
 
 export interface ServiceResponseWithData<T> extends ServiceResponse {

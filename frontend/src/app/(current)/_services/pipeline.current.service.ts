@@ -96,9 +96,11 @@ export const pipelineCurrentService: IPipelineUIService = {
     return handleResponse(res, 'Alert 목록 조회 실패');
   },
 
-  async Alert을_확인한다(alertId: string): Promise<ServiceResponse> {
-    const res = await fetch(`${API_BASE}/alerts/${alertId}/acknowledge`, { method: 'POST' });
-    if (!res.ok) return { success: false, message: `Alert 확인 실패: ${res.status}` };
+  async Alert을_확인한다(alertId: string, options?: { ifMatchVersion?: number }): Promise<ServiceResponse> {
+    const headers: HeadersInit = {};
+    if (options?.ifMatchVersion !== undefined) headers['If-Match'] = String(options.ifMatchVersion);
+    const res = await fetch(`${API_BASE}/alerts/${alertId}/acknowledge`, { method: 'POST', headers });
+    if (!res.ok) return { success: false, message: `Alert 확인 실패: ${res.status}`, code: res.status };
     return { success: true, message: 'OK' };
   },
 

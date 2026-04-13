@@ -173,6 +173,7 @@ function generateAlerts(jobs: JobDetail[]): Alert[] {
     const acked = Math.random() > 0.6;
     return {
       id: `ALERT-${String(i + 1).padStart(4, '0')}`,
+      version: 1,
       jobId: job.jobId,
       kind,
       message: `${messages[kind]} — Job: ${job.jobId}, Scene: ${job.sceneId}`,
@@ -414,12 +415,17 @@ class MockPipelineUIService implements IPipelineUIService {
     return { success: true, message: 'OK', data: filtered };
   }
 
-  async Alert을_확인한다(alertId: string): Promise<ServiceResponse> {
+  async Alert을_확인한다(alertId: string, options?: { ifMatchVersion?: number }): Promise<ServiceResponse> {
     const alert = this.alerts.find((a) => a.id === alertId);
     if (!alert) return { success: false, message: 'Alert을 찾을 수 없습니다' };
+    // S-03: 이미 ack된 Alert에 version 포함 요청 → 409 시뮬레이션
+    if (alert.acknowledged && options?.ifMatchVersion !== undefined) {
+      return { success: false, message: '이미 다른 운영자가 확인했습니다', code: 409 };
+    }
     alert.acknowledged = true;
     alert.acknowledgedAt = new Date().toISOString();
     alert.acknowledgedBy = 'operator-01';
+    alert.version += 1;
     return { success: true, message: `Alert ${alertId}이(가) 확인되었습니다` };
   }
 

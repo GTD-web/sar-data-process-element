@@ -12,6 +12,10 @@ import AlertsTab from '@/components/panels/AlertsTab';
 import AuditTab from '@/components/panels/AuditTab';
 import QueuesTab from '@/components/panels/QueuesTab';
 import AlertModal from '@/components/panels/AlertModal';
+import ReprocessConfirmDialog from '@/components/panels/ReprocessConfirmDialog';
+import CancelConfirmDialog from '@/components/panels/CancelConfirmDialog';
+import CreatePipelineDialog from '@/components/panels/CreatePipelineDialog';
+import Toast, { type ToastMessage } from '@/components/ui/Toast';
 import type {
   PipelineDefinition,
   PipelineStepDefinition,
@@ -55,6 +59,10 @@ export default function ConsolePage() {
   const [consoleMode, setConsoleMode] = useState<ConsoleMode>({ type: 'idle' });
   const [editSaving, setEditSaving] = useState(false);
   const [alertModalOpen, setAlertModalOpen] = useState(false);
+  const [reprocessDialogOpen, setReprocessDialogOpen] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [createPipelineDialogOpen, setCreatePipelineDialogOpen] = useState(false);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
 
   // --- Load ---
   useEffect(() => {
@@ -238,22 +246,38 @@ export default function ConsolePage() {
   }, [service]);
 
   const handleAckAlert = useCallback(async (alertId: string) => {
-    await service.Alert을_확인한다(alertId);
+    const alert = alerts.find((a) => a.id === alertId);
+    const res = await service.Alert을_확인한다(alertId, { ifMatchVersion: alert?.version });
+    if (!res.success && res.code === 409) {
+      setToast({ message: '이미 다른 운영자가 확인한 알림입니다', type: 'error' });
+    }
     const [aRes, sRes] = await Promise.all([service.Alert_목록을_조회한다(), service.대시보드_통계를_조회한다()]);
     if (aRes.data) setAlerts(aRes.data);
     if (sRes.data) setStats(sRes.data);
-  }, [service]);
+  }, [service, alerts]);
 
-  const handleReprocessJob = useCallback(async () => {
-    if (!selectedJob || !confirm(`Job ${selectedJob.jobId}을(를) 재처리하시겠습니까?`)) return;
+  const handleReprocessJob = useCallback(() => {
+    if (!selectedJob) return;
+    setReprocessDialogOpen(true);
+  }, [selectedJob]);
+
+  const handleReprocessConfirm = useCallback(async () => {
+    if (!selectedJob) return;
+    setReprocessDialogOpen(false);
     await service.Job을_재처리한다(selectedJob.jobId);
     const [jRes, jsRes] = await Promise.all([service.Job_상세를_조회한다(selectedJob.jobId), service.Job_목록을_조회한다({ limit: 50 })]);
     if (jRes.data) { setSelectedJob(jRes.data); setConsoleMode({ type: 'job', job: jRes.data }); }
     if (jsRes.data) setJobs(jsRes.data.items);
   }, [service, selectedJob]);
 
-  const handleCancelJob = useCallback(async () => {
-    if (!selectedJob || !confirm(`Job ${selectedJob.jobId}을(를) 취소하시겠습니까?`)) return;
+  const handleCancelJob = useCallback(() => {
+    if (!selectedJob) return;
+    setCancelDialogOpen(true);
+  }, [selectedJob]);
+
+  const handleCancelConfirm = useCallback(async () => {
+    if (!selectedJob) return;
+    setCancelDialogOpen(false);
     await service.Job을_취소한다(selectedJob.jobId);
     const [jRes, jsRes] = await Promise.all([service.Job_상세를_조회한다(selectedJob.jobId), service.Job_목록을_조회한다({ limit: 50 })]);
     if (jRes.data) { setSelectedJob(jRes.data); setConsoleMode({ type: 'job', job: jRes.data }); }
@@ -282,12 +306,14 @@ export default function ConsolePage() {
     setConsoleMode({ type: 'idle' });
   }, [service, selectedPipelineId]);
 
-  const handleCreatePipeline = useCallback(async () => {
-    const name = prompt('파이프라인 이름을 입력하세요:');
-    if (!name) return;
-    const res = await service.파이프라인을_생성한다({
-      name, satelliteId: 'KS-5', mode: 'Stripmap',
-      steps: [
+  const handleCreatePipeline = useCallback(() => {
+    setCreatePipelineDialogOpen(true);
+  }, []);
+
+  const handleCreatePipelineConfirm = useCallback(async (data: { name: string; satelliteId: string; mode: string }) => {
+    setCreatePipelineDialogOpen(false);
+    const modeSteps: Record<string, { targetCsc: TargetCsc; productLevel: ProductLevel }[]> = {
+      Stripmap: [
         { targetCsc: 'CSC-02', productLevel: 'LEVEL_0' },
         { targetCsc: 'CSC-03', productLevel: 'LEVEL_0' },
         { targetCsc: 'CSC-04', productLevel: 'LEVEL_1' },
@@ -295,7 +321,24 @@ export default function ConsolePage() {
         { targetCsc: 'CSC-06', productLevel: 'LEVEL_3' },
         { targetCsc: 'CSC-07', productLevel: 'LEVEL_3' },
       ],
-    });
+      ScanSAR: [
+        { targetCsc: 'CSC-02', productLevel: 'LEVEL_0' },
+        { targetCsc: 'CSC-03', productLevel: 'LEVEL_0' },
+        { targetCsc: 'CSC-04', productLevel: 'LEVEL_1' },
+        { targetCsc: 'CSC-07', productLevel: 'LEVEL_1' },
+      ],
+      Spotlight: [
+        { targetCsc: 'CSC-02', productLevel: 'LEVEL_0' },
+        { targetCsc: 'CSC-03', productLevel: 'LEVEL_0' },
+        { targetCsc: 'CSC-04', productLevel: 'LEVEL_1' },
+        { targetCsc: 'CSC-05', productLevel: 'LEVEL_2' },
+        { targetCsc: 'CSC-06', productLevel: 'LEVEL_3' },
+        { targetCsc: 'CSC-05', productLevel: 'LEVEL_3' },
+        { targetCsc: 'CSC-07', productLevel: 'LEVEL_3' },
+      ],
+    };
+    const steps = modeSteps[data.mode] ?? modeSteps['Stripmap']!;
+    const res = await service.파이프라인을_생성한다({ ...data, steps });
     if (res.data) {
       setPipelines((prev) => [...prev, res.data!]);
       setSelectedPipelineId(res.data.id);
@@ -394,6 +437,36 @@ export default function ConsolePage() {
         onAck={handleAckAlert}
         onSelectJob={(jobId) => { setAlertModalOpen(false); handleSelectJob(jobId); }}
       />
+
+      {/* S-01 + S-02: 재처리 확인 다이얼로그 — Job ID 타이핑 필요 */}
+      {reprocessDialogOpen && selectedJob && (
+        <ReprocessConfirmDialog
+          jobId={selectedJob.jobId}
+          sceneId={selectedJob.sceneId}
+          onConfirm={handleReprocessConfirm}
+          onCancel={() => setReprocessDialogOpen(false)}
+        />
+      )}
+
+      {/* S-01: 취소 확인 다이얼로그 */}
+      {cancelDialogOpen && selectedJob && (
+        <CancelConfirmDialog
+          jobId={selectedJob.jobId}
+          onConfirm={handleCancelConfirm}
+          onCancel={() => setCancelDialogOpen(false)}
+        />
+      )}
+
+      {/* S-01: 파이프라인 생성 다이얼로그 */}
+      {createPipelineDialogOpen && (
+        <CreatePipelineDialog
+          onConfirm={handleCreatePipelineConfirm}
+          onCancel={() => setCreatePipelineDialogOpen(false)}
+        />
+      )}
+
+      {/* S-03: 동시성 충돌 토스트 */}
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
     </div>
   );
 }

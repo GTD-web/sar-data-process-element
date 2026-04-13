@@ -63,7 +63,8 @@ export interface IPipelineUIService {
     acknowledged?: boolean;
   }): Promise<ServiceResponseWithData<Alert[]>>;
 
-  Alert을_확인한다(alertId: string): Promise<ServiceResponse>;
+  /** S-03: ifMatchVersion 전달 시 If-Match 헤더 동반 — 409 충돌 감지 */
+  Alert을_확인한다(alertId: string, options?: { ifMatchVersion?: number }): Promise<ServiceResponse>;
 
   // =========================================================================
   // Audit
