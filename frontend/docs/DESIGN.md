@@ -114,7 +114,7 @@
 ```
 
 ### 4.1 핵심 화면 — Job 그래프 (`/jobs/[jobId]`)
-- 노드: `RAW_DATA_RECEIVED`, `CSC-03 L0`, `CSC-04 L1`, `CSC-05 L2`, `CSC-06 L3`, `CSC-07 등록`
+- 노드: `RAW_DATA_RECEIVED`, `CSC-02 수집`, `CSC-03 L0`, `CSC-04 L1`, `CSC-05 L2`, `CSC-06 L3`, `CSC-07 등록`
 - 각 노드 상태: `pending` / `running(VT 진행률 바)` / `completed` / `failed(retry n/3)`
 - 노드 클릭 → 우측 패널에 SI-03 이벤트 raw, error_code/error_message, NAS 경로 표시
 - 헤더에 `job_id`, `scene_id`, `acquisition_*`, 누적 소요 시간 (목표 14,400초 대비)
@@ -169,19 +169,33 @@
 
 ```ts
 // frontend/src/types/job.ts (수기 복제 v1)
-export type JobStatus = 'PENDING' | 'RUNNING' | 'FAILED' | 'COMPLETED' | 'CANCELED';
+// 백엔드(libs/sdpe-shared)와 일치시킬 것
+// 백엔드: CREATED → ASSIGNED → COMPLETED | FAILED
+// 프론트는 표시 편의상 매핑: CREATED→PENDING, ASSIGNED→RUNNING
+export type JobStatus = 'CREATED' | 'ASSIGNED' | 'COMPLETED' | 'FAILED' | 'CANCELED';
 export type StepStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
 export type ProductLevel = 'LEVEL_0' | 'LEVEL_1' | 'LEVEL_2' | 'LEVEL_3';
-export type TargetCsc = 'CSC-03' | 'CSC-04' | 'CSC-05' | 'CSC-06';
+// CSC-02(수집)~CSC-07(등록)까지 DAG 전체 단계 포함
+export type TargetCsc = 'CSC-02' | 'CSC-03' | 'CSC-04' | 'CSC-05' | 'CSC-06' | 'CSC-07';
+
+// UI 표시용 매핑 (백엔드 상태 → 운영자 친화 라벨)
+export const JOB_STATUS_DISPLAY: Record<JobStatus, string> = {
+  CREATED: 'PENDING',
+  ASSIGNED: 'RUNNING',
+  COMPLETED: 'DONE',
+  FAILED: 'FAILED',
+  CANCELED: 'CANCELED',
+};
 
 export interface JobSummary {
   jobId: string;
   sceneId: string;
   status: JobStatus;
   currentLevel: ProductLevel | null;
+  currentTargetCsc: TargetCsc | null;
   retryCount: number;
-  startedAt: string;   // ISO
-  updatedAt: string;
+  startedAt: string;   // ISO 8601
+  updatedAt: string;   // ISO 8601
 }
 
 export interface PipelineStep {
@@ -471,16 +485,99 @@ frontend/
   4. **i18n 번역 1차 범위** — 한/영 이외 (위성팀 영문 보고 의무 여부에 따름).
   5. **OIDC provider 구체 구현** — CSC-01 IAM 모듈의 실제 spec 미공개.
 
+### 14.13 에러 핸들링 전략
+- **🟥 API 에러 분류 및 처리**:
+  | HTTP 상태 | 프론트 동작 |
+  |---|---|
+  | 401/403 | 토스트 + 로그인 리다이렉트 (현재 URL deep link 보존) |
+  | 404 | 해당 리소스 "찾을 수 없음" 빈 상태 표시 |
+  | 409 (Conflict) | Optimistic concurrency 충돌 → 토스트 + 자동 리페치 |
+  | 429 (Rate limit) | 재시도 큐잉 (exponential backoff, 최대 3회) |
+  | 5xx | 에러 배너 + "재시도" 버튼, 3회 실패 시 수동 새로고침 안내 |
+  | 네트워크 에러 | 오프라인 배너, 재연결 시 자동 리페치 |
+- **🟥 TanStack Query 글로벌 에러 핸들러** — `QueryClient`에 공통 `onError` 등록.
+  mutation 실패는 rollback + 토스트, query 실패는 stale 데이터 유지 + 배너.
+
+### 14.14 페이지네이션·리스트 UX
+- **🟧 Job 리스트** — 커서 기반(cursor) 페이지네이션 사용.
+  `updatedAt` 기준 내림차순, 응답에 `nextCursor` 포함.
+  프론트는 무한 스크롤 + "맨 위로" FAB.
+  초기 로드 50건, 이후 25건씩 추가 로드.
+- **🟧 Alert 리스트** — 미확인 Alert은 전량 로드(통상 < 100건),
+  확인 완료 Alert은 시간 범위 필터 + 페이지네이션.
+- **🟧 감사 로그** — 시간 범위 + Job ID 필터 필수, 페이지 단위(page/size) 네비게이션.
+
+### 14.15 로딩·빈·에러 상태 명세
+- **🟧 각 화면별 3상태 디자인** 필수:
+  | 화면 | 로딩 상태 | 빈 상태 | 에러 상태 |
+  |---|---|---|---|
+  | 대시보드 | 카드별 스켈레톤 | "아직 처리된 Job이 없습니다" | 개별 카드 에러 배지 |
+  | Job 리스트 | 테이블 행 스켈레톤 (5행) | "조건에 맞는 Job이 없습니다" + 필터 초기화 버튼 | 재시도 배너 |
+  | Job 그래프 | 노드 위치 잡힌 회색 스켈레톤 | — (jobId 404 시 "Job을 찾을 수 없습니다") | 그래프 영역 에러 오버레이 |
+  | Alert 보드 | 카드 스켈레톤 | "미확인 Alert이 없습니다 ✓" (긍정 메시지) | 재시도 배너 |
+  | 감사 로그 | 테이블 스켈레톤 | "해당 기간의 로그가 없습니다" | 재시도 배너 |
+
+### 14.16 환경 변수 관리
+- **🟥 환경별 설정**:
+  ```
+  # .env.local (gitignore)
+  NEXT_PUBLIC_API_BASE_URL=http://localhost:3000/api/v1
+  NEXT_PUBLIC_SSE_BASE_URL=http://localhost:3000/api/v1/stream
+
+  # .env.production
+  NEXT_PUBLIC_API_BASE_URL=/api/v1          # 동일 도메인 프록시
+  NEXT_PUBLIC_SSE_BASE_URL=/api/v1/stream
+
+  # 서버 전용 (NEXT_PUBLIC_ 없음)
+  OIDC_CLIENT_ID=...
+  OIDC_CLIENT_SECRET=...
+  NEXTAUTH_SECRET=...
+  NEXTAUTH_URL=https://sdpe-console.internal
+  SENTRY_DSN=...
+  ```
+- **🟧 `next.config.ts` rewrites** — 개발 환경에서 `/api/v1/**`을 PWS 로컬 주소로 프록시.
+  CORS 없이 개발 가능.
+
+### 14.17 번들 최적화·코드 스플리팅
+- **🟧 React Flow 동적 import** — `@xyflow/react`와 `dagre`는 Job 그래프 페이지에서만
+  필요하므로 `next/dynamic`으로 lazy load. 대시보드·리스트 페이지 초기 번들에 미포함.
+- **🟧 Recharts 동적 import** — 차트 컴포넌트도 동일하게 lazy load.
+- **🟨 번들 사이즈 예산**:
+  | 청크 | 목표 (gzip) |
+  |---|---|
+  | 공통 (framework + shadcn) | < 120KB |
+  | 그래프 페이지 | < 150KB |
+  | 차트 페이지 | < 80KB |
+  | 기타 페이지 | < 50KB |
+
+### 14.18 SSE 이벤트 스키마 보강 (6.1절 보강)
+- 6.1절에 정의된 `job.updated`, `step.updated`, `alert.created` 외에 다음 이벤트 추가 필요:
+  ```
+  event: reception.created
+  data: { "eventId": "...", "satelliteId": "...", "rawDataPath": "...", "receivedAt": "..." }
+
+  event: pipeline.completed
+  data: { "jobId": "...", "totalDurationMs": 12345000, "finalLevel": "LEVEL_3" }
+
+  event: queue.depth
+  data: { "queue": "sdpe.jobs.csc04", "depth": 12, "oldestMessageAge": 3600 }
+
+  event: heartbeat
+  data: { "serverTime": "2026-04-10T12:00:00Z" }
+  ```
+- `heartbeat` 이벤트는 30초 간격으로 발행. 14.1의 "Stale data banner" 판단 기준으로 사용.
+- `queue.depth`는 60초 간격으로 발행. 대시보드 큐 깊이 바 갱신용.
+
 ---
 
 ## 15. 부록 — 화면별 상태→색상 매핑
 
-| 상태 | 색 | 텍스트 | 비고 |
-|---|---|---|---|
-| pending | slate-400 | PENDING | 아이콘: dot |
-| running | blue-500 (펄스) | RUNNING (n%) | VT 대비 진행률 |
-| completed | emerald-500 | DONE (12m 04s) | 소요 시간 |
-| failed (retry < 3) | amber-500 | RETRY 1/3 | 아이콘: refresh |
-| failed (max) | red-600 | FAILED | 아이콘: alert |
-| skipped | zinc-400 | SKIP | 부분 재처리 |
-| canceled | zinc-500 | CANCELED | 운영자 취소 |
+| 백엔드 상태 | UI 표시 | 색 | 텍스트 | 비고 |
+|---|---|---|---|---|
+| CREATED | pending | slate-400 | PENDING | 아이콘: dot |
+| ASSIGNED | running | blue-500 (펄스) | RUNNING (n%) | VT 대비 진행률 |
+| COMPLETED | completed | emerald-500 | DONE (12m 04s) | 소요 시간 |
+| FAILED (retry < 3) | retrying | amber-500 | RETRY 1/3 | 아이콘: refresh |
+| FAILED (max retry) | failed | red-600 | FAILED | 아이콘: alert |
+| — (부분 재처리) | skipped | zinc-400 | SKIP | 부분 재처리 시 건너뛴 단계 |
+| CANCELED | canceled | zinc-500 | CANCELED | 운영자 취소 |
