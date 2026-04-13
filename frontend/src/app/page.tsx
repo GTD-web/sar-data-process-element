@@ -1,179 +1,349 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { useEffect, useState, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { usePipelineService } from '@/services/usePipelineService';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { JobStatusBadge, AlertKindBadge } from '@/components/ui/StatusBadge';
-import { formatDuration } from '@/lib/utils';
-import type { DashboardStats, QueueHealth, Alert, JobSummary } from '@/types/pipeline';
-import {
-  Activity,
-  CheckCircle,
-  XCircle,
-  Clock,
-  AlertTriangle,
-  ArrowRight,
-} from 'lucide-react';
+import TopBar from '@/components/panels/TopBar';
+import LeftSidebar from '@/components/panels/LeftSidebar';
+import RightTabbedPanel, { type RightTab } from '@/components/panels/RightTabbedPanel';
+import ConsoleTab, { type ConsoleMode } from '@/components/panels/ConsoleTab';
+import JobsTab from '@/components/panels/JobsTab';
+import AlertsTab from '@/components/panels/AlertsTab';
+import AuditTab from '@/components/panels/AuditTab';
+import QueuesTab from '@/components/panels/QueuesTab';
+import AlertModal from '@/components/panels/AlertModal';
+import type {
+  PipelineDefinition,
+  PipelineStepDefinition,
+  JobSummary,
+  JobDetail,
+  Alert,
+  AuditEvent,
+  QueueHealth,
+  DashboardStats,
+  PipelineStep,
+  TargetCsc,
+  ProductLevel,
+} from '@/types/pipeline';
 
-export default function DashboardPage() {
+const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex-1 flex items-center justify-center bg-background text-muted-foreground text-sm">
+      그래프 로딩 중...
+    </div>
+  ),
+});
+
+export default function ConsolePage() {
   const service = usePipelineService();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [queues, setQueues] = useState<QueueHealth[]>([]);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [recentJobs, setRecentJobs] = useState<JobSummary[]>([]);
 
+  // --- Data ---
+  const [pipelines, setPipelines] = useState<PipelineDefinition[]>([]);
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [jobs, setJobs] = useState<JobSummary[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [queues, setQueues] = useState<QueueHealth[]>([]);
+  const [selectedJob, setSelectedJob] = useState<JobDetail | null>(null);
+
+  // --- UI State ---
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [rightTab, setRightTab] = useState<RightTab>('console');
+  const [consoleMode, setConsoleMode] = useState<ConsoleMode>({ type: 'idle' });
+  const [editSaving, setEditSaving] = useState(false);
+  const [alertModalOpen, setAlertModalOpen] = useState(false);
+
+  // --- Load ---
   useEffect(() => {
-    service.대시보드_통계를_조회한다().then((r) => r.data && setStats(r.data));
-    service.큐_상태를_조회한다().then((r) => r.data && setQueues(r.data));
-    service.Alert_목록을_조회한다({ acknowledged: false }).then((r) => r.data && setAlerts(r.data.slice(0, 5)));
-    service.Job_목록을_조회한다({ limit: 8 }).then((r) => r.data && setRecentJobs(r.data.items));
+    (async () => {
+      const [plRes, statsRes, jobsRes, alertsRes, auditRes, queuesRes] = await Promise.all([
+        service.파이프라인_목록을_조회한다(),
+        service.대시보드_통계를_조회한다(),
+        service.Job_목록을_조회한다({ limit: 50 }),
+        service.Alert_목록을_조회한다(),
+        service.감사로그를_조회한다({ size: 50 }),
+        service.큐_상태를_조회한다(),
+      ]);
+      if (plRes.data) {
+        setPipelines(plRes.data);
+        if (plRes.data.length > 0) setSelectedPipelineId(plRes.data[0].id);
+      }
+      if (statsRes.data) setStats(statsRes.data);
+      if (jobsRes.data) setJobs(jobsRes.data.items);
+      if (alertsRes.data) setAlerts(alertsRes.data);
+      if (auditRes.data) setAuditEvents(auditRes.data.items);
+      if (queuesRes.data) setQueues(queuesRes.data);
+    })();
   }, [service]);
 
-  if (!stats) {
-    return <DashboardSkeleton />;
-  }
+  // --- Derived ---
+  const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId) ?? null;
+  const activeJobs = jobs.filter((j) => j.status === 'ASSIGNED' || j.status === 'CREATED');
+  const unackedAlerts = alerts.filter((a) => !a.acknowledged);
+  const canvasEditable = !selectedJob;
 
-  return (
-    <div className="space-y-6">
-      <h1 className="text-lg font-semibold">대시보드</h1>
+  const graphSteps: PipelineStep[] = selectedPipeline
+    ? selectedPipeline.steps.map((s) => ({
+        order: s.order,
+        targetCsc: s.targetCsc,
+        productLevel: s.productLevel,
+        status: selectedJob ? (selectedJob.steps.find((js) => js.order === s.order)?.status ?? 'PENDING') : 'PENDING',
+        durationMs: selectedJob ? selectedJob.steps.find((js) => js.order === s.order)?.durationMs : undefined,
+        errorMessage: selectedJob ? selectedJob.steps.find((js) => js.order === s.order)?.errorMessage : undefined,
+      }))
+    : [];
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard icon={Activity} label="진행 중 Jobs" value={stats.inflightJobs} color="text-blue-400" />
-        <StatCard icon={CheckCircle} label="완료 (24h)" value={stats.completedLast24h} color="text-emerald-400" />
-        <StatCard icon={XCircle} label="실패 (24h)" value={stats.failedLast24h} color="text-red-400" />
-        <StatCard icon={Clock} label="평균 처리 시간" value={formatDuration(stats.avgProcessingTimeMs)} color="text-amber-400" />
-        <StatCard icon={AlertTriangle} label="미확인 Alert" value={stats.unacknowledgedAlerts} color="text-orange-400" />
-      </div>
+  const graphEdges = selectedPipeline?.edges ?? [];
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Queue Depth */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle>큐 상태</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2.5">
-            {queues.map((q) => (
-              <QueueBar key={q.queue} queue={q} maxDepth={Math.max(...queues.map((x) => x.depth), 1)} />
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Recent Jobs */}
-        <Card className="lg:col-span-1">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>최근 Jobs</CardTitle>
-            <Link href="/jobs" className="text-xs text-accent hover:underline flex items-center gap-1">
-              전체 보기 <ArrowRight className="w-3 h-3" />
-            </Link>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="divide-y divide-border">
-              {recentJobs.map((job) => (
-                <Link
-                  key={job.jobId}
-                  href={`/jobs/${job.jobId}`}
-                  className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/30 transition-colors"
-                >
-                  <div className="min-w-0">
-                    <div className="text-xs font-mono text-foreground truncate">{job.jobId}</div>
-                    <div className="text-[11px] text-muted-foreground truncate">{job.sceneId}</div>
-                  </div>
-                  <JobStatusBadge status={job.status} retryCount={job.retryCount} />
-                </Link>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Unacknowledged Alerts */}
-        <Card className="lg:col-span-1">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>미확인 Alerts</CardTitle>
-            <Link href="/alerts" className="text-xs text-accent hover:underline flex items-center gap-1">
-              전체 보기 <ArrowRight className="w-3 h-3" />
-            </Link>
-          </CardHeader>
-          <CardContent className="p-0">
-            {alerts.length === 0 ? (
-              <div className="p-6 text-center text-sm text-muted-foreground">
-                미확인 Alert이 없습니다
-              </div>
-            ) : (
-              <div className="divide-y divide-border">
-                {alerts.map((alert) => (
-                  <div key={alert.id} className="px-4 py-2.5 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <AlertKindBadge kind={alert.kind} />
-                      <span className="text-[11px] text-muted-foreground font-mono">{alert.jobId}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">{alert.message}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+  // --- Pipeline mutation ---
+  const updatePipeline = useCallback(
+    async (data: { steps?: { targetCsc: TargetCsc; productLevel: ProductLevel }[]; edges?: { source: number; target: number }[] }) => {
+      if (!selectedPipelineId) return;
+      const res = await service.파이프라인을_수정한다(selectedPipelineId, data);
+      if (res.data) setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? res.data! : p)));
+    },
+    [service, selectedPipelineId],
   );
-}
 
-function StatCard({ icon: Icon, label, value, color }: {
-  icon: React.ElementType;
-  label: string;
-  value: string | number;
-  color: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-3 py-3">
-        <div className={`p-2 rounded-lg bg-muted/50 ${color}`}>
-          <Icon className="w-5 h-5" />
-        </div>
-        <div>
-          <div className="text-[11px] text-muted-foreground">{label}</div>
-          <div className="text-lg font-semibold text-foreground">{value}</div>
-        </div>
-      </CardContent>
-    </Card>
+  // --- Canvas handlers ---
+  const handleNodeClick = useCallback(
+    (stepOrder: number) => {
+      if (selectedJob) return;
+      const step = selectedPipeline?.steps.find((s) => s.order === stepOrder);
+      if (step) {
+        setConsoleMode({ type: 'node', step });
+        setRightTab('console');
+        setRightCollapsed(false);
+      }
+    },
+    [selectedJob, selectedPipeline],
   );
-}
 
-function QueueBar({ queue, maxDepth }: { queue: QueueHealth; maxDepth: number }) {
-  const pct = Math.round((queue.depth / maxDepth) * 100);
-  const shortName = queue.queue.replace('sdpe.', '');
+  const handleConnect = useCallback(
+    (sourceOrder: number, targetOrder: number) => {
+      if (!selectedPipeline) return;
+      // Add new edge (avoid duplicates)
+      const exists = selectedPipeline.edges.some((e) => e.source === sourceOrder && e.target === targetOrder);
+      if (exists) return;
+      const newEdges = [...selectedPipeline.edges, { source: sourceOrder, target: targetOrder }];
+      updatePipeline({ edges: newEdges });
+    },
+    [selectedPipeline, updatePipeline],
+  );
+
+  const handleDeleteNode = useCallback(
+    (order: number) => {
+      if (!selectedPipeline || selectedPipeline.steps.length <= 1) return;
+      const newSteps = selectedPipeline.steps
+        .filter((s) => s.order !== order)
+        .map((s) => ({ targetCsc: s.targetCsc, productLevel: s.productLevel }));
+      // Remove edges that reference the deleted node
+      const newEdges = selectedPipeline.edges.filter((e) => e.source !== order && e.target !== order);
+      updatePipeline({ steps: newSteps, edges: newEdges });
+      if (consoleMode.type === 'node' && consoleMode.step.order === order) setConsoleMode({ type: 'idle' });
+    },
+    [selectedPipeline, updatePipeline, consoleMode],
+  );
+
+  const handleAddNode = useCallback(
+    (afterOrder: number) => {
+      setConsoleMode({ type: 'addStep', afterOrder });
+      setRightTab('console');
+      setRightCollapsed(false);
+    },
+    [],
+  );
+
+  const handleConfirmAddStep = useCallback(
+    (afterOrder: number, targetCsc: TargetCsc, productLevel: ProductLevel) => {
+      if (!selectedPipeline) return;
+      const newSteps = [
+        ...selectedPipeline.steps.map((s) => ({ targetCsc: s.targetCsc, productLevel: s.productLevel })),
+        { targetCsc, productLevel },
+      ];
+      const newOrder = newSteps.length; // new step gets the last order
+      const newEdges = [...selectedPipeline.edges];
+      if (afterOrder > 0) {
+        newEdges.push({ source: afterOrder, target: newOrder });
+      }
+      updatePipeline({ steps: newSteps, edges: newEdges });
+      setConsoleMode({ type: 'idle' });
+    },
+    [selectedPipeline, updatePipeline],
+  );
+
+  const handleSaveNode = useCallback(
+    (updated: PipelineStepDefinition) => {
+      if (!selectedPipeline) return;
+      const newSteps = selectedPipeline.steps.map((s) =>
+        s.order === updated.order
+          ? { targetCsc: updated.targetCsc, productLevel: updated.productLevel }
+          : { targetCsc: s.targetCsc, productLevel: s.productLevel },
+      );
+      updatePipeline({ steps: newSteps });
+    },
+    [selectedPipeline, updatePipeline],
+  );
+
+  // --- Job handlers ---
+  const handleSelectJob = useCallback(async (jobId: string) => {
+    const res = await service.Job_상세를_조회한다(jobId);
+    if (res.data) {
+      setSelectedJob(res.data);
+      setConsoleMode({ type: 'job', job: res.data });
+      setRightTab('console');
+      setRightCollapsed(false);
+    }
+  }, [service]);
+
+  const handleAckAlert = useCallback(async (alertId: string) => {
+    await service.Alert을_확인한다(alertId);
+    const [aRes, sRes] = await Promise.all([service.Alert_목록을_조회한다(), service.대시보드_통계를_조회한다()]);
+    if (aRes.data) setAlerts(aRes.data);
+    if (sRes.data) setStats(sRes.data);
+  }, [service]);
+
+  const handleReprocessJob = useCallback(async () => {
+    if (!selectedJob || !confirm(`Job ${selectedJob.jobId}을(를) 재처리하시겠습니까?`)) return;
+    await service.Job을_재처리한다(selectedJob.jobId);
+    const [jRes, jsRes] = await Promise.all([service.Job_상세를_조회한다(selectedJob.jobId), service.Job_목록을_조회한다({ limit: 50 })]);
+    if (jRes.data) { setSelectedJob(jRes.data); setConsoleMode({ type: 'job', job: jRes.data }); }
+    if (jsRes.data) setJobs(jsRes.data.items);
+  }, [service, selectedJob]);
+
+  const handleCancelJob = useCallback(async () => {
+    if (!selectedJob || !confirm(`Job ${selectedJob.jobId}을(를) 취소하시겠습니까?`)) return;
+    await service.Job을_취소한다(selectedJob.jobId);
+    const [jRes, jsRes] = await Promise.all([service.Job_상세를_조회한다(selectedJob.jobId), service.Job_목록을_조회한다({ limit: 50 })]);
+    if (jRes.data) { setSelectedJob(jRes.data); setConsoleMode({ type: 'job', job: jRes.data }); }
+    if (jsRes.data) setJobs(jsRes.data.items);
+  }, [service, selectedJob]);
+
+  // --- Pipeline handlers ---
+  const handleSavePipeline = useCallback(async (data: { name: string; satelliteId: string; mode: string; steps: { targetCsc: TargetCsc; productLevel: ProductLevel }[] }) => {
+    if (!selectedPipelineId) return;
+    setEditSaving(true);
+    const res = await service.파이프라인을_수정한다(selectedPipelineId, data);
+    if (res.data) setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? res.data! : p)));
+    setEditSaving(false);
+    setConsoleMode({ type: 'idle' });
+  }, [service, selectedPipelineId]);
+
+  const handleCreatePipeline = useCallback(async () => {
+    const name = prompt('파이프라인 이름을 입력하세요:');
+    if (!name) return;
+    const res = await service.파이프라인을_생성한다({
+      name, satelliteId: 'KS-5', mode: 'Stripmap',
+      steps: [
+        { targetCsc: 'CSC-02', productLevel: 'LEVEL_0' },
+        { targetCsc: 'CSC-03', productLevel: 'LEVEL_0' },
+        { targetCsc: 'CSC-04', productLevel: 'LEVEL_1' },
+        { targetCsc: 'CSC-05', productLevel: 'LEVEL_2' },
+        { targetCsc: 'CSC-06', productLevel: 'LEVEL_3' },
+        { targetCsc: 'CSC-07', productLevel: 'LEVEL_3' },
+      ],
+    });
+    if (res.data) {
+      setPipelines((prev) => [...prev, res.data!]);
+      setSelectedPipelineId(res.data.id);
+    }
+  }, [service]);
+
   return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground truncate">{shortName}</span>
-        <span className="font-mono text-foreground">{queue.depth}</span>
-      </div>
-      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all ${queue.healthy ? 'bg-accent' : 'bg-warning'}`}
-          style={{ width: `${Math.max(pct, 2)}%` }}
+    <div className="h-full flex flex-col">
+      <TopBar pipeline={selectedPipeline} queues={queues} />
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left: Pipelines + Settings */}
+        <LeftSidebar
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed((v) => !v)}
+          pipelines={pipelines}
+          selectedPipelineId={selectedPipelineId}
+          onSelectPipeline={(id) => {
+            setSelectedPipelineId(id);
+            setSelectedJob(null);
+            setConsoleMode({ type: 'idle' });
+          }}
+          onCreatePipeline={handleCreatePipeline}
+          stats={stats}
+          alertCount={unackedAlerts.length}
+          onAlertClick={() => setAlertModalOpen(true)}
         />
-      </div>
-    </div>
-  );
-}
 
-function DashboardSkeleton() {
-  return (
-    <div className="space-y-6">
-      <div className="h-6 w-24 bg-muted rounded animate-pulse" />
-      <div className="grid grid-cols-5 gap-4">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-20 bg-card border border-border rounded-lg animate-pulse" />
-        ))}
+        {/* Center: Canvas */}
+        <div className="flex-1 relative overflow-hidden">
+          {graphSteps.length > 0 ? (
+            <CanvasGraph
+              pipelineId={selectedPipelineId}
+              steps={graphSteps}
+              pipelineEdges={graphEdges}
+              editable={canvasEditable}
+              onNodeClick={handleNodeClick}
+              onDeleteNode={handleDeleteNode}
+              onAddNode={handleAddNode}
+              onConnect={handleConnect}
+            />
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center bg-background text-muted-foreground gap-3">
+              <span className="text-sm">파이프라인을 선택하거나 새로 만드세요</span>
+              <button
+                onClick={handleCreatePipeline}
+                className="px-3 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 transition-colors"
+              >
+                새 파이프라인
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Right: Tabbed Panel */}
+        <RightTabbedPanel
+          collapsed={rightCollapsed}
+          onToggle={() => setRightCollapsed((v) => !v)}
+          activeTab={rightTab}
+          onTabChange={setRightTab}
+          alertCount={unackedAlerts.length}
+          jobCount={activeJobs.length}
+        >
+          {rightTab === 'console' && (
+            <ConsoleTab
+              mode={consoleMode}
+              onSaveNode={handleSaveNode}
+              onDeleteNode={handleDeleteNode}
+              onConfirmAddStep={handleConfirmAddStep}
+              onReprocessJob={handleReprocessJob}
+              onCancelJob={handleCancelJob}
+              onSavePipeline={handleSavePipeline}
+              pipelineSaving={editSaving}
+            />
+          )}
+          {rightTab === 'jobs' && (
+            <JobsTab jobs={jobs} selectedJobId={selectedJob?.jobId ?? null} onSelectJob={handleSelectJob} />
+          )}
+          {rightTab === 'alerts' && (
+            <AlertsTab alerts={alerts} onAck={handleAckAlert} onSelectJob={handleSelectJob} />
+          )}
+          {rightTab === 'queues' && (
+            <QueuesTab queues={queues} />
+          )}
+          {rightTab === 'audit' && (
+            <AuditTab events={auditEvents} onSelectJob={handleSelectJob} />
+          )}
+        </RightTabbedPanel>
       </div>
-      <div className="grid grid-cols-3 gap-6">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-64 bg-card border border-border rounded-lg animate-pulse" />
-        ))}
-      </div>
+
+      {/* Alert Modal */}
+      <AlertModal
+        open={alertModalOpen}
+        onClose={() => setAlertModalOpen(false)}
+        alerts={alerts}
+        onAck={handleAckAlert}
+        onSelectJob={(jobId) => { setAlertModalOpen(false); handleSelectJob(jobId); }}
+      />
     </div>
   );
 }

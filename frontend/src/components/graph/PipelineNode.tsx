@@ -6,7 +6,20 @@ import { cn } from '@/lib/utils';
 import { formatDuration } from '@/lib/utils';
 import type { StepStatus, TargetCsc, ProductLevel } from '@/types/pipeline';
 import { CSC_LABELS, PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
-import { CheckCircle, Circle, Loader, XCircle, Ban } from 'lucide-react';
+import {
+  CheckCircle,
+  Circle,
+  Loader,
+  XCircle,
+  Ban,
+  Trash2,
+  Satellite,
+  Radio,
+  Cpu,
+  SlidersHorizontal,
+  Globe,
+  Database,
+} from 'lucide-react';
 
 export interface PipelineNodeData {
   targetCsc: TargetCsc;
@@ -15,60 +28,105 @@ export interface PipelineNodeData {
   order: number;
   durationMs?: number;
   errorMessage?: string;
+  editable?: boolean;
+  onDelete?: (order: number) => void;
   [key: string]: unknown;
 }
 
-const STATUS_CONFIG: Record<StepStatus, {
-  border: string;
-  bg: string;
-  icon: React.ElementType;
-  iconColor: string;
-  pulse: boolean;
-}> = {
-  PENDING: { border: 'border-slate-600', bg: 'bg-slate-800/50', icon: Circle, iconColor: 'text-slate-500', pulse: false },
-  RUNNING: { border: 'border-blue-500', bg: 'bg-blue-950/50', icon: Loader, iconColor: 'text-blue-400', pulse: true },
-  COMPLETED: { border: 'border-emerald-500', bg: 'bg-emerald-950/50', icon: CheckCircle, iconColor: 'text-emerald-400', pulse: false },
-  FAILED: { border: 'border-red-500', bg: 'bg-red-950/50', icon: XCircle, iconColor: 'text-red-400', pulse: false },
-  SKIPPED: { border: 'border-zinc-600', bg: 'bg-zinc-800/50', icon: Ban, iconColor: 'text-zinc-500', pulse: false },
+const CSC_ICON_CONFIG: Record<TargetCsc, { icon: React.ElementType; color: string; bg: string }> = {
+  'CSC-02': { icon: Satellite, color: 'text-sky-400', bg: 'bg-sky-400/15' },
+  'CSC-03': { icon: Radio, color: 'text-violet-400', bg: 'bg-violet-400/15' },
+  'CSC-04': { icon: Cpu, color: 'text-amber-400', bg: 'bg-amber-400/15' },
+  'CSC-05': { icon: SlidersHorizontal, color: 'text-teal-400', bg: 'bg-teal-400/15' },
+  'CSC-06': { icon: Globe, color: 'text-indigo-400', bg: 'bg-indigo-400/15' },
+  'CSC-07': { icon: Database, color: 'text-pink-400', bg: 'bg-pink-400/15' },
 };
 
-function PipelineNodeComponent({ data }: NodeProps) {
+const STATUS_BORDER: Record<StepStatus, string> = {
+  PENDING: 'border-slate-600',
+  RUNNING: 'border-blue-500',
+  COMPLETED: 'border-emerald-500',
+  FAILED: 'border-red-500',
+  SKIPPED: 'border-zinc-600',
+};
+
+const STATUS_INDICATOR: Record<StepStatus, { icon: React.ElementType; color: string }> = {
+  PENDING: { icon: Circle, color: 'text-slate-500' },
+  RUNNING: { icon: Loader, color: 'text-blue-400' },
+  COMPLETED: { icon: CheckCircle, color: 'text-emerald-400' },
+  FAILED: { icon: XCircle, color: 'text-red-400' },
+  SKIPPED: { icon: Ban, color: 'text-zinc-500' },
+};
+
+const NODE_SIZE = 64;
+
+function PipelineNodeComponent({ data, selected }: NodeProps) {
   const nodeData = data as unknown as PipelineNodeData;
-  const { targetCsc, productLevel, status, durationMs, errorMessage } = nodeData;
-  const cfg = STATUS_CONFIG[status];
-  const Icon = cfg.icon;
+  const { targetCsc, productLevel, status, order, durationMs, errorMessage, editable, onDelete } = nodeData;
+  const csc = CSC_ICON_CONFIG[targetCsc];
+  const CscIcon = csc.icon;
+  const statusInd = STATUS_INDICATOR[status];
+  const StatusIcon = statusInd.icon;
 
   return (
-    <div
-      className={cn(
-        'px-4 py-3 rounded-lg border-2 min-w-[180px]',
-        cfg.border,
-        cfg.bg,
-        cfg.pulse && 'animate-status-pulse',
+    <div className="flex flex-col items-center group relative">
+      {/* Delete button */}
+      {editable && onDelete && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(order); }}
+          className="absolute -top-2 right-0 w-5 h-5 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:scale-110 z-10"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
       )}
-    >
-      <Handle type="target" position={Position.Left} className="!bg-border !w-2 !h-2" />
 
-      <div className="flex items-start gap-2.5">
-        <Icon className={cn('w-5 h-5 mt-0.5 flex-shrink-0', cfg.iconColor, status === 'RUNNING' && 'animate-spin')} />
-        <div className="min-w-0 flex-1">
-          <div className="text-xs font-semibold text-foreground">{targetCsc}</div>
-          <div className="text-[11px] text-muted-foreground truncate">{CSC_LABELS[targetCsc]}</div>
-          <div className="text-[10px] font-mono text-muted-foreground mt-0.5">
-            {PRODUCT_LEVEL_LABELS[productLevel]}
-          </div>
-          {durationMs !== undefined && (
-            <div className="text-[10px] text-emerald-400 mt-1 font-mono">{formatDuration(durationMs)}</div>
-          )}
-          {errorMessage && (
-            <div className="text-[10px] text-red-400 mt-1 truncate max-w-[140px]" title={errorMessage}>
-              {errorMessage}
-            </div>
-          )}
+      {/* Status badge — top-left of box */}
+      {status !== 'PENDING' && (
+        <div className="absolute -top-1.5 -left-1.5 z-10">
+          <StatusIcon className={cn('w-4 h-4', statusInd.color, status === 'RUNNING' && 'animate-spin')} />
         </div>
+      )}
+
+      {/* Icon Box — n8n style square */}
+      <div
+        className={cn(
+          'relative rounded-xl border-2 flex items-center justify-center transition-all',
+          STATUS_BORDER[status],
+          csc.bg,
+          selected && 'ring-2 ring-accent ring-offset-2 ring-offset-background',
+          editable && 'cursor-grab active:cursor-grabbing',
+          status === 'RUNNING' && 'animate-status-pulse',
+        )}
+        style={{ width: NODE_SIZE, height: NODE_SIZE }}
+      >
+        {/* Target handle — left */}
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="!bg-muted-foreground/50 !w-3 !h-3 !border-2 !border-card !-left-1.5 hover:!bg-accent hover:!scale-125 !transition-all"
+        />
+
+        <CscIcon className={cn('w-7 h-7', csc.color)} />
+
+        {/* Source handle — right */}
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="!bg-muted-foreground/50 !w-3 !h-3 !border-2 !border-card !-right-1.5 hover:!bg-accent hover:!scale-125 !transition-all"
+        />
       </div>
 
-      <Handle type="source" position={Position.Right} className="!bg-border !w-2 !h-2" />
+      {/* Label below — n8n style */}
+      <div className="mt-2 text-center max-w-[120px]">
+        <div className="text-[11px] font-semibold text-foreground leading-tight">{CSC_LABELS[targetCsc]}</div>
+        <div className="text-[10px] text-muted-foreground">{targetCsc} · {PRODUCT_LEVEL_LABELS[productLevel]}</div>
+        {durationMs !== undefined && (
+          <div className="text-[9px] text-emerald-400 font-mono">{formatDuration(durationMs)}</div>
+        )}
+        {errorMessage && (
+          <div className="text-[9px] text-red-400 truncate" title={errorMessage}>{errorMessage}</div>
+        )}
+      </div>
     </div>
   );
 }

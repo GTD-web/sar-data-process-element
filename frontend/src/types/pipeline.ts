@@ -60,6 +60,7 @@ export interface JobSummary {
 
 export interface PipelineStep {
   order: number;
+  parentOrder?: number | null;
   targetCsc: TargetCsc;
   productLevel: ProductLevel;
   status: StepStatus;
@@ -109,13 +110,43 @@ export interface QueueHealth {
   healthy: boolean;
 }
 
+export interface PipelineStepDefinition {
+  order: number;
+  targetCsc: TargetCsc;
+  productLevel: ProductLevel;
+  parentOrder?: number | null; // null = root, number = branches from that step
+}
+
+export interface PipelineEdge {
+  source: number; // step order
+  target: number; // step order
+}
+
 export interface PipelineDefinition {
   id: string;
   name: string;
   satelliteId: string;
   mode: string;
-  steps: { order: number; targetCsc: TargetCsc; productLevel: ProductLevel }[];
+  steps: PipelineStepDefinition[];
+  edges: PipelineEdge[];
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePipelineData {
+  name: string;
+  satelliteId: string;
+  mode: string;
+  steps: Omit<PipelineStepDefinition, 'order'>[];
+  edges?: PipelineEdge[];
+}
+
+export interface UpdatePipelineData {
+  name?: string;
+  satelliteId?: string;
+  mode?: string;
+  steps?: Omit<PipelineStepDefinition, 'order'>[];
+  edges?: PipelineEdge[];
 }
 
 export interface ProcessingProfile {

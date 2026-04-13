@@ -2,6 +2,7 @@ import type { IPipelineUIService } from './pipeline.service.interface';
 import type {
   Alert,
   AuditEvent,
+  CreatePipelineData,
   DashboardStats,
   JobDetail,
   JobSummary,
@@ -11,6 +12,7 @@ import type {
   QueueHealth,
   ServiceResponse,
   ServiceResponseWithData,
+  UpdatePipelineData,
   JobStatus,
   StepStatus,
   ProductLevel,
@@ -213,18 +215,60 @@ function generateQueueHealth(): QueueHealth[] {
   });
 }
 
+/** 순차 steps → steps + edges 변환 */
+function toDAGSteps(flat: { targetCsc: TargetCsc; productLevel: ProductLevel }[]) {
+  const steps = flat.map((s, i) => ({
+    order: i + 1,
+    targetCsc: s.targetCsc,
+    productLevel: s.productLevel,
+  }));
+  const edges: { source: number; target: number }[] = [];
+  for (let i = 0; i < steps.length - 1; i++) {
+    edges.push({ source: steps[i].order, target: steps[i + 1].order });
+  }
+  return { steps, edges };
+}
+
+/** 모드별로 서로 다른 파이프라인 구성 */
+const MODE_STEP_VARIANTS: Record<string, { targetCsc: TargetCsc; productLevel: ProductLevel }[]> = {
+  Stripmap: PIPELINE_STEPS, // full 6-step
+  ScanSAR: [
+    { targetCsc: 'CSC-02', productLevel: 'LEVEL_0' },
+    { targetCsc: 'CSC-03', productLevel: 'LEVEL_0' },
+    { targetCsc: 'CSC-04', productLevel: 'LEVEL_1' },
+    { targetCsc: 'CSC-07', productLevel: 'LEVEL_1' },
+  ],
+  Spotlight: [
+    { targetCsc: 'CSC-02', productLevel: 'LEVEL_0' },
+    { targetCsc: 'CSC-03', productLevel: 'LEVEL_0' },
+    { targetCsc: 'CSC-04', productLevel: 'LEVEL_1' },
+    { targetCsc: 'CSC-05', productLevel: 'LEVEL_2' },
+    { targetCsc: 'CSC-06', productLevel: 'LEVEL_3' },
+    { targetCsc: 'CSC-05', productLevel: 'LEVEL_3' },
+    { targetCsc: 'CSC-07', productLevel: 'LEVEL_3' },
+  ],
+};
+
 function generatePipelines(): PipelineDefinition[] {
   return SATELLITE_IDS.flatMap((sat) =>
-    MODES.map((mode) => ({
-      id: `PL-${sat}-${mode}`.replace(/\s/g, ''),
-      name: `${sat} ${mode} Pipeline`,
-      satelliteId: sat,
-      mode,
-      steps: PIPELINE_STEPS.map((s, i) => ({ order: i + 1, ...s })),
-      createdAt: '2026-01-15T09:00:00Z',
-    })),
+    MODES.map((mode) => {
+      const modeSteps = MODE_STEP_VARIANTS[mode] ?? PIPELINE_STEPS;
+      const { steps, edges } = toDAGSteps(modeSteps);
+      return {
+        id: `PL-${sat}-${mode}`.replace(/\s/g, ''),
+        name: `${sat} ${mode} Pipeline`,
+        satelliteId: sat,
+        mode,
+        steps,
+        edges,
+        createdAt: '2026-01-15T09:00:00Z',
+        updatedAt: '2026-01-15T09:00:00Z',
+      };
+    }),
   );
 }
+
+let nextPipelineSeq = 100;
 
 // =============================================================================
 // Mock Service Implementation
@@ -372,6 +416,57 @@ class MockPipelineUIService implements IPipelineUIService {
 
   async 파이프라인_목록을_조회한다(): Promise<ServiceResponseWithData<PipelineDefinition[]>> {
     return { success: true, message: 'OK', data: this.pipelines };
+  }
+
+  async 파이프라인을_조회한다(id: string): Promise<ServiceResponseWithData<PipelineDefinition>> {
+    const pl = this.pipelines.find((p) => p.id === id);
+    if (!pl) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
+    return { success: true, message: 'OK', data: pl };
+  }
+
+  async 파이프라인을_생성한다(data: CreatePipelineData): Promise<ServiceResponseWithData<PipelineDefinition>> {
+    const now = new Date().toISOString();
+    const id = `PL-${++nextPipelineSeq}`;
+    const { steps, edges } = toDAGSteps(data.steps);
+    const pl: PipelineDefinition = {
+      id,
+      name: data.name,
+      satelliteId: data.satelliteId,
+      mode: data.mode,
+      steps,
+      edges: data.edges ?? edges,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.pipelines.push(pl);
+    return { success: true, message: '파이프라인이 생성되었습니다', data: pl };
+  }
+
+  async 파이프라인을_수정한다(id: string, data: UpdatePipelineData): Promise<ServiceResponseWithData<PipelineDefinition>> {
+    const pl = this.pipelines.find((p) => p.id === id);
+    if (!pl) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
+    if (data.name !== undefined) pl.name = data.name;
+    if (data.satelliteId !== undefined) pl.satelliteId = data.satelliteId;
+    if (data.mode !== undefined) pl.mode = data.mode;
+    if (data.steps !== undefined) {
+      pl.steps = data.steps.map((s, i) => ({
+        order: i + 1,
+        targetCsc: s.targetCsc,
+        productLevel: s.productLevel,
+      }));
+    }
+    if (data.edges !== undefined) {
+      pl.edges = data.edges;
+    }
+    pl.updatedAt = new Date().toISOString();
+    return { success: true, message: '파이프라인이 수정되었습니다', data: pl };
+  }
+
+  async 파이프라인을_삭제한다(id: string): Promise<ServiceResponse> {
+    const idx = this.pipelines.findIndex((p) => p.id === id);
+    if (idx === -1) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
+    this.pipelines.splice(idx, 1);
+    return { success: true, message: '파이프라인이 삭제되었습니다' };
   }
 }
 

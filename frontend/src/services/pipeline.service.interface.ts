@@ -1,6 +1,7 @@
 import type {
   Alert,
   AuditEvent,
+  CreatePipelineData,
   DashboardStats,
   JobDetail,
   JobSummary,
@@ -9,6 +10,7 @@ import type {
   QueueHealth,
   ServiceResponse,
   ServiceResponseWithData,
+  UpdatePipelineData,
 } from '@/types/pipeline';
 
 /**
@@ -78,4 +80,12 @@ export interface IPipelineUIService {
   // =========================================================================
 
   파이프라인_목록을_조회한다(): Promise<ServiceResponseWithData<PipelineDefinition[]>>;
+
+  파이프라인을_조회한다(id: string): Promise<ServiceResponseWithData<PipelineDefinition>>;
+
+  파이프라인을_생성한다(data: CreatePipelineData): Promise<ServiceResponseWithData<PipelineDefinition>>;
+
+  파이프라인을_수정한다(id: string, data: UpdatePipelineData): Promise<ServiceResponseWithData<PipelineDefinition>>;
+
+  파이프라인을_삭제한다(id: string): Promise<ServiceResponse>;
 }
