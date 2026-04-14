@@ -5,7 +5,7 @@ import type { PipelineDefinition, DashboardStats } from '@/types/pipeline';
 import {
   Activity, AlertTriangle, CheckCircle, XCircle,
   GitBranch, Plus, PanelLeftClose, PanelLeftOpen,
-  Settings, User, Bell, Search,
+  Settings, User, Bell, Trash2,
 } from 'lucide-react';
 
 interface LeftSidebarProps {
@@ -16,6 +16,7 @@ interface LeftSidebarProps {
   selectedPipelineName: string | null;
   onSelectPipeline: (id: string) => void;
   onCreatePipeline: () => void;
+  onDeletePipeline: (id: string) => void;
   stats: DashboardStats | null;
   alertCount: number;
   onAlertClick: () => void;
@@ -29,6 +30,7 @@ export default function LeftSidebar({
   selectedPipelineName,
   onSelectPipeline,
   onCreatePipeline,
+  onDeletePipeline,
   stats,
   alertCount,
   onAlertClick,
@@ -103,21 +105,32 @@ export default function LeftSidebar({
             </div>
             <div className="space-y-0.5">
               {pipelines.map((pl) => (
-                <button
+                <div
                   key={pl.id}
-                  onClick={() => onSelectPipeline(pl.id)}
                   className={cn(
-                    'w-full text-left px-2 py-1.5 rounded-md text-[11px] transition-colors',
+                    'group flex items-center rounded-md text-[11px] transition-colors',
                     selectedPipelineId === pl.id
                       ? 'bg-accent/10 text-accent'
                       : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground',
                   )}
                 >
-                  <div className="flex items-center gap-1.5">
-                    <GitBranch className="w-3 h-3 flex-shrink-0" />
-                    <span className="truncate">{pl.name}</span>
-                  </div>
-                </button>
+                  <button
+                    onClick={() => onSelectPipeline(pl.id)}
+                    className="flex-1 min-w-0 text-left px-2 py-1.5"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <GitBranch className="w-3 h-3 flex-shrink-0" />
+                      <span className="truncate">{pl.name}</span>
+                    </div>
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDeletePipeline(pl.id); }}
+                    className="flex-shrink-0 p-1 mr-1 rounded opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
+                    title="파이프라인 삭제"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
               ))}
             </div>
           </div>

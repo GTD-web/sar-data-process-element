@@ -9,12 +9,12 @@ import {
   useNodesState,
   useEdgesState,
   useStore,
+  useReactFlow,
   type Node,
   type Edge,
   type NodeTypes,
   type EdgeTypes,
   type Connection,
-  type Viewport,
   BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -105,24 +105,32 @@ function buildNodes(
   editable: boolean,
   onDeleteNode?: (order: number) => void,
   onAddAfter?: (afterOrder: number) => void,
+  onTrigger?: () => void,
+  jobInitWarningReason?: string,
+  onExecuteStep?: (order: number) => void,
 ): Node[] {
   const sources = new Set(pipelineEdges.map((e) => e.source));
   const targets = new Set(pipelineEdges.map((e) => e.target));
   return steps.map((step) => {
-    const isTrigger = step.kind === 'TRIGGER';
-    const nodeEditable = editable && !isTrigger;
+    const isEntryNode = step.kind === 'TRIGGER' || step.kind === 'FILE_INPUT';
+    const warningReason = step.kind === 'JOB_INIT' && jobInitWarningReason ? jobInitWarningReason : undefined;
     return {
       id: `step-${step.order}`,
       type: 'pipeline',
       position: positions.get(step.order) ?? { x: step.order * 260, y: 0 },
-      draggable: nodeEditable,
+      draggable: editable && !isEntryNode,
       data: {
         kind: step.kind,
         sarStage: step.sarStage,
+        inputLevel: step.inputLevel,
         status: step.status,
         order: step.order, durationMs: step.durationMs, errorMessage: step.errorMessage,
-        editable: nodeEditable, isLeaf: !sources.has(step.order), isHead: !targets.has(step.order),
+        enabledTasks: step.enabledTasks,
+        editable, isLeaf: !sources.has(step.order), isHead: !targets.has(step.order),
         onDelete: onDeleteNode, onAddAfter,
+        onTrigger: isEntryNode ? onTrigger : undefined,
+        onExecuteStep,
+        warningReason,
       } satisfies PipelineNodeData,
     };
   });
@@ -163,6 +171,26 @@ function buildEdges(
   });
 }
 
+/** 새 파이프라인 생성 시 entry 노드로 줌인하는 내부 컨트롤러 */
+function FlowEntryFocus({ trigger, nodes }: { trigger: number; nodes: Node[] }) {
+  const { setCenter } = useReactFlow();
+
+  useEffect(() => {
+    if (trigger === 0) return;
+    const entryNode = nodes.find((n) => (n.data as PipelineNodeData).isHead === true);
+    if (!entryNode) return;
+    const cx = entryNode.position.x + NODE_WIDTH / 2;
+    const cy = entryNode.position.y + NODE_HEIGHT / 2;
+    // 레이아웃이 확정된 직후에 실행
+    const id = window.setTimeout(() => {
+      setCenter(cx, cy, { zoom: 1.5, duration: 600 });
+    }, 120);
+    return () => window.clearTimeout(id);
+  }, [trigger, nodes, setCenter]);
+
+  return null;
+}
+
 interface CanvasGraphProps {
   pipelineId?: string | null;
   steps: PipelineStep[];
@@ -173,9 +201,16 @@ interface CanvasGraphProps {
   onAddNode?: (afterOrder: number, beforeOrder?: number) => void;
   onConnect?: (sourceOrder: number, targetOrder: number) => void;
   onDeleteEdge?: (sourceOrder: number, targetOrder: number) => void;
+  onTrigger?: () => void;
+  /** JOB_INIT 노드에만 표시 — 예: 처리 프로파일 미선택 */
+  jobInitWarningReason?: string;
+  /** 새 파이프라인 생성 시 증가 → entry 노드로 자동 줌인 */
+  focusEntryTrigger?: number;
+  /** 노드 더블클릭 또는 툴바 Play → 노드 상세 모달 열기 */
+  onNodeOpenDetail?: (stepOrder: number) => void;
 }
 
-export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable = false, onNodeClick, onDeleteNode, onAddNode, onConnect: onConnectProp, onDeleteEdge }: CanvasGraphProps) {
+export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable = false, onNodeClick, onDeleteNode, onAddNode, onConnect: onConnectProp, onDeleteEdge, onTrigger, jobInitWarningReason, focusEntryTrigger = 0, onNodeOpenDetail }: CanvasGraphProps) {
   const positionsRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const lastPipelineIdRef = useRef<string | null | undefined>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
@@ -232,8 +267,12 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
     edgeLeaveTimerRef.current = setTimeout(() => setHoveredEdgeId(null), 200);
   }, []);
 
+  const handleExecuteStep = useCallback((order: number) => {
+    onNodeOpenDetail?.(order);
+  }, [onNodeOpenDetail]);
+
   // Build nodes and edges WITHOUT hover dependency
-  const pipelineNodes = buildNodes(steps, pipelineEdges, positionsRef.current, editable, onDeleteNode, onAddNode);
+  const pipelineNodes = buildNodes(steps, pipelineEdges, positionsRef.current, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep);
   const allEdges = buildEdges(steps, pipelineEdges, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(pipelineNodes);
@@ -241,9 +280,9 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
 
   // Update nodes/edges only when pipeline data changes — NOT on hover
   useEffect(() => {
-    setNodes(buildNodes(steps, pipelineEdges, positionsRef.current, editable, onDeleteNode, onAddNode));
+    setNodes(buildNodes(steps, pipelineEdges, positionsRef.current, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep));
     setEdges(buildEdges(steps, pipelineEdges, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave));
-  }, [steps, pipelineEdges, editable, onDeleteNode, onAddNode, onDeleteEdge, clearLeaveTimer, scheduleLeave, setNodes, setEdges]);
+  }, [steps, pipelineEdges, editable, onDeleteNode, onAddNode, onDeleteEdge, onTrigger, jobInitWarningReason, clearLeaveTimer, scheduleLeave, setNodes, setEdges, handleExecuteStep]);
 
   const onInit = useCallback((instance: { fitView: () => void }) => {
     setTimeout(() => instance.fitView(), 100);
@@ -252,6 +291,10 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
   const handleNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     onNodeClick?.(parseInt(node.id.replace('step-', ''), 10));
   }, [onNodeClick]);
+
+  const handleNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
+    onNodeOpenDetail?.(parseInt(node.id.replace('step-', ''), 10));
+  }, [onNodeOpenDetail]);
 
   const handleConnect = useCallback((connection: Connection) => {
     if (!editable || !onConnectProp) return;
@@ -282,7 +325,7 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
       <ReactFlow
         nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
         onNodesChange={onNodesChange} onInit={onInit}
-        onNodeClick={handleNodeClick} onNodeDragStop={handleNodeDragStop}
+        onNodeClick={handleNodeClick} onNodeDoubleClick={handleNodeDoubleClick} onNodeDragStop={handleNodeDragStop}
         onEdgeMouseEnter={handleEdgeMouseEnter} onEdgeMouseLeave={handleEdgeMouseLeave}
         onConnect={handleConnect}
         fitView proOptions={{ hideAttribution: true }}
@@ -292,6 +335,7 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
         connectionLineStyle={{ stroke: t.accent, strokeWidth: 2 }}
         defaultEdgeOptions={{ style: { stroke: 'transparent', strokeWidth: 0 } }}
       >
+        <FlowEntryFocus trigger={focusEntryTrigger} nodes={nodes} />
         <CanvasGlow completionRatio={completionRatio} />
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color={t.canvasDot} />
         <Controls showInteractive={false} position="bottom-left" className="!bg-card !border-border !shadow-lg [&>button]:!bg-muted [&>button]:!border-border [&>button]:!text-foreground" />

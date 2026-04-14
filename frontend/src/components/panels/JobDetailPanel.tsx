@@ -138,7 +138,7 @@ export default function JobDetailPanel({ job, onReprocess, onPartialReprocess, o
         <div className="text-[11px] font-medium text-muted-foreground mb-1.5">단계별 상세</div>
         <div className="space-y-1">
           {job.steps
-            .filter((step) => step.kind !== 'TRIGGER')
+            .filter((step) => step.kind !== 'TRIGGER' && step.kind !== 'JOB_INIT')
             .map((step) => {
               const isSAR = step.kind === 'SAR' && step.sarStage;
               const isCatalog = step.kind === 'CATALOG';
@@ -170,12 +170,24 @@ export default function JobDetailPanel({ job, onReprocess, onPartialReprocess, o
                       </span>
                     )}
                   </div>
-                  {/* SAR 스테이지 태스크 목록 (완료된 단계) */}
-                  {isSAR && step.status === 'COMPLETED' && step.sarStage && (
+                  {/* SAR 스테이지 태스크 목록 */}
+                  {isSAR && step.sarStage && (step.status === 'COMPLETED' || step.status === 'RUNNING') && (
                     <div className="mt-1 flex flex-wrap gap-1">
-                      {SAR_STAGE_TASKS[step.sarStage].map((task) => (
-                        <span key={task} className="text-[9px] bg-success/10 text-success rounded px-1 py-0.5">{task}</span>
-                      ))}
+                      {SAR_STAGE_TASKS[step.sarStage].map((task) => {
+                        const isActive = !step.enabledTasks || step.enabledTasks.includes(task);
+                        return (
+                          <span
+                            key={task}
+                            className={`text-[9px] rounded px-1 py-0.5 ${
+                              isActive
+                                ? 'bg-success/10 text-success'
+                                : 'bg-muted/50 text-muted-foreground/40 line-through'
+                            }`}
+                          >
+                            {task}
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
                   {step.errorMessage && (

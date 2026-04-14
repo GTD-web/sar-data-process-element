@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import PipelineProgressStepper from '@/components/graph/PipelineProgressStepper';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import TopBar from '@/components/panels/TopBar';
 import LeftSidebar from '@/components/panels/LeftSidebar';
@@ -14,11 +15,17 @@ import QueuesTab from '@/components/panels/QueuesTab';
 import AlertModal from '@/components/panels/AlertModal';
 import ReprocessConfirmDialog from '@/components/panels/ReprocessConfirmDialog';
 import CancelConfirmDialog from '@/components/panels/CancelConfirmDialog';
-import CreatePipelineDialog from '@/components/panels/CreatePipelineDialog';
+import CreatePipelineDialog, { type CreatePipelineBasicData } from '@/components/panels/CreatePipelineDialog';
+import SelectStartNodeDialog, { type StartNodeSelection } from '@/components/panels/SelectStartNodeDialog';
+import ExecutionLogPanel from '@/components/panels/ExecutionLogPanel';
+import NodeDetailModal from '@/components/panels/NodeDetailModal';
 import Toast, { type ToastMessage } from '@/components/ui/Toast';
+import { FlaskConical } from 'lucide-react';
 import type {
   PipelineDefinition,
   PipelineStepDefinition,
+  ProcessingProfile,
+  ExecutionLog,
   JobSummary,
   JobDetail,
   Alert,
@@ -29,7 +36,7 @@ import type {
   SarStage,
   PipelineNodeKind,
 } from '@/types/pipeline';
-import { SAR_STAGE_TO_CSC, SAR_STAGE_TO_LEVEL } from '@/types/pipeline';
+import { SAR_STAGE_TO_CSC, SAR_STAGE_TO_LEVEL, JOB_INIT_PROFILE_MISSING_MESSAGE } from '@/types/pipeline';
 
 const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
   ssr: false,
@@ -52,6 +59,8 @@ export default function ConsolePage() {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [queues, setQueues] = useState<QueueHealth[]>([]);
   const [selectedJob, setSelectedJob] = useState<JobDetail | null>(null);
+  const [profiles, setProfiles] = useState<ProcessingProfile[]>([]);
+  const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
 
   // --- UI State ---
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -62,19 +71,25 @@ export default function ConsolePage() {
   const [alertModalOpen, setAlertModalOpen] = useState(false);
   const [reprocessDialogOpen, setReprocessDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
-  const [createPipelineDialogOpen, setCreatePipelineDialogOpen] = useState(false);
+  const [createStep, setCreateStep] = useState<'step1' | 'step2' | null>(null);
+  const [createBasicData, setCreateBasicData] = useState<CreatePipelineBasicData | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [logPanelOpen, setLogPanelOpen] = useState(false);
+  const [focusEntryTrigger, setFocusEntryTrigger] = useState(0);
+  const [nodeDetailStep, setNodeDetailStep] = useState<PipelineStepDefinition | null>(null);
 
   // --- Load ---
   useEffect(() => {
     (async () => {
-      const [plRes, statsRes, jobsRes, alertsRes, auditRes, queuesRes] = await Promise.all([
+      const [plRes, statsRes, jobsRes, alertsRes, auditRes, queuesRes, profRes, logRes] = await Promise.all([
         service.파이프라인_목록을_조회한다(),
         service.대시보드_통계를_조회한다(),
         service.Job_목록을_조회한다({ limit: 50 }),
         service.Alert_목록을_조회한다(),
         service.감사로그를_조회한다({ size: 50 }),
         service.큐_상태를_조회한다(),
+        service.처리_프로파일_목록을_조회한다(),
+        service.실행_로그를_조회한다({ limit: 300 }),
       ]);
       if (plRes.data) {
         setPipelines(plRes.data);
@@ -85,6 +100,8 @@ export default function ConsolePage() {
       if (alertsRes.data) setAlerts(alertsRes.data);
       if (auditRes.data) setAuditEvents(auditRes.data.items);
       if (queuesRes.data) setQueues(queuesRes.data);
+      if (profRes.data) setProfiles(profRes.data);
+      if (logRes.data) setExecutionLogs(logRes.data);
     })();
   }, [service]);
 
@@ -100,7 +117,9 @@ export default function ConsolePage() {
         // 백엔드 호환용 CSC/Level 파생
         const targetCsc = s.kind === 'SAR' && s.sarStage
           ? SAR_STAGE_TO_CSC[s.sarStage]
-          : s.kind === 'CATALOG' ? 'CSC-07' : 'CSC-02';
+          : s.kind === 'CATALOG' ? 'CSC-07'
+          : s.kind === 'JOB_INIT' ? 'CSC-08'
+          : 'CSC-02'; // TRIGGER / FILE_INPUT
         const productLevel = s.kind === 'SAR' && s.sarStage
           ? SAR_STAGE_TO_LEVEL[s.sarStage]
           : 'LEVEL_0';
@@ -108,11 +127,13 @@ export default function ConsolePage() {
           order: s.order,
           kind: s.kind,
           sarStage: s.sarStage,
+          inputLevel: s.inputLevel,
           targetCsc,
           productLevel,
           status: jobStep?.status ?? 'PENDING',
           durationMs: jobStep?.durationMs,
           errorMessage: jobStep?.errorMessage,
+          enabledTasks: s.enabledTasks,
         };
       })
     : [];
@@ -146,6 +167,40 @@ export default function ConsolePage() {
         return;
       }
 
+      // FILE_INPUT 노드 클릭 — 부분 재처리 입력 레벨 표시
+      if (step?.kind === 'FILE_INPUT') {
+        setConsoleMode({
+          type: 'fileInput',
+          inputLevel: step.inputLevel ?? 'LEVEL_1',
+        });
+        setRightTab('console');
+        setRightCollapsed(false);
+        return;
+      }
+
+      // CSU-08.02: JOB_INIT 노드 클릭
+      if (step?.kind === 'JOB_INIT') {
+        if (selectedJob) {
+          setConsoleMode({
+            type: 'jobInit',
+            processingProfile: selectedJob.processingProfile,
+            jobCreatedAt: selectedJob.startedAt,
+            priority: selectedJob.priority,
+            triggerSource: selectedJob.triggerSource,
+          });
+        } else if (selectedPipeline) {
+          setConsoleMode({
+            type: 'jobInitEdit',
+            step,
+            satelliteId: selectedPipeline.satelliteId,
+            mode: selectedPipeline.mode,
+          });
+        }
+        setRightTab('console');
+        setRightCollapsed(false);
+        return;
+      }
+
       if (selectedJob) return;
 
       if (step) {
@@ -172,10 +227,10 @@ export default function ConsolePage() {
     (order: number) => {
       if (!selectedPipeline || selectedPipeline.steps.length <= 1) return;
       const step = selectedPipeline.steps.find((s) => s.order === order);
-      if (step?.kind === 'TRIGGER') return; // D-01: TRIGGER 노드는 삭제 불가
+      if (step?.kind === 'TRIGGER' || step?.kind === 'FILE_INPUT') return; // 진입점 노드 삭제 불가
       const newSteps = selectedPipeline.steps
         .filter((s) => s.order !== order)
-        .map((s) => ({ kind: s.kind, sarStage: s.sarStage }));
+        .map((s) => ({ kind: s.kind, sarStage: s.sarStage, inputLevel: s.inputLevel, enabledTasks: s.enabledTasks, jobInitConfig: s.jobInitConfig }));
       const newEdges = selectedPipeline.edges.filter((e) => e.source !== order && e.target !== order);
       updatePipeline({ steps: newSteps, edges: newEdges });
       if (consoleMode.type === 'node' && consoleMode.step.order === order) setConsoleMode({ type: 'idle' });
@@ -192,6 +247,41 @@ export default function ConsolePage() {
     [selectedPipeline, updatePipeline],
   );
 
+  const profileMissing = (() => {
+    if (!selectedPipeline) return false;
+    const jobInitStep = selectedPipeline.steps.find((s) => s.kind === 'JOB_INIT');
+    if (!jobInitStep) return false;
+    return !jobInitStep.jobInitConfig?.profileId;
+  })();
+
+  const jobInitWarningReason = profileMissing ? JOB_INIT_PROFILE_MISSING_MESSAGE : undefined;
+
+  const handleTriggerPipeline = useCallback(async () => {
+    if (!selectedPipelineId) return;
+    const res = await service.파이프라인을_실행한다(selectedPipelineId);
+    if (res.success) {
+      if (profileMissing) {
+        setToast({
+          message: `${res.message} — 처리 프로파일이 파이프라인에 없습니다. 캔버스의 「작업 초기화」노드 안내를 확인하세요.`,
+          type: 'warning',
+        });
+      } else {
+        setToast({ message: res.message, type: 'success' });
+      }
+      const [jobsRes, logRes] = await Promise.all([
+        service.Job_목록을_조회한다(),
+        service.실행_로그를_조회한다({ limit: 300 }),
+      ]);
+      if (jobsRes.success && jobsRes.data) setJobs(jobsRes.data.items);
+      if (logRes.data) setExecutionLogs(logRes.data);
+      setRightTab('jobs');
+      setRightCollapsed(false);
+      setLogPanelOpen(true);
+    } else {
+      setToast({ message: res.message, type: 'error' });
+    }
+  }, [selectedPipelineId, service, profileMissing]);
+
   const handleAddNode = useCallback(
     (afterOrder: number, beforeOrder?: number) => {
       setConsoleMode({ type: 'addStep', afterOrder, beforeOrder });
@@ -204,9 +294,13 @@ export default function ConsolePage() {
   const handleConfirmAddStep = useCallback(
     (afterOrder: number, kind: PipelineNodeKind, sarStage?: SarStage) => {
       if (!selectedPipeline) return;
+      const newStep: { kind: PipelineNodeKind; sarStage?: SarStage; jobInitConfig?: import('@/types/pipeline').JobInitConfig } =
+        kind === 'JOB_INIT'
+          ? { kind, jobInitConfig: { polarization: '', priority: 5, retryInterval: 'IMMEDIATE' as const } }
+          : { kind, sarStage };
       const newSteps = [
-        ...selectedPipeline.steps.map((s) => ({ kind: s.kind, sarStage: s.sarStage })),
-        { kind, sarStage },
+        ...selectedPipeline.steps.map((s) => ({ kind: s.kind, sarStage: s.sarStage, inputLevel: s.inputLevel, enabledTasks: s.enabledTasks, jobInitConfig: s.jobInitConfig })),
+        newStep,
       ];
       const newOrder = newSteps.length;
       const beforeOrder = consoleMode.type === 'addStep' ? consoleMode.beforeOrder : undefined;
@@ -231,8 +325,8 @@ export default function ConsolePage() {
       if (!selectedPipeline) return;
       const newSteps = selectedPipeline.steps.map((s) =>
         s.order === updated.order
-          ? { kind: updated.kind, sarStage: updated.sarStage }
-          : { kind: s.kind, sarStage: s.sarStage },
+          ? { kind: updated.kind, sarStage: updated.sarStage, inputLevel: updated.inputLevel, enabledTasks: updated.enabledTasks, jobInitConfig: updated.jobInitConfig }
+          : { kind: s.kind, sarStage: s.sarStage, inputLevel: s.inputLevel, enabledTasks: s.enabledTasks, jobInitConfig: s.jobInitConfig },
       );
       updatePipeline({ steps: newSteps });
     },
@@ -298,6 +392,16 @@ export default function ConsolePage() {
     if (jsRes.data) setJobs(jsRes.data.items);
   }, [service, selectedJob]);
 
+  const handleDeletePipeline = useCallback(async (id: string) => {
+    await service.파이프라인을_삭제한다(id);
+    setPipelines((prev) => prev.filter((p) => p.id !== id));
+    if (selectedPipelineId === id) {
+      setSelectedPipelineId(null);
+      setSelectedJob(null);
+      setConsoleMode({ type: 'idle' });
+    }
+  }, [service, selectedPipelineId]);
+
   // --- Pipeline handlers ---
   const handleSavePipeline = useCallback(async (data: { name: string; satelliteId: string; mode: string; steps: { kind: PipelineNodeKind; sarStage?: SarStage }[] }) => {
     if (!selectedPipelineId) return;
@@ -309,46 +413,38 @@ export default function ConsolePage() {
   }, [service, selectedPipelineId]);
 
   const handleCreatePipeline = useCallback(() => {
-    setCreatePipelineDialogOpen(true);
+    setCreateStep('step1');
   }, []);
 
-  const handleCreatePipelineConfirm = useCallback(async (data: { name: string; satelliteId: string; mode: string }) => {
-    setCreatePipelineDialogOpen(false);
-    const modeSteps: Record<string, { kind: PipelineNodeKind; sarStage?: SarStage }[]> = {
-      Stripmap: [
-        { kind: 'TRIGGER' },
-        { kind: 'SAR', sarStage: 'L0' },
-        { kind: 'SAR', sarStage: 'L1A' },
-        { kind: 'SAR', sarStage: 'L1B' },
-        { kind: 'SAR', sarStage: 'L1C' },
-        { kind: 'SAR', sarStage: 'L2A' },
-        { kind: 'SAR', sarStage: 'L2B' },
-        { kind: 'SAR', sarStage: 'L3' },
-        { kind: 'CATALOG' },
-      ],
-      ScanSAR: [
-        { kind: 'TRIGGER' },
-        { kind: 'SAR', sarStage: 'L0' },
-        { kind: 'SAR', sarStage: 'L1A' },
-        { kind: 'SAR', sarStage: 'L1B' },
-        { kind: 'CATALOG' },
-      ],
-      Spotlight: [
-        { kind: 'TRIGGER' },
-        { kind: 'SAR', sarStage: 'L0' },
-        { kind: 'SAR', sarStage: 'L1A' },
-        { kind: 'SAR', sarStage: 'L1B' },
-        { kind: 'SAR', sarStage: 'L1C' },
-        { kind: 'CATALOG' },
-      ],
-    };
-    const steps = modeSteps[data.mode] ?? modeSteps['Stripmap']!;
-    const res = await service.파이프라인을_생성한다({ ...data, steps });
+  const handleCreateStep1Next = useCallback((data: CreatePipelineBasicData) => {
+    setCreateBasicData(data);
+    setCreateStep('step2');
+  }, []);
+
+  const handleCreateStep2Confirm = useCallback(async (selection: StartNodeSelection) => {
+    if (!createBasicData) return;
+    setCreateStep(null);
+    const steps: { kind: PipelineNodeKind; sarStage?: SarStage; inputLevel?: import('@/types/pipeline').ProductLevel }[] = [
+      { kind: selection.startNodeKind, inputLevel: selection.startNodeInputLevel },
+    ];
+    const res = await service.파이프라인을_생성한다({ ...createBasicData, steps });
     if (res.data) {
       setPipelines((prev) => [...prev, res.data!]);
       setSelectedPipelineId(res.data.id);
+      setFocusEntryTrigger((n) => n + 1);
     }
-  }, [service]);
+    setCreateBasicData(null);
+  }, [service, createBasicData]);
+
+  const handleCreateCancel = useCallback(() => {
+    setCreateStep(null);
+    setCreateBasicData(null);
+  }, []);
+
+  const handleNodeOpenDetail = useCallback((stepOrder: number) => {
+    const step = selectedPipeline?.steps.find((s) => s.order === stepOrder);
+    if (step) setNodeDetailStep(step);
+  }, [selectedPipeline]);
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -365,28 +461,54 @@ export default function ConsolePage() {
           setConsoleMode({ type: 'idle' });
         }}
         onCreatePipeline={handleCreatePipeline}
+        onDeletePipeline={handleDeletePipeline}
         stats={stats}
         alertCount={unackedAlerts.length}
         onAlertClick={() => setAlertModalOpen(true)}
       />
 
       {/* Center: Canvas */}
-      <div className="flex-1 relative overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar queues={queues} />
+        {selectedJob && graphSteps.length > 0 && (
+          <PipelineProgressStepper steps={graphSteps} />
+        )}
           {graphSteps.length > 0 ? (
-            <CanvasGraph
-              pipelineId={selectedPipelineId}
-              steps={graphSteps}
-              pipelineEdges={graphEdges}
-              editable={canvasEditable}
-              onNodeClick={handleNodeClick}
-              onDeleteNode={handleDeleteNode}
-              onAddNode={handleAddNode}
-              onConnect={handleConnect}
-              onDeleteEdge={handleDeleteEdge}
-            />
+            <div className="flex-1 relative overflow-hidden">
+              <CanvasGraph
+                pipelineId={selectedPipelineId}
+                steps={graphSteps}
+                pipelineEdges={graphEdges}
+                editable={canvasEditable}
+                onNodeClick={handleNodeClick}
+                onDeleteNode={handleDeleteNode}
+                onAddNode={handleAddNode}
+                onConnect={handleConnect}
+                onDeleteEdge={handleDeleteEdge}
+                onTrigger={handleTriggerPipeline}
+                jobInitWarningReason={jobInitWarningReason}
+                focusEntryTrigger={focusEntryTrigger}
+                onNodeOpenDetail={handleNodeOpenDetail}
+              />
+              {/* n8n 스타일 플로팅 실행 버튼 — 캔버스 하단 중앙 */}
+              <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+                <button
+                  type="button"
+                  disabled={!selectedPipelineId || !!selectedJob}
+                  onClick={handleTriggerPipeline}
+                  className="pointer-events-auto flex items-center gap-2 pl-2.5 pr-3.5 py-2 rounded-lg
+                             text-[11px] font-semibold shadow-lg whitespace-nowrap
+                             bg-accent text-accent-foreground
+                             hover:brightness-110 active:brightness-95 transition-all
+                             disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <FlaskConical className="w-3.5 h-3.5" />
+                  파이프라인 실행
+                </button>
+              </div>
+            </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center bg-background text-muted-foreground gap-3">
+            <div className="flex-1 flex flex-col items-center justify-center bg-background text-muted-foreground gap-3">
               <span className="text-sm">파이프라인을 선택하거나 새로 만드세요</span>
               <button
                 onClick={handleCreatePipeline}
@@ -396,6 +518,14 @@ export default function ConsolePage() {
               </button>
             </div>
           )}
+
+          {/* Bottom: Execution Log Panel */}
+          <ExecutionLogPanel
+            logs={executionLogs}
+            selectedJobId={selectedJob?.jobId}
+            open={logPanelOpen}
+            onToggle={() => setLogPanelOpen((v) => !v)}
+          />
         </div>
 
       {/* Right: Tabbed Panel */}
@@ -418,6 +548,7 @@ export default function ConsolePage() {
               onCancelJob={handleCancelJob}
               onSavePipeline={handleSavePipeline}
               pipelineSaving={editSaving}
+              availableProfiles={profiles}
             />
           )}
           {rightTab === 'jobs' && (
@@ -462,11 +593,31 @@ export default function ConsolePage() {
         />
       )}
 
-      {/* S-01: 파이프라인 생성 다이얼로그 */}
-      {createPipelineDialogOpen && (
+      {/* 파이프라인 생성 1단계 — 이름/위성/모드 */}
+      {createStep === 'step1' && (
         <CreatePipelineDialog
-          onConfirm={handleCreatePipelineConfirm}
-          onCancel={() => setCreatePipelineDialogOpen(false)}
+          onNext={handleCreateStep1Next}
+          onCancel={handleCreateCancel}
+        />
+      )}
+
+      {/* 파이프라인 생성 2단계 — 시작 노드 선택 */}
+      {createStep === 'step2' && createBasicData && (
+        <SelectStartNodeDialog
+          pipelineName={createBasicData.name}
+          satelliteId={createBasicData.satelliteId}
+          mode={createBasicData.mode}
+          onConfirm={handleCreateStep2Confirm}
+          onBack={() => setCreateStep('step1')}
+          onCancel={handleCreateCancel}
+        />
+      )}
+
+      {/* 노드 상세 모달 — 더블클릭 또는 툴바 Play */}
+      {nodeDetailStep && (
+        <NodeDetailModal
+          step={nodeDetailStep}
+          onClose={() => setNodeDetailStep(null)}
         />
       )}
 

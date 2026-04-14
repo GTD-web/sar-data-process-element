@@ -3,10 +3,12 @@ import type {
   AuditEvent,
   CreatePipelineData,
   DashboardStats,
+  ExecutionLog,
   JobDetail,
   JobSummary,
   PaginatedResponse,
   PipelineDefinition,
+  ProcessingProfile,
   QueueHealth,
   SarStage,
   ServiceResponse,
@@ -96,4 +98,28 @@ export interface IPipelineUIService {
   파이프라인을_수정한다(id: string, data: UpdatePipelineData): Promise<ServiceResponseWithData<PipelineDefinition>>;
 
   파이프라인을_삭제한다(id: string): Promise<ServiceResponse>;
+
+  /** EI-01: 파이프라인 수동 실행 (테스트/운영). 새 Job을 생성하여 파이프라인을 기동합니다. */
+  파이프라인을_실행한다(pipelineId: string): Promise<ServiceResponseWithData<JobSummary>>;
+
+  // =========================================================================
+  // Processing Profiles
+  // =========================================================================
+
+  /** CSU-08.02: 처리 프로파일 목록 조회. satelliteId + mode로 필터링 가능. */
+  처리_프로파일_목록을_조회한다(params?: {
+    satelliteId?: string;
+    mode?: string;
+  }): Promise<ServiceResponseWithData<ProcessingProfile[]>>;
+
+  // =========================================================================
+  // Execution Logs
+  // =========================================================================
+
+  /** 파이프라인 실행 로그 조회. jobId로 필터링 가능. */
+  실행_로그를_조회한다(params?: {
+    jobId?: string;
+    level?: string;
+    limit?: number;
+  }): Promise<ServiceResponseWithData<ExecutionLog[]>>;
 }

@@ -1,27 +1,33 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, ArrowRight } from 'lucide-react';
 
 const SATELLITE_IDS = ['KS-5', 'KS-6', 'KS-7'] as const;
 const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'] as const;
 
+export interface CreatePipelineBasicData {
+  name: string;
+  satelliteId: string;
+  mode: string;
+}
+
 interface CreatePipelineDialogProps {
-  onConfirm: (data: { name: string; satelliteId: string; mode: string }) => void;
+  onNext: (data: CreatePipelineBasicData) => void;
   onCancel: () => void;
 }
 
-/** S-01: 파이프라인 생성 다이얼로그 — 이름 / 위성 / 모드 선택 */
-export default function CreatePipelineDialog({ onConfirm, onCancel }: CreatePipelineDialogProps) {
+/** 파이프라인 생성 1단계 — 이름 / 위성 / 모드 입력 */
+export default function CreatePipelineDialog({ onNext, onCancel }: CreatePipelineDialogProps) {
   const [name, setName] = useState('');
   const [satelliteId, setSatelliteId] = useState<string>(SATELLITE_IDS[0]);
   const [mode, setMode] = useState<string>(MODES[0]);
 
   const isValid = name.trim().length > 0;
 
-  const handleSubmit = () => {
+  const handleNext = () => {
     if (!isValid) return;
-    onConfirm({ name: name.trim(), satelliteId, mode });
+    onNext({ name: name.trim(), satelliteId, mode });
   };
 
   return (
@@ -35,6 +41,7 @@ export default function CreatePipelineDialog({ onConfirm, onCancel }: CreatePipe
           <div className="flex items-center gap-2">
             <Plus className="w-4 h-4 text-accent" />
             <h2 className="text-sm font-semibold text-foreground">새 파이프라인</h2>
+            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">1 / 2</span>
           </div>
           <button onClick={onCancel} className="p-1 rounded-md hover:bg-muted/50 transition-colors">
             <X className="w-4 h-4 text-muted-foreground" />
@@ -49,7 +56,7 @@ export default function CreatePipelineDialog({ onConfirm, onCancel }: CreatePipe
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+              onKeyDown={(e) => e.key === 'Enter' && handleNext()}
               placeholder="파이프라인 이름을 입력하세요"
               autoFocus
               className="w-full bg-muted border border-border rounded-md px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent/50"
@@ -80,9 +87,6 @@ export default function CreatePipelineDialog({ onConfirm, onCancel }: CreatePipe
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
-            <div className="text-[10px] text-muted-foreground">
-              선택한 모드의 기본 스텝 구성이 자동 적용됩니다.
-            </div>
           </div>
         </div>
 
@@ -95,11 +99,12 @@ export default function CreatePipelineDialog({ onConfirm, onCancel }: CreatePipe
             취소
           </button>
           <button
-            onClick={handleSubmit}
+            onClick={handleNext}
             disabled={!isValid}
-            className="flex-1 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            생성
+            다음
+            <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>

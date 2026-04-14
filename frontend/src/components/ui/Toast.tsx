@@ -2,11 +2,11 @@
 
 import { useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { AlertCircle, CheckCircle, Info, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle, Info, X } from 'lucide-react';
 
 export interface ToastMessage {
   message: string;
-  type: 'error' | 'success' | 'info';
+  type: 'error' | 'success' | 'info' | 'warning';
 }
 
 interface ToastProps extends ToastMessage {
@@ -17,12 +17,14 @@ const ICON_MAP = {
   error: AlertCircle,
   success: CheckCircle,
   info: Info,
+  warning: AlertTriangle,
 };
 
 const STYLE_MAP = {
   error: 'bg-card border-destructive/40 text-destructive',
   success: 'bg-card border-success/40 text-success',
   info: 'bg-card border-accent/40 text-accent',
+  warning: 'bg-card border-amber-500/40 text-amber-500',
 };
 
 export default function Toast({ message, type, onDismiss }: ToastProps) {

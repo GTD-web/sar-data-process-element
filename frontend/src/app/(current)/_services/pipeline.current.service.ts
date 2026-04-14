@@ -11,10 +11,12 @@ import type {
   AuditEvent,
   CreatePipelineData,
   DashboardStats,
+  ExecutionLog,
   JobDetail,
   JobSummary,
   PaginatedResponse,
   PipelineDefinition,
+  ProcessingProfile,
   QueueHealth,
   SarStage,
   ServiceResponse,
@@ -161,5 +163,34 @@ export const pipelineCurrentService: IPipelineUIService = {
     const res = await fetch(`${API_BASE}/pipelines/${id}`, { method: 'DELETE' });
     if (!res.ok) return { success: false, message: `파이프라인 삭제 실패: ${res.status}` };
     return { success: true, message: 'OK' };
+  },
+
+  async 파이프라인을_실행한다(pipelineId: string): Promise<ServiceResponseWithData<JobSummary>> {
+    const res = await fetch(`${API_BASE}/pipelines/${pipelineId}/execute`, { method: 'POST' });
+    return handleResponse(res, '파이프라인 실행 실패');
+  },
+
+  async 처리_프로파일_목록을_조회한다(params?: {
+    satelliteId?: string;
+    mode?: string;
+  }): Promise<ServiceResponseWithData<ProcessingProfile[]>> {
+    const query = new URLSearchParams();
+    if (params?.satelliteId) query.set('satelliteId', params.satelliteId);
+    if (params?.mode) query.set('mode', params.mode);
+    const res = await fetch(`${API_BASE}/profiles?${query}`);
+    return handleResponse(res, '처리 프로파일 조회 실패');
+  },
+
+  async 실행_로그를_조회한다(params?: {
+    jobId?: string;
+    level?: string;
+    limit?: number;
+  }): Promise<ServiceResponseWithData<ExecutionLog[]>> {
+    const query = new URLSearchParams();
+    if (params?.jobId) query.set('jobId', params.jobId);
+    if (params?.level) query.set('level', params.level);
+    if (params?.limit) query.set('limit', String(params.limit));
+    const res = await fetch(`${API_BASE}/logs?${query}`);
+    return handleResponse(res, '실행 로그 조회 실패');
   },
 };

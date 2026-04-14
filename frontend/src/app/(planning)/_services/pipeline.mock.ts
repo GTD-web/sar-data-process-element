@@ -4,11 +4,14 @@ import type {
   AuditEvent,
   CreatePipelineData,
   DashboardStats,
+  ExecutionLog,
   JobDetail,
   JobSummary,
+  LogLevel,
   PaginatedResponse,
   PipelineDefinition,
   PipelineStep,
+  ProcessingProfile,
   QueueHealth,
   SarStage,
   ServiceResponse,
@@ -21,6 +24,9 @@ import type {
   AlertKind,
   AuditEventType,
   PipelineNodeKind,
+  ProcessingProfileSummary,
+  TriggerSource,
+  JobInitConfig,
 } from '@/types/pipeline';
 import {
   SAR_STAGE_TO_CSC,
@@ -55,15 +61,33 @@ const SCENE_IDS = [
 const SATELLITE_IDS = ['KS-5', 'KS-6', 'KS-7'];
 const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
 
+const MOCK_PROCESSING_PROFILES: ProcessingProfile[] = SATELLITE_IDS.flatMap((sat) => [
+  { id: `PROF-${sat}-SM-HHHV`, name: `${sat} Stripmap Dual`, satelliteId: sat, mode: 'Stripmap', polarization: 'HH+HV', description: 'Stripmap 이중편파 표준 처리', parameters: { azimuthLooks: 4, rangeLooks: 1 }, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: `PROF-${sat}-SM-HH`, name: `${sat} Stripmap Single`, satelliteId: sat, mode: 'Stripmap', polarization: 'HH', description: 'Stripmap 단일편파 표준 처리', parameters: { azimuthLooks: 4, rangeLooks: 1 }, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: `PROF-${sat}-SC-VV`, name: `${sat} ScanSAR VV`, satelliteId: sat, mode: 'ScanSAR', polarization: 'VV', description: 'ScanSAR 단일편파 광역 처리', parameters: { burstOverlap: 0.1 }, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: `PROF-${sat}-SC-VVVH`, name: `${sat} ScanSAR Dual`, satelliteId: sat, mode: 'ScanSAR', polarization: 'VV+VH', description: 'ScanSAR 이중편파 광역 처리', parameters: { burstOverlap: 0.1 }, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: `PROF-${sat}-SL-HH`, name: `${sat} Spotlight HH`, satelliteId: sat, mode: 'Spotlight', polarization: 'HH', description: 'Spotlight 고해상도 처리', parameters: { azimuthLooks: 1, rangeLooks: 1 }, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: `PROF-${sat}-SL-HHHV`, name: `${sat} Spotlight Dual`, satelliteId: sat, mode: 'Spotlight', polarization: 'HH+HV', description: 'Spotlight 이중편파 고해상도 처리', parameters: { azimuthLooks: 1, rangeLooks: 1 }, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+]);
+
+const MODE_DEFAULT_POLARIZATION: Record<string, string> = {
+  Stripmap: 'HH+HV',
+  ScanSAR: 'VV',
+  Spotlight: 'HH',
+};
+
 type StepDef = { kind: PipelineNodeKind; sarStage?: SarStage };
 
 /** D-01: 파이프라인 첫 노드 — RAW_DATA_RECEIVED 트리거 (EI-01) */
 const TRIGGER_STEP: StepDef = { kind: 'TRIGGER' };
+/** CSU-08.02: 작업 생성 + 처리 프로파일 선택 */
+const JOB_INIT_STEP: StepDef = { kind: 'JOB_INIT' };
 const CATALOG_STEP: StepDef = { kind: 'CATALOG' };
 
-/** Stripmap 전체 파이프라인: L0 → L1A → L1B → L1C → L2A → L2B → L3 → CATALOG */
+/** Stripmap 전체 파이프라인: TRIGGER → JOB_INIT → L0 → L1A → L1B → L1C → L2A → L2B → L3 → CATALOG */
 const PIPELINE_STEPS: StepDef[] = [
   TRIGGER_STEP,
+  JOB_INIT_STEP,
   { kind: 'SAR', sarStage: 'L0' },
   { kind: 'SAR', sarStage: 'L1A' },
   { kind: 'SAR', sarStage: 'L1B' },
@@ -75,22 +99,22 @@ const PIPELINE_STEPS: StepDef[] = [
 ];
 
 function buildSteps(pipelineSteps: StepDef[], status: JobStatus, retryCount: number): PipelineStep[] {
-  // TRIGGER 스텝은 항상 COMPLETED. 나머지 스텝에만 completedCount 적용
-  const nonTriggerSteps = pipelineSteps.filter((s) => s.kind !== 'TRIGGER');
+  // TRIGGER·FILE_INPUT·JOB_INIT 스텝은 항상 COMPLETED. 나머지 스텝에만 completedCount 적용
+  const activeDagSteps = pipelineSteps.filter((s) => s.kind !== 'TRIGGER' && s.kind !== 'FILE_INPUT' && s.kind !== 'JOB_INIT');
   const completedCount =
-    status === 'COMPLETED' ? nonTriggerSteps.length
-    : status === 'ASSIGNED' ? Math.floor(Math.random() * (nonTriggerSteps.length - 1))
-    : status === 'FAILED' ? Math.floor(Math.random() * (nonTriggerSteps.length - 1))
+    status === 'COMPLETED' ? activeDagSteps.length
+    : status === 'ASSIGNED' ? Math.floor(Math.random() * (activeDagSteps.length - 1))
+    : status === 'FAILED' ? Math.floor(Math.random() * (activeDagSteps.length - 1))
     : 0;
 
-  let nonTriggerIdx = 0;
+  let dagStepIdx = 0;
   return pipelineSteps.map((def, i): PipelineStep => {
     let stepStatus: StepStatus;
 
-    if (def.kind === 'TRIGGER') {
+    if (def.kind === 'TRIGGER' || def.kind === 'FILE_INPUT' || def.kind === 'JOB_INIT') {
       stepStatus = 'COMPLETED';
     } else {
-      const idx = nonTriggerIdx++;
+      const idx = dagStepIdx++;
       if (idx < completedCount) {
         stepStatus = 'COMPLETED';
       } else if (idx === completedCount && status === 'ASSIGNED') {
@@ -104,15 +128,20 @@ function buildSteps(pipelineSteps: StepDef[], status: JobStatus, retryCount: num
 
     // 백엔드 호환용 CSC/Level 파생
     const targetCsc: TargetCsc = def.kind === 'TRIGGER' ? 'CSC-02'
+      : def.kind === 'FILE_INPUT' ? 'CSC-02'
+      : def.kind === 'JOB_INIT' ? 'CSC-08'
       : def.kind === 'CATALOG' ? 'CSC-07'
       : SAR_STAGE_TO_CSC[def.sarStage!];
     const productLevel: ProductLevel = def.kind === 'TRIGGER' ? 'LEVEL_0'
+      : def.kind === 'FILE_INPUT' ? 'LEVEL_0'
+      : def.kind === 'JOB_INIT' ? 'LEVEL_0'
       : def.kind === 'CATALOG' ? 'LEVEL_3'
       : SAR_STAGE_TO_LEVEL[def.sarStage!];
 
     const baseTime = new Date();
     baseTime.setHours(baseTime.getHours() - (pipelineSteps.length - i) * 0.5);
     const stageId = def.sarStage ?? def.kind;
+    const isFixed = def.kind === 'TRIGGER' || def.kind === 'FILE_INPUT' || def.kind === 'JOB_INIT';
 
     return {
       order: i + 1,
@@ -122,13 +151,15 @@ function buildSteps(pipelineSteps: StepDef[], status: JobStatus, retryCount: num
       productLevel,
       status: stepStatus,
       startedAt: stepStatus !== 'PENDING' ? baseTime.toISOString() : undefined,
-      finishedAt: stepStatus === 'COMPLETED' ? new Date(baseTime.getTime() + (600 + Math.random() * 3000) * 1000).toISOString() : undefined,
-      durationMs: stepStatus === 'COMPLETED' && def.kind !== 'TRIGGER' ? Math.floor((600 + Math.random() * 3000) * 1000) : undefined,
+      finishedAt: stepStatus === 'COMPLETED' ? new Date(baseTime.getTime() + (isFixed ? 1500 : (600 + Math.random() * 3000)) * 1000).toISOString() : undefined,
+      durationMs: stepStatus === 'COMPLETED'
+        ? (def.kind === 'TRIGGER' ? undefined : def.kind === 'JOB_INIT' ? Math.floor(500 + Math.random() * 1500) : Math.floor((600 + Math.random() * 3000) * 1000))
+        : undefined,
       errorCode: stepStatus === 'FAILED' ? `ERR_${targetCsc.replace('-', '')}_${1000 + Math.floor(Math.random() * 100)}` : undefined,
       errorMessage: stepStatus === 'FAILED'
         ? retryCount >= 3 ? `Max retry exceeded for ${stageId}` : `Processing timeout at ${stageId}`
         : undefined,
-      outputPath: stepStatus === 'COMPLETED' && def.kind !== 'TRIGGER' ? `/mnt/nas/sdpe/output/${productLevel.toLowerCase()}/scene_xxx.h5` : undefined,
+      outputPath: stepStatus === 'COMPLETED' && !isFixed ? `/mnt/nas/sdpe/output/${productLevel.toLowerCase()}/scene_xxx.h5` : undefined,
     };
   });
 }
@@ -156,6 +187,24 @@ function generateJobs(count: number): JobDetail[] {
     const acqStart = randomDate(7);
     const acqEnd = new Date(new Date(acqStart).getTime() + 120000).toISOString();
 
+    const satelliteId = randomChoice(SATELLITE_IDS);
+    const mode = randomChoice(MODES);
+
+    const PROFILE_POLARIZATIONS: Record<string, string> = {
+      Stripmap: 'HH+HV',
+      ScanSAR: 'VV',
+      Spotlight: 'HH',
+    };
+    const processingProfile: ProcessingProfileSummary = {
+      id: `PROF-${satelliteId}-${mode}`.replace(/\s/g, ''),
+      name: `${satelliteId} ${mode} Standard`,
+      mode,
+      polarization: PROFILE_POLARIZATIONS[mode] ?? 'HH',
+      description: `${mode} 모드 표준 처리 프로파일`,
+    };
+
+    const triggerSources: TriggerSource[] = ['PIPELINE_AUTO', 'MANUAL_REQUEST', 'PARTIAL_REPROCESS'];
+
     return {
       jobId: `JOB-${String(idx + 1).padStart(4, '0')}`,
       sceneId: SCENE_IDS[idx % SCENE_IDS.length],
@@ -169,9 +218,12 @@ function generateJobs(count: number): JobDetail[] {
       acquisitionStart: acqStart,
       acquisitionEnd: acqEnd,
       receivedAt: new Date(new Date(acqEnd).getTime() + 300000).toISOString(),
-      satelliteId: randomChoice(SATELLITE_IDS),
-      mode: randomChoice(MODES),
+      satelliteId,
+      mode,
       rawDataPath: `/mnt/nas/sdpe/raw/${SCENE_IDS[idx % SCENE_IDS.length]}.raw`,
+      processingProfile,
+      priority: 3 + Math.floor(Math.random() * 5),
+      triggerSource: idx < 40 ? 'PIPELINE_AUTO' : randomChoice(triggerSources),
     };
   });
 }
@@ -228,6 +280,125 @@ function generateAuditEvents(jobs: JobDetail[]): AuditEvent[] {
   return events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
+function generateExecutionLogs(jobs: JobDetail[]): ExecutionLog[] {
+  const logs: ExecutionLog[] = [];
+  let logSeq = 0;
+
+  const INFO_MESSAGES = [
+    'Step started',
+    'Input data loaded successfully',
+    'Processing parameters applied',
+    'Output written to NAS',
+    'Step completed',
+    'Checkpoint saved',
+  ];
+  const WARN_MESSAGES = [
+    'Processing time exceeding expected threshold',
+    'Memory usage above 80%',
+    'Retry attempt initiated',
+    'Input data quality degraded — proceeding with fallback parameters',
+    'DEM resolution lower than optimal',
+    'Disk I/O latency elevated',
+  ];
+  const ERROR_MESSAGES: Record<string, string[]> = {
+    L0: ['Raw data checksum mismatch', 'Time synchronization failed — GPS timestamps inconsistent', 'Metadata extraction error: missing orbit parameters'],
+    L1A: ['Range compression divergence detected', 'Azimuth compression failed — insufficient Doppler samples', 'Autofocus convergence error after 50 iterations'],
+    L1B: ['Multi-look processing OOM — requested 16GB, available 12GB', 'Speckle filter kernel allocation failed', 'Ground-range projection: invalid DEM tile'],
+    L1C: ['DEM file not found: /mnt/nas/dem/srtm_30m_N37E127.tif', 'Geometric correction failed — GCP count below minimum (3 required, 1 found)', 'Radiometric terrain correction NaN values in shadow regions'],
+    L2A: ['Incidence angle computation timeout', 'NESZ map generation failed — calibration data missing', 'Layover mask computation segfault (signal 11)'],
+    L2B: ['Object detection model load failed — ONNX runtime error', 'Change detection: reference image not available', 'GPU memory allocation failed for inference'],
+    L3: ['Application product generation timeout (exceeded 30min SLA)', 'Output format conversion error — unsupported projection EPSG:32652'],
+    JOB_INIT: ['Processing profile not found for given satellite/mode combination', 'Profile validation failed — missing required parameter "azimuthLooks"', 'Priority queue insertion failed — queue depth exceeded'],
+    CATALOG: ['STAC metadata validation failed — missing "datetime" field', 'Catalog registration timeout — database connection pool exhausted', 'Duplicate product ID detected in catalog'],
+  };
+
+  for (const job of jobs) {
+    const baseTime = new Date(job.startedAt).getTime();
+
+    for (const step of job.steps) {
+      const source = step.sarStage ?? step.kind ?? 'SYSTEM';
+      const stepBaseTime = step.startedAt ? new Date(step.startedAt).getTime() : baseTime + step.order * 60000;
+
+      logs.push({
+        id: `LOG-${String(++logSeq).padStart(5, '0')}`,
+        timestamp: new Date(stepBaseTime).toISOString(),
+        level: 'INFO',
+        jobId: job.jobId,
+        source,
+        message: `[${source}] ${INFO_MESSAGES[0]} — order=${step.order}`,
+      });
+
+      if (step.status === 'COMPLETED') {
+        if (Math.random() > 0.7) {
+          logs.push({
+            id: `LOG-${String(++logSeq).padStart(5, '0')}`,
+            timestamp: new Date(stepBaseTime + 5000 + Math.random() * 30000).toISOString(),
+            level: 'WARN',
+            jobId: job.jobId,
+            source,
+            message: `[${source}] ${WARN_MESSAGES[Math.floor(Math.random() * WARN_MESSAGES.length)]}`,
+          });
+        }
+        logs.push({
+          id: `LOG-${String(++logSeq).padStart(5, '0')}`,
+          timestamp: new Date(stepBaseTime + (step.durationMs ?? 60000)).toISOString(),
+          level: 'INFO',
+          jobId: job.jobId,
+          source,
+          message: `[${source}] Step completed — duration=${step.durationMs ?? 0}ms`,
+        });
+      }
+
+      if (step.status === 'RUNNING') {
+        logs.push({
+          id: `LOG-${String(++logSeq).padStart(5, '0')}`,
+          timestamp: new Date(stepBaseTime + 3000).toISOString(),
+          level: 'INFO',
+          jobId: job.jobId,
+          source,
+          message: `[${source}] ${INFO_MESSAGES[Math.floor(Math.random() * INFO_MESSAGES.length)]}`,
+        });
+      }
+
+      if (step.status === 'FAILED') {
+        const errPool = ERROR_MESSAGES[source] ?? ERROR_MESSAGES['L0'];
+        const errMsg = errPool[Math.floor(Math.random() * errPool.length)];
+        logs.push({
+          id: `LOG-${String(++logSeq).padStart(5, '0')}`,
+          timestamp: new Date(stepBaseTime + 2000).toISOString(),
+          level: 'WARN',
+          jobId: job.jobId,
+          source,
+          message: `[${source}] ${WARN_MESSAGES[Math.floor(Math.random() * WARN_MESSAGES.length)]}`,
+        });
+        logs.push({
+          id: `LOG-${String(++logSeq).padStart(5, '0')}`,
+          timestamp: new Date(stepBaseTime + 5000).toISOString(),
+          level: 'ERROR',
+          jobId: job.jobId,
+          source,
+          message: `[${source}] ${errMsg}`,
+          detail: step.errorCode ? `${step.errorCode}: ${step.errorMessage ?? errMsg}` : errMsg,
+        });
+        if (job.retryCount > 0) {
+          for (let r = 0; r < Math.min(job.retryCount, 3); r++) {
+            logs.push({
+              id: `LOG-${String(++logSeq).padStart(5, '0')}`,
+              timestamp: new Date(stepBaseTime + 10000 + r * 15000).toISOString(),
+              level: r === job.retryCount - 1 ? 'ERROR' as LogLevel : 'WARN' as LogLevel,
+              jobId: job.jobId,
+              source,
+              message: `[${source}] Retry ${r + 1}/${job.retryCount} — ${r === job.retryCount - 1 ? 'Max retry exceeded' : 'Retrying...'}`,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+}
+
 const QUEUE_NAMES = [
   'sdpe.reception.events',
   'sdpe.processing.events',
@@ -257,6 +428,9 @@ function toDAGSteps(flat: Omit<import('@/types/pipeline').PipelineStepDefinition
     order: i + 1,
     kind: s.kind,
     sarStage: s.sarStage,
+    ...(s.inputLevel !== undefined && { inputLevel: s.inputLevel }),
+    ...(s.enabledTasks !== undefined && { enabledTasks: s.enabledTasks }),
+    ...(s.jobInitConfig !== undefined && { jobInitConfig: s.jobInitConfig }),
   }));
   const edges: { source: number; target: number }[] = [];
   for (let i = 0; i < steps.length - 1; i++) {
@@ -270,6 +444,7 @@ const MODE_STEP_VARIANTS: Record<string, StepDef[]> = {
   Stripmap: PIPELINE_STEPS,
   ScanSAR: [
     TRIGGER_STEP,
+    JOB_INIT_STEP,
     { kind: 'SAR', sarStage: 'L0' },
     { kind: 'SAR', sarStage: 'L1A' },
     { kind: 'SAR', sarStage: 'L1B' },
@@ -277,6 +452,7 @@ const MODE_STEP_VARIANTS: Record<string, StepDef[]> = {
   ],
   Spotlight: [
     TRIGGER_STEP,
+    JOB_INIT_STEP,
     { kind: 'SAR', sarStage: 'L0' },
     { kind: 'SAR', sarStage: 'L1A' },
     { kind: 'SAR', sarStage: 'L1B' },
@@ -289,7 +465,24 @@ function generatePipelines(): PipelineDefinition[] {
   return SATELLITE_IDS.flatMap((sat) =>
     MODES.map((mode) => {
       const modeSteps = MODE_STEP_VARIANTS[mode] ?? PIPELINE_STEPS;
-      const { steps, edges } = toDAGSteps(modeSteps);
+      const pol = MODE_DEFAULT_POLARIZATION[mode] ?? 'HH';
+      const matchingProfile = MOCK_PROCESSING_PROFILES.find(
+        (p) => p.satelliteId === sat && p.mode === mode && p.polarization === pol,
+      );
+      const stepsWithConfig = modeSteps.map((s) => {
+        if (s.kind === 'JOB_INIT') {
+          const config: JobInitConfig = {
+            polarization: pol,
+            profileId: matchingProfile?.id,
+            priority: 5,
+            deadlineHours: 4,
+            retryInterval: 'IMMEDIATE',
+          };
+          return { ...s, jobInitConfig: config };
+        }
+        return s;
+      });
+      const { steps, edges } = toDAGSteps(stepsWithConfig);
       return {
         id: `PL-${sat}-${mode}`.replace(/\s/g, ''),
         name: `${sat} ${mode} Pipeline`,
@@ -316,6 +509,7 @@ class MockPipelineUIService implements IPipelineUIService {
   private auditEvents: AuditEvent[];
   private queueHealth: QueueHealth[];
   private pipelines: PipelineDefinition[];
+  private executionLogs: ExecutionLog[];
 
   constructor() {
     this.jobs = generateJobs(50);
@@ -323,6 +517,7 @@ class MockPipelineUIService implements IPipelineUIService {
     this.auditEvents = generateAuditEvents(this.jobs);
     this.queueHealth = generateQueueHealth();
     this.pipelines = generatePipelines();
+    this.executionLogs = generateExecutionLogs(this.jobs);
   }
 
   async 대시보드_통계를_조회한다(): Promise<ServiceResponseWithData<DashboardStats>> {
@@ -371,7 +566,16 @@ class MockPipelineUIService implements IPipelineUIService {
       success: true,
       message: 'OK',
       data: {
-        items: page.map(({ steps, acquisitionStart, acquisitionEnd, receivedAt, satelliteId, mode, rawDataPath, ...summary }) => summary),
+        items: page.map((j): JobSummary => ({
+            jobId: j.jobId,
+            sceneId: j.sceneId,
+            status: j.status,
+            currentLevel: j.currentLevel,
+            currentTargetCsc: j.currentTargetCsc,
+            retryCount: j.retryCount,
+            startedAt: j.startedAt,
+            updatedAt: j.updatedAt,
+          })),
         total: filtered.length,
         nextCursor: startIdx + limit < filtered.length ? page[page.length - 1]?.jobId : undefined,
       },
@@ -392,7 +596,7 @@ class MockPipelineUIService implements IPipelineUIService {
     job.status = 'CREATED';
     job.retryCount = 0;
     job.updatedAt = new Date().toISOString();
-    job.steps.forEach((s) => { s.status = s.kind === 'TRIGGER' ? 'COMPLETED' : 'PENDING'; });
+    job.steps.forEach((s) => { s.status = (s.kind === 'TRIGGER' || s.kind === 'FILE_INPUT' || s.kind === 'JOB_INIT') ? 'COMPLETED' : 'PENDING'; });
     return { success: true, message: `Job ${jobId} 재처리가 요청되었습니다` };
   }
 
@@ -402,7 +606,7 @@ class MockPipelineUIService implements IPipelineUIService {
     // 해당 sarStage 이후 스텝을 PENDING으로 리셋 (TRIGGER는 항상 COMPLETED 유지)
     let resetActive = false;
     job.steps.forEach((s) => {
-      if (s.kind === 'TRIGGER') return;
+      if (s.kind === 'TRIGGER' || s.kind === 'JOB_INIT') return;
       if (s.sarStage === params.sarStage) resetActive = true;
       if (resetActive) s.status = 'PENDING';
     });
@@ -471,13 +675,14 @@ class MockPipelineUIService implements IPipelineUIService {
   }
 
   async 파이프라인_목록을_조회한다(): Promise<ServiceResponseWithData<PipelineDefinition[]>> {
-    return { success: true, message: 'OK', data: this.pipelines };
+    // 참조 반환 시 외부 변이가 React state에 영향을 주므로 항상 복사본 반환
+    return { success: true, message: 'OK', data: this.pipelines.map((p) => ({ ...p, steps: [...p.steps] })) };
   }
 
   async 파이프라인을_조회한다(id: string): Promise<ServiceResponseWithData<PipelineDefinition>> {
     const pl = this.pipelines.find((p) => p.id === id);
     if (!pl) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
-    return { success: true, message: 'OK', data: pl };
+    return { success: true, message: 'OK', data: { ...pl, steps: [...pl.steps] } };
   }
 
   async 파이프라인을_생성한다(data: CreatePipelineData): Promise<ServiceResponseWithData<PipelineDefinition>> {
@@ -495,7 +700,7 @@ class MockPipelineUIService implements IPipelineUIService {
       updatedAt: now,
     };
     this.pipelines.push(pl);
-    return { success: true, message: '파이프라인이 생성되었습니다', data: pl };
+    return { success: true, message: '파이프라인이 생성되었습니다', data: { ...pl, steps: [...pl.steps] } };
   }
 
   async 파이프라인을_수정한다(id: string, data: UpdatePipelineData): Promise<ServiceResponseWithData<PipelineDefinition>> {
@@ -509,13 +714,16 @@ class MockPipelineUIService implements IPipelineUIService {
         order: i + 1,
         kind: s.kind,
         sarStage: s.sarStage,
+        ...(s.inputLevel !== undefined && { inputLevel: s.inputLevel }),
+        ...(s.enabledTasks !== undefined && { enabledTasks: s.enabledTasks }),
+        ...(s.jobInitConfig !== undefined && { jobInitConfig: s.jobInitConfig }),
       }));
     }
     if (data.edges !== undefined) {
       pl.edges = data.edges;
     }
     pl.updatedAt = new Date().toISOString();
-    return { success: true, message: '파이프라인이 수정되었습니다', data: pl };
+    return { success: true, message: '파이프라인이 수정되었습니다', data: { ...pl, steps: [...pl.steps] } };
   }
 
   async 파이프라인을_삭제한다(id: string): Promise<ServiceResponse> {
@@ -523,6 +731,77 @@ class MockPipelineUIService implements IPipelineUIService {
     if (idx === -1) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
     this.pipelines.splice(idx, 1);
     return { success: true, message: '파이프라인이 삭제되었습니다' };
+  }
+
+  async 파이프라인을_실행한다(pipelineId: string): Promise<ServiceResponseWithData<JobSummary>> {
+    const pl = this.pipelines.find((p) => p.id === pipelineId);
+    if (!pl) return { success: false, message: '파이프라인을 찾을 수 없습니다', data: null as unknown as JobSummary };
+    const jobId = `job-${Date.now().toString(36)}`;
+    const now = new Date().toISOString();
+    const summary: JobSummary = {
+      jobId,
+      sceneId: `SCN-${Date.now().toString(36).toUpperCase()}`,
+      status: 'CREATED',
+      currentLevel: null,
+      currentTargetCsc: null,
+      retryCount: 0,
+      startedAt: now,
+      updatedAt: now,
+    };
+    const detail: JobDetail = {
+      ...summary,
+      steps: pl.steps.map((s) => {
+        const targetCsc: TargetCsc = s.kind === 'TRIGGER' ? 'CSC-02'
+          : s.kind === 'FILE_INPUT' ? 'CSC-02'
+          : s.kind === 'JOB_INIT' ? 'CSC-08'
+          : s.kind === 'CATALOG' ? 'CSC-07'
+          : SAR_STAGE_TO_CSC[s.sarStage!];
+        const productLevel: ProductLevel = s.kind === 'TRIGGER' ? 'LEVEL_0'
+          : s.kind === 'FILE_INPUT' ? 'LEVEL_0'
+          : s.kind === 'JOB_INIT' ? 'LEVEL_0'
+          : s.kind === 'CATALOG' ? 'LEVEL_3'
+          : SAR_STAGE_TO_LEVEL[s.sarStage!];
+        return {
+          order: s.order,
+          kind: s.kind,
+          sarStage: s.sarStage,
+          targetCsc,
+          productLevel,
+          status: 'PENDING' as const,
+        };
+      }),
+      acquisitionStart: now,
+      acquisitionEnd: now,
+      receivedAt: now,
+      satelliteId: pl.satelliteId,
+      mode: pl.mode,
+      rawDataPath: `/nas/raw/${jobId}/`,
+      processingProfile: undefined,
+    };
+    this.jobs.push(detail);
+    return { success: true, message: `파이프라인 "${pl.name}" 실행이 요청되었습니다`, data: summary };
+  }
+
+  async 처리_프로파일_목록을_조회한다(params?: {
+    satelliteId?: string;
+    mode?: string;
+  }): Promise<ServiceResponseWithData<ProcessingProfile[]>> {
+    let filtered = [...MOCK_PROCESSING_PROFILES];
+    if (params?.satelliteId) filtered = filtered.filter((p) => p.satelliteId === params.satelliteId);
+    if (params?.mode) filtered = filtered.filter((p) => p.mode === params.mode);
+    return { success: true, message: 'OK', data: filtered };
+  }
+
+  async 실행_로그를_조회한다(params?: {
+    jobId?: string;
+    level?: string;
+    limit?: number;
+  }): Promise<ServiceResponseWithData<ExecutionLog[]>> {
+    let filtered = [...this.executionLogs];
+    if (params?.jobId) filtered = filtered.filter((l) => l.jobId === params.jobId);
+    if (params?.level) filtered = filtered.filter((l) => l.level === params.level);
+    const limit = params?.limit ?? 200;
+    return { success: true, message: 'OK', data: filtered.slice(0, limit) };
   }
 }
 

@@ -1,10 +1,10 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, useState, useRef, useEffect, useCallback } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { cn } from '@/lib/utils';
 import { formatDuration } from '@/lib/utils';
-import type { StepStatus, SarStage, PipelineNodeKind } from '@/types/pipeline';
+import type { StepStatus, SarStage, PipelineNodeKind, ProductLevel } from '@/types/pipeline';
 import { SAR_STAGE_LABELS, SAR_STAGE_TASKS, SAR_STAGE_TO_LEVEL, PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
 import {
   CheckCircle,
@@ -14,7 +14,13 @@ import {
   Ban,
   Trash2,
   Plus,
+  Zap,
+  FlaskConical,
+  Play,
+  Power,
+  AlertTriangle,
   Antenna,
+  SlidersHorizontal,
   HardDrive,
   Cpu,
   Layers,
@@ -23,11 +29,14 @@ import {
   Crosshair,
   Package,
   Database,
+  FileInput,
 } from 'lucide-react';
 
 export interface PipelineNodeData {
   kind?: PipelineNodeKind;
   sarStage?: SarStage;
+  /** FILE_INPUT 노드 전용. 입력 파일의 처리 레벨. */
+  inputLevel?: ProductLevel;
   status: StepStatus;
   order: number;
   durationMs?: number;
@@ -35,8 +44,14 @@ export interface PipelineNodeData {
   editable?: boolean;
   isLeaf?: boolean;
   isHead?: boolean;
+  enabledTasks?: string[];
   onDelete?: (order: number) => void;
   onAddAfter?: (afterOrder: number) => void;
+  onTrigger?: () => void;
+  /** 개별 노드 실행 → 노드 상세 모달 열기 */
+  onExecuteStep?: (order: number) => void;
+  /** 설정 누락 등 — 해당 노드에만 표시 (예: JOB_INIT 프로파일 미선택) */
+  warningReason?: string;
   [key: string]: unknown;
 }
 
@@ -76,18 +91,135 @@ const STATUS_INDICATOR: Record<StepStatus, { icon: React.ElementType; color: str
 
 const NODE_SIZE = 64;
 
+const TOOLTIP_HIDE_MS = 500;
+
+const NodeWarningHint = memo(function NodeWarningHint({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const hideRef = useRef<number | null>(null);
+
+  const clearHideTimer = useCallback(() => {
+    if (hideRef.current != null) {
+      window.clearTimeout(hideRef.current);
+      hideRef.current = null;
+    }
+  }, []);
+
+  const show = useCallback(() => {
+    clearHideTimer();
+    setOpen(true);
+  }, [clearHideTimer]);
+
+  const scheduleHide = useCallback(() => {
+    clearHideTimer();
+    hideRef.current = window.setTimeout(() => {
+      setOpen(false);
+      hideRef.current = null;
+    }, TOOLTIP_HIDE_MS);
+  }, [clearHideTimer]);
+
+  useEffect(() => () => clearHideTimer(), [clearHideTimer]);
+
+  return (
+    <div
+      className="absolute top-1 right-1 z-[12] nodrag flex flex-col items-end gap-0"
+      onMouseEnter={show}
+      onMouseLeave={scheduleHide}
+    >
+      <button
+        type="button"
+        className="rounded p-0.5 text-amber-500 hover:bg-amber-500/15 cursor-help outline-none focus-visible:ring-1 focus-visible:ring-amber-500/50"
+        aria-label="설정 경고"
+        aria-expanded={open}
+      >
+        <AlertTriangle className="w-3.5 h-3.5" strokeWidth={2.25} />
+      </button>
+      {open && (
+        <div
+          role="tooltip"
+          className="mt-1 w-max max-w-[min(260px,75vw)] rounded-md border border-border bg-card px-2.5 py-2 text-left text-[10px] leading-snug text-foreground shadow-xl pointer-events-auto"
+        >
+          {text}
+        </div>
+      )}
+    </div>
+  );
+});
+
+/**
+ * n8n 스타일 노드 위 툴바 — 호버 시 표시
+ * - Play: 개별 노드 실행 → 노드 상세 모달 (더블클릭과 동일)
+ * - Power: 활성화/비활성화 토글 (로컬 상태)
+ * - Trash: 노드 삭제 (non-entry 노드만)
+ * 파이프라인 전체 실행은 진입 노드 좌측의 별도 버튼이 담당.
+ */
+const NodeHoverToolbar = memo(function NodeHoverToolbar({
+  showDelete,
+  onDelete,
+  onExecute,
+}: {
+  showDelete: boolean;
+  onDelete?: () => void;
+  onExecute?: () => void;
+}) {
+  const [active, setActive] = useState(true);
+
+  const btnClass =
+    'nodrag w-7 h-7 rounded-md flex items-center justify-center text-[#a0a0a0] hover:text-[#f5f5f5] hover:bg-white/10 transition-colors cursor-pointer';
+
+  return (
+    <div
+      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20 nodrag
+                 flex items-center gap-0.5 bg-[#333333] rounded-lg px-1 py-1 shadow-lg border border-[#3a3a3a]
+                 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none group-hover:pointer-events-auto"
+    >
+      <button
+        type="button"
+        className={btnClass}
+        title="노드 실행 (상세 보기)"
+        onClick={(e) => { e.stopPropagation(); onExecute?.(); }}
+      >
+        <Play className="w-3.5 h-3.5" fill="currentColor" strokeWidth={0} />
+      </button>
+      <button
+        type="button"
+        className={cn(btnClass, !active && 'opacity-40')}
+        title={active ? '비활성화' : '활성화'}
+        onClick={(e) => { e.stopPropagation(); setActive((v) => !v); }}
+      >
+        <Power className="w-3.5 h-3.5" />
+      </button>
+      {showDelete && (
+        <button
+          type="button"
+          className={cn(btnClass, 'hover:text-destructive')}
+          title="노드 삭제"
+          onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
+  );
+});
+
 function PipelineNodeComponent({ data, selected }: NodeProps) {
   const nodeData = data as unknown as PipelineNodeData;
-  const { kind, sarStage, status, order, durationMs, errorMessage, editable, isLeaf, isHead, onDelete, onAddAfter } = nodeData;
+  const { kind, sarStage, inputLevel, status, order, durationMs, errorMessage, editable, isLeaf, isHead: _isHead, enabledTasks, onDelete, onAddAfter, onTrigger, onExecuteStep, warningReason } = nodeData;
 
   const isTrigger = kind === 'TRIGGER';
+  const isFileInput = kind === 'FILE_INPUT';
+  const isEntryNode = isTrigger || isFileInput;
+  const isJobInit = kind === 'JOB_INIT';
   const isCatalog = kind === 'CATALOG';
   const isSAR = kind === 'SAR';
 
-  // 아이콘 결정
   let CscIcon: React.ElementType;
   if (isTrigger) {
     CscIcon = Antenna;
+  } else if (isFileInput) {
+    CscIcon = FileInput;
+  } else if (isJobInit) {
+    CscIcon = SlidersHorizontal;
   } else if (isCatalog) {
     CscIcon = Database;
   } else if (isSAR && sarStage) {
@@ -96,12 +228,18 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
     CscIcon = HardDrive;
   }
 
-  // 레이블 결정
   let label: string;
   let subLabel: string;
   if (isTrigger) {
-    label = '원시 데이터 수신';
-    subLabel = 'EI-01 · 수신 트리거';
+    label = '원시 데이터 수신 트리거';
+    subLabel = 'EI-01 · RAW_DATA_RECEIVED';
+  } else if (isFileInput) {
+    const levelStr = inputLevel === 'LEVEL_0' ? 'L0' : inputLevel === 'LEVEL_1' ? 'L1' : inputLevel === 'LEVEL_2' ? 'L2' : 'L?';
+    label = `${levelStr} 결과 입력`;
+    subLabel = 'SI-07 · 부분 재처리';
+  } else if (isJobInit) {
+    label = '작업 초기화';
+    subLabel = 'CSU-08.02 · 프로파일 선택';
   } else if (isCatalog) {
     label = '카탈로그 등록';
     subLabel = 'CSC-07 · 등록';
@@ -113,86 +251,141 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
     subLabel = '—';
   }
 
-  const taskCount = isSAR && sarStage ? SAR_STAGE_TASKS[sarStage].length : 0;
-  const taskTooltip = isSAR && sarStage ? SAR_STAGE_TASKS[sarStage].join('\n') : undefined;
+  const allTasks = isSAR && sarStage ? SAR_STAGE_TASKS[sarStage] : [];
+  const activeTasks = enabledTasks ?? allTasks;
+  const taskCount = allTasks.length;
+  const activeTaskCount = activeTasks.length;
+  const hasPartialTasks = taskCount > 0 && activeTaskCount < taskCount;
 
   const statusInd = STATUS_INDICATOR[status];
   const StatusIcon = statusInd.icon;
   const showStatusBadge = status !== 'PENDING';
 
-  // TRIGGER: target handle 없음(진입점), delete 버튼 없음
-  const showTargetHandle = !isTrigger && !isHead;
-  const showDeleteButton = !isTrigger && editable && !!onDelete;
+  const showTargetHandle = !isEntryNode;
+  const showDeleteButton = !isEntryNode && !!editable && !!onDelete;
+
+  // 진입 노드(TRIGGER/FILE_INPUT) 좌측 파이프라인 실행 버튼
+  const showTriggerButton = isEntryNode && !!onTrigger;
+  // 노드 위 툴바: editable 노드 전체에 표시
+  const showToolbar = !!editable;
+  const showNodeWarning = !!warningReason;
+  const leafAddAffordance = Boolean(isLeaf && editable && onAddAfter);
 
   return (
-    <div
-      className="flex items-start group"
-      title={taskTooltip}
-    >
-      <div className="flex flex-col items-center">
-        {/* Icon Box — n8n style square */}
+    <div className="relative flex items-start group">
+      {/* 파이프라인 실행 버튼 — 진입 노드 좌측에 고정 (n8n 스타일) */}
+      {showTriggerButton && (
         <div
-          className={cn(
-            'relative rounded-xl border-2 flex items-center justify-center transition-all',
-            STATUS_BORDER[status],
-            'bg-card',
-            selected && 'ring-2 ring-accent ring-offset-2 ring-offset-background',
-            editable && !isTrigger && 'cursor-grab active:cursor-grabbing',
-            status === 'RUNNING' && 'animate-status-pulse',
-          )}
-          style={{ width: NODE_SIZE, height: NODE_SIZE, boxShadow: STATUS_GLOW[status] }}
+          className="absolute right-full mr-4 nodrag z-20 flex items-center"
+          style={{ top: NODE_SIZE / 2, transform: 'translateY(-50%)' }}
         >
-          {/* Status badge — top-left of icon box */}
-          {showStatusBadge && (
-            <div className="absolute -top-3 -left-3 z-10">
-              <StatusIcon
-                className={cn(
-                  'w-4 h-4',
-                  statusInd.color,
-                  status === 'RUNNING' && 'animate-spin',
-                )}
-              />
-            </div>
-          )}
+          {/* Idle: small zap icon */}
+          <div className="node-trigger-zap absolute right-0 flex items-center justify-center w-5 h-5">
+            <Zap className="w-4 h-4 text-accent" fill="currentColor" />
+          </div>
+          {/* Hover: full execute button */}
+          <button
+            onClick={(e) => { e.stopPropagation(); onTrigger!(); }}
+            className={cn(
+              'node-trigger-btn flex items-center gap-2 pl-2.5 pr-3.5 py-2 rounded-lg text-[11px] font-semibold shadow-lg whitespace-nowrap',
+              'bg-accent text-accent-foreground cursor-pointer hover:brightness-110 active:brightness-95',
+            )}
+            title="파이프라인을 실행합니다 (설정 경고는 작업 초기화 노드에서 확인)"
+          >
+            <FlaskConical className="w-3.5 h-3.5" />
+            파이프라인 실행
+          </button>
+        </div>
+      )}
 
-          {/* Delete button — positioned relative to the icon box */}
-          {showDeleteButton && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onDelete!(order); }}
-              className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:scale-110 z-10"
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
-          )}
-
-          {/* Target handle — left (hidden for head/trigger nodes) */}
-          {showTargetHandle && (
-            <Handle
-              type="target"
-              position={Position.Left}
-              className="!bg-accent/50 !w-3 !h-3 !border-2 !border-card !-left-1.5 hover:!bg-accent hover:!scale-125 !transition-all"
+      <div className="flex flex-col items-center">
+        {/* Icon box wrapper */}
+        <div className="relative">
+          {/* n8n 스타일 호버 툴바 — 노드 위에 표시 (개별 노드 액션) */}
+          {showToolbar && (
+            <NodeHoverToolbar
+              showDelete={showDeleteButton}
+              onDelete={onDelete ? () => onDelete(order) : undefined}
+              onExecute={onExecuteStep ? () => onExecuteStep(order) : undefined}
             />
           )}
 
-          <CscIcon className="w-7 h-7 text-accent" />
-
-          {/* Source handle — right */}
-          <Handle
-            type="source"
-            position={Position.Right}
+          <div
             className={cn(
-              '!w-3 !h-3 !border-2 !border-card !-right-1.5 hover:!bg-accent hover:!scale-125 !transition-all',
-              isLeaf && editable ? '!bg-accent !opacity-100' : '!bg-accent/50',
+              'node-icon-box relative rounded-xl border-2 flex items-center justify-center',
+              STATUS_BORDER[status],
+              'bg-card',
+              status === 'FAILED' && 'node-failed',
+              leafAddAffordance && 'cursor-pointer',
+              editable && !isEntryNode && !leafAddAffordance && 'cursor-grab active:cursor-grabbing',
+              status === 'RUNNING' && 'animate-status-pulse',
             )}
-          />
+            style={{ width: NODE_SIZE, height: NODE_SIZE, boxShadow: STATUS_GLOW[status] }}
+          >
+            <div className="node-hover-overlay" />
+            {showNodeWarning && warningReason && (
+              <NodeWarningHint text={warningReason} />
+            )}
+            {showStatusBadge && (
+              <div className="absolute -top-3 -left-3 z-10">
+                <StatusIcon
+                  className={cn(
+                    'w-4 h-4',
+                    statusInd.color,
+                    status === 'RUNNING' && 'animate-spin',
+                  )}
+                />
+              </div>
+            )}
+
+            {showTargetHandle && (
+              <Handle
+                type="target"
+                position={Position.Left}
+                className="!bg-accent/50 !w-3 !h-3 !border-2 !border-card !-left-1.5 hover:!bg-accent hover:!scale-125 !transition-all"
+              />
+            )}
+
+            <CscIcon className="w-7 h-7 text-accent" />
+
+            <Handle
+              type="source"
+              position={Position.Right}
+              className={cn(
+                '!w-3 !h-3 !border-2 !border-card !-right-1.5 hover:!bg-accent hover:!scale-125 !transition-all',
+                isLeaf && editable ? '!bg-accent !opacity-100' : '!bg-accent/50',
+              )}
+            />
+          </div>
+
+          {/* Leaf node: trailing line + add button */}
+          {isLeaf && editable && onAddAfter && (
+            <div
+              className="absolute left-full top-1/2 -translate-y-1/2 flex items-center nodrag z-10 cursor-pointer"
+              style={{ marginLeft: 1 }}
+            >
+              <svg width="52" height="2" className="shrink-0 pointer-events-none">
+                <line x1="0" y1="1" x2="52" y2="1" stroke="var(--accent)" strokeWidth="2" style={{ opacity: 0.4 }} />
+              </svg>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onAddAfter(order); }}
+                className="w-7 h-7 rounded-full bg-card border-2 border-border flex items-center justify-center hover:border-accent hover:bg-accent/10 transition-all shrink-0 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5 text-muted-foreground" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Label below — n8n style */}
-        <div className="mt-2 text-center max-w-[120px]">
+        <div className="mt-2 text-center max-w-[130px]">
           <div className="text-[11px] font-semibold text-foreground leading-tight">{label}</div>
           <div className="text-[10px] text-muted-foreground">{subLabel}</div>
           {taskCount > 0 && (
-            <div className="text-[9px] text-muted-foreground/60">{taskCount} tasks</div>
+            <div className={`text-[9px] ${hasPartialTasks ? 'text-accent font-semibold' : 'text-muted-foreground/60'}`}>
+              {hasPartialTasks ? `${activeTaskCount}/${taskCount} tasks` : `${taskCount} tasks`}
+            </div>
           )}
           {durationMs !== undefined && (
             <div className="text-[9px] text-success font-mono">{formatDuration(durationMs)}</div>
@@ -202,24 +395,6 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
           )}
         </div>
       </div>
-
-      {/* Leaf node: trailing line + add button — part of the node so it moves together */}
-      {isLeaf && editable && !isTrigger && onAddAfter && (
-        <div
-          className="flex items-center nodrag"
-          style={{ marginTop: NODE_SIZE / 2 - 14, marginLeft: -2 }}
-        >
-          <svg width="52" height="2" className="flex-shrink-0">
-            <line x1="0" y1="1" x2="52" y2="1" stroke="var(--accent)" strokeWidth="2" style={{ opacity: 0.4 }} />
-          </svg>
-          <button
-            onClick={(e) => { e.stopPropagation(); onAddAfter(order); }}
-            className="w-7 h-7 rounded-full bg-card border-2 border-border flex items-center justify-center hover:border-accent hover:bg-accent/10 transition-all flex-shrink-0"
-          >
-            <Plus className="w-3.5 h-3.5 text-muted-foreground" />
-          </button>
-        </div>
-      )}
     </div>
   );
 }
