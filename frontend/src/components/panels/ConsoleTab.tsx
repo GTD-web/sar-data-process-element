@@ -1,6 +1,6 @@
 'use client';
 
-import type { PipelineDefinition, PipelineStepDefinition, JobDetail, TargetCsc, ProductLevel } from '@/types/pipeline';
+import type { PipelineDefinition, PipelineStepDefinition, JobDetail, SarStage, PipelineNodeKind } from '@/types/pipeline';
 import NodeEditPanel from './NodeEditPanel';
 import AddStepPanel from './AddStepPanel';
 import JobDetailPanel from './JobDetailPanel';
@@ -20,11 +20,11 @@ interface ConsoleTabProps {
   mode: ConsoleMode;
   onSaveNode: (step: PipelineStepDefinition) => void;
   onDeleteNode: (order: number) => void;
-  onConfirmAddStep: (afterOrder: number, csc: TargetCsc, level: ProductLevel) => void;
+  onConfirmAddStep: (afterOrder: number, kind: PipelineNodeKind, sarStage?: SarStage) => void;
   onReprocessJob: () => void;
-  onPartialReprocess: (targetLevel: ProductLevel) => void;
+  onPartialReprocess: (sarStage: SarStage) => void;
   onCancelJob: () => void;
-  onSavePipeline: (data: { name: string; satelliteId: string; mode: string; steps: { targetCsc: TargetCsc; productLevel: ProductLevel }[] }) => void;
+  onSavePipeline: (data: { name: string; satelliteId: string; mode: string; steps: { kind: PipelineNodeKind; sarStage?: SarStage }[] }) => void;
   pipelineSaving: boolean;
 }
 

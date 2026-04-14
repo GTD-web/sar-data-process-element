@@ -3,15 +3,18 @@
 import { useState } from 'react';
 import { formatDuration, formatKST } from '@/lib/utils';
 import { JobStatusBadge, StepStatusBadge } from '@/components/ui/StatusBadge';
-import type { JobDetail, ProductLevel } from '@/types/pipeline';
-import { CSC_LABELS, PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
+import type { JobDetail, SarStage } from '@/types/pipeline';
+import {
+  SAR_STAGE_LABELS, SAR_STAGE_TASKS, SAR_STAGE_TO_LEVEL, PRODUCT_LEVEL_LABELS,
+  CSC_VT_SECONDS,
+} from '@/types/pipeline';
 import { RefreshCw, XCircle, ChevronDown, X, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface JobDetailPanelProps {
   job: JobDetail;
   onReprocess: () => void;
-  onPartialReprocess: (targetLevel: ProductLevel) => void;
+  onPartialReprocess: (sarStage: SarStage) => void;
   onCancel: () => void;
 }
 
@@ -33,10 +36,15 @@ export default function JobDetailPanel({ job, onReprocess, onPartialReprocess, o
     setPartialDialogOpen(true);
   };
 
-  const handlePartialConfirm = (targetLevel: ProductLevel) => {
+  const handlePartialConfirm = (sarStage: SarStage) => {
     setPartialDialogOpen(false);
-    onPartialReprocess(targetLevel);
+    onPartialReprocess(sarStage);
   };
+
+  // Job의 실제 SAR 스테이지 목록 (TRIGGER, CATALOG 제외)
+  const availableStages: SarStage[] = job.steps
+    .filter((s) => s.kind === 'SAR' && s.sarStage !== undefined)
+    .map((s) => s.sarStage!);
 
   return (
     <div className="p-4 space-y-4">
@@ -76,7 +84,7 @@ export default function JobDetailPanel({ job, onReprocess, onPartialReprocess, o
                   className="w-full px-3 py-2 text-left text-xs text-foreground hover:bg-muted/50 transition-colors"
                 >
                   <div className="font-medium">전체 재처리</div>
-                  <div className="text-muted-foreground text-[10px]">LEVEL_0부터 전체 재실행</div>
+                  <div className="text-muted-foreground text-[10px]">L0부터 전체 재실행</div>
                 </button>
                 <div className="h-px bg-border" />
                 <button
@@ -84,7 +92,7 @@ export default function JobDetailPanel({ job, onReprocess, onPartialReprocess, o
                   className="w-full px-3 py-2 text-left text-xs text-foreground hover:bg-muted/50 transition-colors"
                 >
                   <div className="font-medium">부분 재처리</div>
-                  <div className="text-muted-foreground text-[10px]">특정 레벨부터 재실행</div>
+                  <div className="text-muted-foreground text-[10px]">특정 스테이지부터 재실행</div>
                 </button>
               </div>
             )}
@@ -131,33 +139,65 @@ export default function JobDetailPanel({ job, onReprocess, onPartialReprocess, o
         <div className="space-y-1">
           {job.steps
             .filter((step) => step.kind !== 'TRIGGER')
-            .map((step) => (
-              <div key={step.order} className="bg-muted/30 rounded-md px-3 py-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-semibold text-foreground">{step.targetCsc}</span>
-                    <span className="text-[10px] text-muted-foreground">{CSC_LABELS[step.targetCsc]}</span>
+            .map((step) => {
+              const isSAR = step.kind === 'SAR' && step.sarStage;
+              const isCatalog = step.kind === 'CATALOG';
+              const stageLabel = isSAR
+                ? `${step.sarStage} · ${SAR_STAGE_LABELS[step.sarStage!]}`
+                : isCatalog
+                  ? '카탈로그 등록'
+                  : step.targetCsc;
+              const levelLabel = isSAR
+                ? PRODUCT_LEVEL_LABELS[SAR_STAGE_TO_LEVEL[step.sarStage!]]
+                : step.productLevel;
+              const vt = CSC_VT_SECONDS[step.targetCsc];
+              const vtOver = step.durationMs !== undefined && vt !== undefined && step.durationMs > vt * 1000;
+
+              return (
+                <div key={step.order} className="bg-muted/30 rounded-md px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-semibold text-foreground">{stageLabel}</span>
+                    </div>
+                    <StepStatusBadge status={step.status} />
                   </div>
-                  <StepStatusBadge status={step.status} />
+                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                    {levelLabel}
+                    {step.durationMs !== undefined && ` · ${formatDuration(step.durationMs)}`}
+                    {vt && (
+                      <span className={vtOver ? 'text-destructive ml-1' : 'text-muted-foreground/60 ml-1'}>
+                        {`(VT: ${vt.toLocaleString()}초${vtOver ? ' 초과' : ''})`}
+                      </span>
+                    )}
+                  </div>
+                  {/* SAR 스테이지 태스크 목록 (완료된 단계) */}
+                  {isSAR && step.status === 'COMPLETED' && step.sarStage && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {SAR_STAGE_TASKS[step.sarStage].map((task) => (
+                        <span key={task} className="text-[9px] bg-success/10 text-success rounded px-1 py-0.5">{task}</span>
+                      ))}
+                    </div>
+                  )}
+                  {step.errorMessage && (
+                    <div className="text-[10px] text-destructive mt-0.5">{step.errorMessage}</div>
+                  )}
+                  {step.outputPath && (
+                    <div className="text-[10px] text-muted-foreground mt-0.5 font-mono truncate">{step.outputPath}</div>
+                  )}
                 </div>
-                <div className="text-[10px] text-muted-foreground mt-0.5">
-                  {PRODUCT_LEVEL_LABELS[step.productLevel]}
-                  {step.durationMs !== undefined && ` · ${formatDuration(step.durationMs)}`}
-                </div>
-                {step.errorMessage && (
-                  <div className="text-[10px] text-destructive mt-0.5">{step.errorMessage}</div>
-                )}
-                {step.outputPath && (
-                  <div className="text-[10px] text-muted-foreground mt-0.5 font-mono truncate">{step.outputPath}</div>
-                )}
-              </div>
-            ))}
+              );
+            })}
         </div>
       </div>
 
       {/* D-02: 부분 재처리 다이얼로그 */}
       {partialDialogOpen && (
-        <PartialReprocessDialog jobId={job.jobId} onClose={() => setPartialDialogOpen(false)} onConfirm={handlePartialConfirm} />
+        <PartialReprocessDialog
+          jobId={job.jobId}
+          availableStages={availableStages}
+          onClose={() => setPartialDialogOpen(false)}
+          onConfirm={handlePartialConfirm}
+        />
       )}
     </div>
   );
@@ -173,21 +213,22 @@ function InfoRow({ label, value, mono }: { label: string; value: string; mono?: 
 }
 
 // D-02: 부분 재처리 다이얼로그
-const LEVELS: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
-
 function PartialReprocessDialog({
   jobId,
+  availableStages,
   onClose,
   onConfirm,
 }: {
   jobId: string;
+  availableStages: SarStage[];
   onClose: () => void;
-  onConfirm: (targetLevel: ProductLevel) => void;
+  onConfirm: (sarStage: SarStage) => void;
 }) {
-  const [selectedLevel, setSelectedLevel] = useState<ProductLevel>('LEVEL_1');
-  // S-02: LEVEL_0은 전체 재처리와 동일 — Job ID 직접 타이핑으로 2단계 확인
+  const defaultStage = availableStages[0] ?? 'L0';
+  const [selectedStage, setSelectedStage] = useState<SarStage>(defaultStage);
+  // S-02: L0 선택 시 전체 재처리와 동일 — Job ID 직접 타이핑으로 2단계 확인
   const [inputJobId, setInputJobId] = useState('');
-  const requiresJobId = selectedLevel === 'LEVEL_0';
+  const requiresJobId = selectedStage === 'L0';
   const isConfirmEnabled = !requiresJobId || inputJobId === jobId;
 
   return (
@@ -206,29 +247,32 @@ function PartialReprocessDialog({
 
         {/* Body */}
         <div className="p-4 space-y-4">
-          <p className="text-xs text-muted-foreground">선택한 레벨부터 이후 단계를 재실행합니다.</p>
+          <p className="text-xs text-muted-foreground">선택한 스테이지부터 이후 단계를 재실행합니다.</p>
+          <div className="flex items-start gap-2 p-2.5 rounded-md bg-muted/30 border border-border/50 text-[11px] text-muted-foreground">
+            <span className="flex-shrink-0 mt-0.5">ℹ</span>
+            <span>재처리 완료 후 카탈로그 노드가 신규 버전을 등록합니다. 기존 산출물은 아카이빙되고 최신 버전이 PUBLISHED 상태로 전환됩니다.</span>
+          </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">재처리 시작 레벨</label>
+            <label className="text-xs font-medium text-foreground">재처리 시작 스테이지</label>
             <select
-              value={selectedLevel}
-              onChange={(e) => { setSelectedLevel(e.target.value as ProductLevel); setInputJobId(''); }}
+              value={selectedStage}
+              onChange={(e) => { setSelectedStage(e.target.value as SarStage); setInputJobId(''); }}
               className="w-full bg-muted border border-border rounded-md px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
             >
-              {LEVELS.map((level) => (
-                <option key={level} value={level}>{level}</option>
+              {availableStages.map((stage) => (
+                <option key={stage} value={stage}>
+                  {stage} — {SAR_STAGE_LABELS[stage]}
+                </option>
               ))}
             </select>
-            <div className="text-[10px] text-muted-foreground">
-              대상 CSC: 자동 선택 (해당 레벨의 처리 CSC)
-            </div>
           </div>
 
           {requiresJobId && (
             <div className="space-y-3">
               <div className="flex items-start gap-2 p-2.5 rounded-md bg-warning/10 border border-warning/30">
                 <AlertTriangle className="w-3.5 h-3.5 text-warning flex-shrink-0 mt-0.5" />
-                <p className="text-[11px] text-warning">LEVEL_0 선택 시 전체 파이프라인이 재실행됩니다.</p>
+                <p className="text-[11px] text-warning">L0 선택 시 전체 파이프라인이 재실행됩니다.</p>
               </div>
               {/* S-02: Job ID 2단계 확인 */}
               <div className="space-y-1.5">
@@ -260,7 +304,7 @@ function PartialReprocessDialog({
             취소
           </button>
           <button
-            onClick={() => onConfirm(selectedLevel)}
+            onClick={() => onConfirm(selectedStage)}
             disabled={!isConfirmEnabled}
             className={cn(
               'flex-1 py-1.5 rounded-md text-xs font-medium transition-colors',

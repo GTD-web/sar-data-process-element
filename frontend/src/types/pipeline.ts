@@ -9,14 +9,15 @@ export type JobStatus = 'CREATED' | 'ASSIGNED' | 'COMPLETED' | 'FAILED' | 'CANCE
 export type StepStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
 export type ProductLevel = 'LEVEL_0' | 'LEVEL_1' | 'LEVEL_2' | 'LEVEL_3';
 
-/** D-01: 파이프라인 노드 종류. TRIGGER = 외부 이벤트(EI-01), CSC = 처리 서브시스템 */
-export type PipelineNodeKind = 'TRIGGER' | 'CSC';
+/** SAR 처리 레벨 단위 스테이지. 파이프라인 노드의 기본 식별자. */
+export type SarStage = 'L0' | 'L1A' | 'L1B' | 'L1C' | 'L2A' | 'L2B' | 'L3';
+
+/** D-01: 파이프라인 노드 종류. TRIGGER = 외부 이벤트(EI-01), SAR = SAR 처리 스테이지, CATALOG = 카탈로그 등록 */
+export type PipelineNodeKind = 'TRIGGER' | 'SAR' | 'CATALOG';
 
 /**
- * UI 표시용 CSC 범위.
- * ICD interfaces/csc-8의 TargetCsc('CSC-03'~'CSC-06')는 CSC-08이 작업을 할당하는 처리 CSC만 포함.
- * 프론트엔드는 파이프라인 전 구간 시각화를 위해 CSC-02(수집)와 CSC-07(등록)을 추가합니다.
- * v2에서 @sdpe/contracts 패키지 분리 시 프론트 확장 타입으로 명시적 분리 예정.
+ * UI 표시용 CSC 범위. 백엔드 호환용으로 유지.
+ * SAR 스테이지에서 파생되며, 직접 파이프라인 노드 식별자로 사용하지 않습니다.
  */
 export type TargetCsc = 'CSC-02' | 'CSC-03' | 'CSC-04' | 'CSC-05' | 'CSC-06' | 'CSC-07';
 export type AlertKind = 'MAX_RETRY' | 'PIPELINE_DELAY' | 'QUALITY_FAIL' | 'RESOURCE_THRESHOLD';
@@ -29,6 +30,50 @@ export type AuditEventType =
   | 'PIPELINE_REPROCESSED'
   | 'ALERT_DISPATCHED';
 
+// --- SAR Stage Constants ---
+
+export const SAR_STAGE_LABELS: Record<SarStage, string> = {
+  L0: 'Raw Data Processing',
+  L1A: 'SAR Focusing (SLC)',
+  L1B: 'Multi-look (MLC/GRD)',
+  L1C: 'Terrain Correction (RTC)',
+  L2A: 'Map Products',
+  L2B: 'Scene Analysis',
+  L3: 'Application Products',
+};
+
+export const SAR_STAGE_TASKS: Record<SarStage, string[]> = {
+  L0: ['Time Ordering & Synchronization', 'Metadata Extraction', 'Range Line Formatting', 'Calibration'],
+  L1A: ['Range Compression', 'Azimuth Compression', 'Autofocusing', 'Multi-mode Support', 'SLC Product'],
+  L1B: ['Multi-look Processing', 'Speckle Filtering', 'Ground-range Projection', 'Amplitude/phase Product'],
+  L1C: ['DEM Integration', 'Geometric Correction', 'Radiometric Terrain Correction', 'Map Projection'],
+  L2A: ['Incidence Angle Map', 'NESZ Map', 'Number-of-looks Map', 'Layover and Shadow Masks'],
+  L2B: ['Object Detection', 'Change Detection'],
+  L3: ['Application-specific Products'],
+};
+
+/** SAR 스테이지 → 산출물 레벨 매핑 (백엔드 호환용) */
+export const SAR_STAGE_TO_LEVEL: Record<SarStage, ProductLevel> = {
+  L0: 'LEVEL_0',
+  L1A: 'LEVEL_1',
+  L1B: 'LEVEL_1',
+  L1C: 'LEVEL_1',
+  L2A: 'LEVEL_2',
+  L2B: 'LEVEL_2',
+  L3: 'LEVEL_3',
+};
+
+/** SAR 스테이지 → 처리 CSC 매핑 (백엔드 호환용) */
+export const SAR_STAGE_TO_CSC: Record<SarStage, TargetCsc> = {
+  L0: 'CSC-03',
+  L1A: 'CSC-04',
+  L1B: 'CSC-04',
+  L1C: 'CSC-05',
+  L2A: 'CSC-05',
+  L2B: 'CSC-06',
+  L3: 'CSC-06',
+};
+
 // --- UI Display Helpers ---
 
 export const JOB_STATUS_DISPLAY: Record<JobStatus, string> = {
@@ -39,9 +84,10 @@ export const JOB_STATUS_DISPLAY: Record<JobStatus, string> = {
   CANCELED: 'CANCELED',
 };
 
+/** 백엔드 호환용. 직접 노드 레이블로 사용하지 않습니다. */
 export const CSC_LABELS: Record<TargetCsc, string> = {
   'CSC-02': '데이터 수집',
-  'CSC-03': 'L0 Range Compression',
+  'CSC-03': 'L0 Processing',
   'CSC-04': 'L1 SAR Processing',
   'CSC-05': 'L2 Post Processing',
   'CSC-06': 'L3 Geocoding',
@@ -53,6 +99,17 @@ export const PRODUCT_LEVEL_LABELS: Record<ProductLevel, string> = {
   LEVEL_1: 'L1',
   LEVEL_2: 'L2',
   LEVEL_3: 'L3',
+};
+
+/**
+ * OPS-02: CSC별 pgmq Visibility Timeout (초).
+ * ICD 6.6절 — CSC-08이 JOB_ASSIGNED 발행 시 적용하는 VT 상한.
+ */
+export const CSC_VT_SECONDS: Partial<Record<TargetCsc, number>> = {
+  'CSC-03': 3_600,
+  'CSC-04': 9_000,
+  'CSC-05': 2_700,
+  'CSC-06': 1_800,
 };
 
 // --- Domain Interfaces ---
@@ -72,6 +129,9 @@ export interface PipelineStep {
   order: number;
   kind?: PipelineNodeKind;
   parentOrder?: number | null;
+  /** 표시 기본 필드. SAR 노드의 처리 스테이지. */
+  sarStage?: SarStage;
+  /** 백엔드 호환용. sarStage에서 파생되거나 백엔드 응답에서 직접 수신. */
   targetCsc: TargetCsc;
   productLevel: ProductLevel;
   status: StepStatus;
@@ -125,10 +185,10 @@ export interface QueueHealth {
 
 export interface PipelineStepDefinition {
   order: number;
-  kind?: PipelineNodeKind;
-  targetCsc: TargetCsc;
-  productLevel: ProductLevel;
-  parentOrder?: number | null; // null = root, number = branches from that step
+  kind: PipelineNodeKind;
+  /** SAR 노드의 처리 스테이지. kind='SAR'일 때 필수. */
+  sarStage?: SarStage;
+  parentOrder?: number | null;
 }
 
 export interface PipelineEdge {

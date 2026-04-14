@@ -4,8 +4,8 @@ import { memo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { cn } from '@/lib/utils';
 import { formatDuration } from '@/lib/utils';
-import type { StepStatus, TargetCsc, ProductLevel, PipelineNodeKind } from '@/types/pipeline';
-import { CSC_LABELS, PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
+import type { StepStatus, SarStage, PipelineNodeKind } from '@/types/pipeline';
+import { SAR_STAGE_LABELS, SAR_STAGE_TASKS, SAR_STAGE_TO_LEVEL, PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
 import {
   CheckCircle,
   Circle,
@@ -14,20 +14,20 @@ import {
   Ban,
   Trash2,
   Plus,
-  Satellite,
-  Radio,
-  Cpu,
-  SlidersHorizontal,
-  Globe,
-  Database,
   Antenna,
-  Lock,
+  HardDrive,
+  Cpu,
+  Layers,
+  Compass,
+  Map,
+  Crosshair,
+  Package,
+  Database,
 } from 'lucide-react';
 
 export interface PipelineNodeData {
   kind?: PipelineNodeKind;
-  targetCsc: TargetCsc;
-  productLevel: ProductLevel;
+  sarStage?: SarStage;
   status: StepStatus;
   order: number;
   durationMs?: number;
@@ -40,13 +40,14 @@ export interface PipelineNodeData {
   [key: string]: unknown;
 }
 
-const CSC_ICON_CONFIG: Record<TargetCsc, { icon: React.ElementType }> = {
-  'CSC-02': { icon: Satellite },
-  'CSC-03': { icon: Radio },
-  'CSC-04': { icon: Cpu },
-  'CSC-05': { icon: SlidersHorizontal },
-  'CSC-06': { icon: Globe },
-  'CSC-07': { icon: Database },
+const SAR_ICON_CONFIG: Record<SarStage, { icon: React.ElementType }> = {
+  L0: { icon: HardDrive },
+  L1A: { icon: Cpu },
+  L1B: { icon: Layers },
+  L1C: { icon: Compass },
+  L2A: { icon: Map },
+  L2B: { icon: Crosshair },
+  L3: { icon: Package },
 };
 
 const STATUS_BORDER: Record<StepStatus, string> = {
@@ -77,28 +78,47 @@ const NODE_SIZE = 64;
 
 function PipelineNodeComponent({ data, selected }: NodeProps) {
   const nodeData = data as unknown as PipelineNodeData;
-  const { kind, targetCsc, productLevel, status, order, durationMs, errorMessage, editable, isLeaf, isHead, onDelete, onAddAfter } = nodeData;
+  const { kind, sarStage, status, order, durationMs, errorMessage, editable, isLeaf, isHead, onDelete, onAddAfter } = nodeData;
 
   const isTrigger = kind === 'TRIGGER';
-  // D-03: CSC-07은 SI-08 스키마 미확정으로 상태 표시 불가
-  const isUnconfirmedNode = targetCsc === 'CSC-07';
+  const isCatalog = kind === 'CATALOG';
+  const isSAR = kind === 'SAR';
 
-  const CscIcon = isTrigger ? Antenna : CSC_ICON_CONFIG[targetCsc].icon;
+  // 아이콘 결정
+  let CscIcon: React.ElementType;
+  if (isTrigger) {
+    CscIcon = Antenna;
+  } else if (isCatalog) {
+    CscIcon = Database;
+  } else if (isSAR && sarStage) {
+    CscIcon = SAR_ICON_CONFIG[sarStage].icon;
+  } else {
+    CscIcon = HardDrive;
+  }
 
-  // CSC-07은 상태 무관하게 회색 고정
-  const effectiveBorder = isUnconfirmedNode ? 'border-muted' : STATUS_BORDER[status];
-  const effectiveGlow = isUnconfirmedNode ? 'none' : STATUS_GLOW[status];
+  // 레이블 결정
+  let label: string;
+  let subLabel: string;
+  if (isTrigger) {
+    label = '원시 데이터 수신';
+    subLabel = 'EI-01 · 수신 트리거';
+  } else if (isCatalog) {
+    label = '카탈로그 등록';
+    subLabel = 'CSC-07 · 등록';
+  } else if (isSAR && sarStage) {
+    label = SAR_STAGE_LABELS[sarStage];
+    subLabel = `${sarStage} · ${PRODUCT_LEVEL_LABELS[SAR_STAGE_TO_LEVEL[sarStage]]}`;
+  } else {
+    label = '알 수 없음';
+    subLabel = '—';
+  }
 
-  const statusInd = isUnconfirmedNode
-    ? { icon: Lock, color: 'text-muted-foreground' }
-    : STATUS_INDICATOR[status];
+  const taskCount = isSAR && sarStage ? SAR_STAGE_TASKS[sarStage].length : 0;
+  const taskTooltip = isSAR && sarStage ? SAR_STAGE_TASKS[sarStage].join('\n') : undefined;
+
+  const statusInd = STATUS_INDICATOR[status];
   const StatusIcon = statusInd.icon;
-
-  // CSC-07은 항상 Lock 뱃지, 일반 노드는 PENDING 제외
-  const showStatusBadge = isUnconfirmedNode || status !== 'PENDING';
-
-  const label = isTrigger ? '원시 데이터 수신' : CSC_LABELS[targetCsc];
-  const subLabel = isTrigger ? 'EI-01 · 수신 트리거' : `${targetCsc} · ${PRODUCT_LEVEL_LABELS[productLevel]}`;
+  const showStatusBadge = status !== 'PENDING';
 
   // TRIGGER: target handle 없음(진입점), delete 버튼 없음
   const showTargetHandle = !isTrigger && !isHead;
@@ -107,20 +127,20 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
   return (
     <div
       className="flex items-start group"
-      title={isUnconfirmedNode ? 'SI-08 스키마 미확정 — 상태 표시 불가' : undefined}
+      title={taskTooltip}
     >
       <div className="flex flex-col items-center">
         {/* Icon Box — n8n style square */}
         <div
           className={cn(
             'relative rounded-xl border-2 flex items-center justify-center transition-all',
-            effectiveBorder,
+            STATUS_BORDER[status],
             'bg-card',
             selected && 'ring-2 ring-accent ring-offset-2 ring-offset-background',
             editable && !isTrigger && 'cursor-grab active:cursor-grabbing',
-            status === 'RUNNING' && !isUnconfirmedNode && 'animate-status-pulse',
+            status === 'RUNNING' && 'animate-status-pulse',
           )}
-          style={{ width: NODE_SIZE, height: NODE_SIZE, boxShadow: effectiveGlow }}
+          style={{ width: NODE_SIZE, height: NODE_SIZE, boxShadow: STATUS_GLOW[status] }}
         >
           {/* Status badge — top-left of icon box */}
           {showStatusBadge && (
@@ -129,7 +149,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
                 className={cn(
                   'w-4 h-4',
                   statusInd.color,
-                  status === 'RUNNING' && !isUnconfirmedNode && 'animate-spin',
+                  status === 'RUNNING' && 'animate-spin',
                 )}
               />
             </div>
@@ -154,7 +174,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
             />
           )}
 
-          <CscIcon className={cn('w-7 h-7', isUnconfirmedNode ? 'text-muted-foreground' : 'text-accent')} />
+          <CscIcon className="w-7 h-7 text-accent" />
 
           {/* Source handle — right */}
           <Handle
@@ -170,13 +190,11 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
         {/* Label below — n8n style */}
         <div className="mt-2 text-center max-w-[120px]">
           <div className="text-[11px] font-semibold text-foreground leading-tight">{label}</div>
-          <div className={cn('text-[10px]', isUnconfirmedNode ? 'text-muted-foreground/60' : 'text-muted-foreground')}>
-            {subLabel}
-          </div>
-          {isUnconfirmedNode && (
-            <div className="text-[9px] text-muted-foreground/50">(SI-08 미확정)</div>
+          <div className="text-[10px] text-muted-foreground">{subLabel}</div>
+          {taskCount > 0 && (
+            <div className="text-[9px] text-muted-foreground/60">{taskCount} tasks</div>
           )}
-          {durationMs !== undefined && !isUnconfirmedNode && (
+          {durationMs !== undefined && (
             <div className="text-[9px] text-success font-mono">{formatDuration(durationMs)}</div>
           )}
           {errorMessage && (

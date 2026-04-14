@@ -1,31 +1,37 @@
 'use client';
 
-import type { TargetCsc, ProductLevel } from '@/types/pipeline';
-import { CSC_LABELS, PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
-import { Satellite, Radio, Cpu, SlidersHorizontal, Globe, Database } from 'lucide-react';
+import type { SarStage, PipelineNodeKind } from '@/types/pipeline';
+import { SAR_STAGE_LABELS, SAR_STAGE_TASKS, SAR_STAGE_TO_LEVEL, PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
+import { HardDrive, Cpu, Layers, Compass, Map, Crosshair, Package, Database } from 'lucide-react';
 
-interface CscOption {
-  csc: TargetCsc;
-  defaultLevel: ProductLevel;
+interface SarStageOption {
+  kind: 'SAR';
+  sarStage: SarStage;
   icon: React.ElementType;
-  color: string;
-  bgColor: string;
-  description: string;
 }
 
-const CSC_OPTIONS: CscOption[] = [
-  { csc: 'CSC-02', defaultLevel: 'LEVEL_0', icon: Satellite, color: 'text-foreground', bgColor: 'bg-muted/30 border-border', description: '위성으로부터 원시 데이터를 수신합니다' },
-  { csc: 'CSC-03', defaultLevel: 'LEVEL_0', icon: Radio, color: 'text-foreground', bgColor: 'bg-muted/30 border-border', description: 'SAR 신호의 Range 방향 압축을 수행합니다' },
-  { csc: 'CSC-04', defaultLevel: 'LEVEL_1', icon: Cpu, color: 'text-foreground', bgColor: 'bg-muted/30 border-border', description: 'Azimuth 압축 등 핵심 SAR 신호처리를 수행합니다' },
-  { csc: 'CSC-05', defaultLevel: 'LEVEL_2', icon: SlidersHorizontal, color: 'text-foreground', bgColor: 'bg-muted/30 border-border', description: '방사 보정, 기하 보정 등 후처리를 수행합니다' },
-  { csc: 'CSC-06', defaultLevel: 'LEVEL_3', icon: Globe, color: 'text-foreground', bgColor: 'bg-muted/30 border-border', description: '지리 좌표계로 변환(Geocoding)합니다' },
-  { csc: 'CSC-07', defaultLevel: 'LEVEL_3', icon: Database, color: 'text-foreground', bgColor: 'bg-muted/30 border-border', description: '산출물을 카탈로그에 등록합니다' },
+interface CatalogOption {
+  kind: 'CATALOG';
+  icon: React.ElementType;
+}
+
+type StepOption = SarStageOption | CatalogOption;
+
+const STEP_OPTIONS: StepOption[] = [
+  { kind: 'SAR', sarStage: 'L0', icon: HardDrive },
+  { kind: 'SAR', sarStage: 'L1A', icon: Cpu },
+  { kind: 'SAR', sarStage: 'L1B', icon: Layers },
+  { kind: 'SAR', sarStage: 'L1C', icon: Compass },
+  { kind: 'SAR', sarStage: 'L2A', icon: Map },
+  { kind: 'SAR', sarStage: 'L2B', icon: Crosshair },
+  { kind: 'SAR', sarStage: 'L3', icon: Package },
+  { kind: 'CATALOG', icon: Database },
 ];
 
 interface AddStepPanelProps {
   insertAfterOrder: number;
   insertBeforeOrder?: number;
-  onSelect: (afterOrder: number, targetCsc: TargetCsc, productLevel: ProductLevel) => void;
+  onSelect: (afterOrder: number, kind: PipelineNodeKind, sarStage?: SarStage) => void;
 }
 
 export default function AddStepPanel({ insertAfterOrder, insertBeforeOrder, onSelect }: AddStepPanelProps) {
@@ -42,24 +48,53 @@ export default function AddStepPanel({ insertAfterOrder, insertBeforeOrder, onSe
       </div>
 
       <div className="space-y-2">
-        {CSC_OPTIONS.map((opt) => {
+        {STEP_OPTIONS.map((opt) => {
           const Icon = opt.icon;
+
+          if (opt.kind === 'CATALOG') {
+            return (
+              <button
+                key="CATALOG"
+                onClick={() => onSelect(insertAfterOrder, 'CATALOG')}
+                className="w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-all hover:scale-[1.01] active:scale-[0.99] bg-muted/30 border-border"
+              >
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-white/5 flex-shrink-0 text-foreground">
+                  <Icon className="w-5 h-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-foreground">CATALOG</span>
+                    <span className="text-[10px] font-mono text-muted-foreground">CSC-07</span>
+                  </div>
+                  <div className="text-xs text-foreground/80">카탈로그 등록</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">산출물을 카탈로그에 등록합니다</div>
+                </div>
+              </button>
+            );
+          }
+
+          const tasks = SAR_STAGE_TASKS[opt.sarStage];
+          const level = PRODUCT_LEVEL_LABELS[SAR_STAGE_TO_LEVEL[opt.sarStage]];
+
           return (
             <button
-              key={opt.csc}
-              onClick={() => onSelect(insertAfterOrder, opt.csc, opt.defaultLevel)}
-              className={`w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-all hover:scale-[1.01] active:scale-[0.99] ${opt.bgColor}`}
+              key={opt.sarStage}
+              onClick={() => onSelect(insertAfterOrder, 'SAR', opt.sarStage)}
+              className="w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-all hover:scale-[1.01] active:scale-[0.99] bg-muted/30 border-border"
             >
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center bg-white/5 flex-shrink-0 ${opt.color}`}>
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-white/5 flex-shrink-0 text-foreground">
                 <Icon className="w-5 h-5" />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-foreground">{opt.csc}</span>
-                  <span className="text-[10px] font-mono text-muted-foreground">{PRODUCT_LEVEL_LABELS[opt.defaultLevel]}</span>
+                  <span className="text-sm font-semibold text-foreground">{opt.sarStage}</span>
+                  <span className="text-[10px] font-mono text-muted-foreground">{level}</span>
                 </div>
-                <div className="text-xs text-foreground/80">{CSC_LABELS[opt.csc]}</div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">{opt.description}</div>
+                <div className="text-xs text-foreground/80">{SAR_STAGE_LABELS[opt.sarStage]}</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                  {tasks.slice(0, 3).join(' · ')}
+                  {tasks.length > 3 && ` +${tasks.length - 3}`}
+                </div>
               </div>
             </button>
           );

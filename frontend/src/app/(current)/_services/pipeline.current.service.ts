@@ -15,13 +15,13 @@ import type {
   JobSummary,
   PaginatedResponse,
   PipelineDefinition,
-  ProductLevel,
   QueueHealth,
+  SarStage,
   ServiceResponse,
   ServiceResponseWithData,
-  TargetCsc,
   UpdatePipelineData,
 } from '@/types/pipeline';
+import { SAR_STAGE_TO_CSC, SAR_STAGE_TO_LEVEL } from '@/types/pipeline';
 
 const API_BASE = '/api/pipeline';
 
@@ -71,11 +71,14 @@ export const pipelineCurrentService: IPipelineUIService = {
     return { success: true, message: 'OK' };
   },
 
-  async 부분_재처리를_요청한다(jobId: string, params: { targetLevel: ProductLevel; targetCsc: TargetCsc }): Promise<ServiceResponse> {
+  async 부분_재처리를_요청한다(jobId: string, params: { sarStage: SarStage }): Promise<ServiceResponse> {
+    // 백엔드 호환을 위해 sarStage에서 targetCsc/targetLevel 파생
+    const targetCsc = SAR_STAGE_TO_CSC[params.sarStage];
+    const targetLevel = SAR_STAGE_TO_LEVEL[params.sarStage];
     const res = await fetch(`${API_BASE}/jobs/${jobId}/reprocess/partial`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
+      body: JSON.stringify({ sarStage: params.sarStage, targetLevel, targetCsc }),
     });
     if (!res.ok) return { success: false, message: `부분 재처리 실패: ${res.status}` };
     return { success: true, message: 'OK' };

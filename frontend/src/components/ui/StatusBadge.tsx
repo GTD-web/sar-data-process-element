@@ -24,9 +24,12 @@ const STEP_STATUS_STYLES: Record<StepStatus, { bg: string; text: string; icon: R
 export function JobStatusBadge({ status, retryCount }: { status: JobStatus; retryCount?: number }) {
   const style = JOB_STATUS_STYLES[status];
   const Icon = style.icon;
-  const label = status === 'FAILED' && retryCount !== undefined && retryCount > 0
-    ? `RETRY ${retryCount}/3`
-    : JOB_STATUS_DISPLAY[status];
+  const label =
+    status === 'FAILED' && retryCount !== undefined && retryCount > 0
+      ? `RETRY ${retryCount}/3`
+      : status === 'ASSIGNED' && retryCount !== undefined && retryCount > 0
+        ? `재시도 ${retryCount}/3`
+        : JOB_STATUS_DISPLAY[status];
 
   return (
     <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium', style.bg, style.text)}>

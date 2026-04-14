@@ -1,16 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import type { PipelineDefinition, TargetCsc, ProductLevel } from '@/types/pipeline';
-import { CSC_LABELS, PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
+import type { PipelineDefinition, PipelineNodeKind, SarStage } from '@/types/pipeline';
+import { SAR_STAGE_LABELS, SAR_STAGE_TO_LEVEL, PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
 import { Plus, Trash2, ArrowUp, ArrowDown, Save } from 'lucide-react';
 
-const ALL_CSC: TargetCsc[] = ['CSC-02', 'CSC-03', 'CSC-04', 'CSC-05', 'CSC-06', 'CSC-07'];
-const ALL_LEVELS: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
+const SAR_STAGES: SarStage[] = ['L0', 'L1A', 'L1B', 'L1C', 'L2A', 'L2B', 'L3'];
+
+type StepEntry =
+  | { kind: 'SAR'; sarStage: SarStage }
+  | { kind: 'CATALOG' };
 
 interface PipelineEditPanelProps {
   pipeline: PipelineDefinition;
-  onSave: (data: { name: string; satelliteId: string; mode: string; steps: { targetCsc: TargetCsc; productLevel: ProductLevel }[] }) => void;
+  onSave: (data: { name: string; satelliteId: string; mode: string; steps: { kind: PipelineNodeKind; sarStage?: SarStage }[] }) => void;
   saving: boolean;
 }
 
@@ -18,20 +21,36 @@ export default function PipelineEditPanel({ pipeline, onSave, saving }: Pipeline
   const [name, setName] = useState(pipeline.name);
   const [satellite, setSatellite] = useState(pipeline.satelliteId);
   const [mode, setMode] = useState(pipeline.mode);
-  const [steps, setSteps] = useState(
-    pipeline.steps.map((s) => ({ targetCsc: s.targetCsc, productLevel: s.productLevel })),
+  const [steps, setSteps] = useState<StepEntry[]>(
+    pipeline.steps
+      .filter((s) => s.kind !== 'TRIGGER')
+      .map((s): StepEntry =>
+        s.kind === 'CATALOG' ? { kind: 'CATALOG' } : { kind: 'SAR', sarStage: s.sarStage ?? 'L0' },
+      ),
   );
 
   function addStep() {
-    setSteps((prev) => [...prev, { targetCsc: 'CSC-03' as TargetCsc, productLevel: 'LEVEL_0' as ProductLevel }]);
+    setSteps((prev) => [...prev, { kind: 'SAR', sarStage: 'L0' }]);
   }
 
   function removeStep(index: number) {
     setSteps((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function updateStep(index: number, field: 'targetCsc' | 'productLevel', value: string) {
-    setSteps((prev) => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
+  function updateStepKind(index: number, kind: PipelineNodeKind) {
+    setSteps((prev) =>
+      prev.map((s, i) =>
+        i === index
+          ? kind === 'CATALOG' ? { kind: 'CATALOG' } : { kind: 'SAR', sarStage: 'L0' }
+          : s,
+      ),
+    );
+  }
+
+  function updateSarStage(index: number, sarStage: SarStage) {
+    setSteps((prev) =>
+      prev.map((s, i) => (i === index ? { kind: 'SAR', sarStage } : s)),
+    );
   }
 
   function moveStep(index: number, dir: -1 | 1) {
@@ -101,23 +120,29 @@ export default function PipelineEditPanel({ pipeline, onSave, saving }: Pipeline
                 </button>
               </div>
               <select
-                value={step.targetCsc}
-                onChange={(e) => updateStep(i, 'targetCsc', e.target.value)}
-                className="flex-1 text-[11px] bg-card border border-border rounded px-1.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                value={step.kind}
+                onChange={(e) => updateStepKind(i, e.target.value as PipelineNodeKind)}
+                className="w-24 text-[11px] bg-card border border-border rounded px-1.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               >
-                {ALL_CSC.map((csc) => (
-                  <option key={csc} value={csc}>{csc}</option>
-                ))}
+                <option value="SAR">SAR</option>
+                <option value="CATALOG">CATALOG</option>
               </select>
-              <select
-                value={step.productLevel}
-                onChange={(e) => updateStep(i, 'productLevel', e.target.value)}
-                className="w-16 text-[11px] bg-card border border-border rounded px-1.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              >
-                {ALL_LEVELS.map((lv) => (
-                  <option key={lv} value={lv}>{PRODUCT_LEVEL_LABELS[lv]}</option>
-                ))}
-              </select>
+              {step.kind === 'SAR' && (
+                <select
+                  value={step.sarStage}
+                  onChange={(e) => updateSarStage(i, e.target.value as SarStage)}
+                  className="flex-1 text-[11px] bg-card border border-border rounded px-1.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  {SAR_STAGES.map((s) => (
+                    <option key={s} value={s}>
+                      {s} · {PRODUCT_LEVEL_LABELS[SAR_STAGE_TO_LEVEL[s]]} — {SAR_STAGE_LABELS[s]}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {step.kind === 'CATALOG' && (
+                <span className="flex-1 text-[11px] text-muted-foreground px-1.5">카탈로그 등록 (CSC-07)</span>
+              )}
               <button onClick={() => removeStep(i)} className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors">
                 <Trash2 className="w-3 h-3" />
               </button>

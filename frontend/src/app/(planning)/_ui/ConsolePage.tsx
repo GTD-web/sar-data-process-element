@@ -26,9 +26,10 @@ import type {
   QueueHealth,
   DashboardStats,
   PipelineStep,
-  TargetCsc,
-  ProductLevel,
+  SarStage,
+  PipelineNodeKind,
 } from '@/types/pipeline';
+import { SAR_STAGE_TO_CSC, SAR_STAGE_TO_LEVEL } from '@/types/pipeline';
 
 const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
   ssr: false,
@@ -96,11 +97,19 @@ export default function ConsolePage() {
   const graphSteps: PipelineStep[] = selectedPipeline
     ? selectedPipeline.steps.map((s) => {
         const jobStep = selectedJob ? selectedJob.steps.find((js) => js.order === s.order) : undefined;
+        // 백엔드 호환용 CSC/Level 파생
+        const targetCsc = s.kind === 'SAR' && s.sarStage
+          ? SAR_STAGE_TO_CSC[s.sarStage]
+          : s.kind === 'CATALOG' ? 'CSC-07' : 'CSC-02';
+        const productLevel = s.kind === 'SAR' && s.sarStage
+          ? SAR_STAGE_TO_LEVEL[s.sarStage]
+          : 'LEVEL_0';
         return {
           order: s.order,
           kind: s.kind,
-          targetCsc: s.targetCsc,
-          productLevel: s.productLevel,
+          sarStage: s.sarStage,
+          targetCsc,
+          productLevel,
           status: jobStep?.status ?? 'PENDING',
           durationMs: jobStep?.durationMs,
           errorMessage: jobStep?.errorMessage,
@@ -112,7 +121,7 @@ export default function ConsolePage() {
 
   // --- Pipeline mutation ---
   const updatePipeline = useCallback(
-    async (data: { steps?: { targetCsc: TargetCsc; productLevel: ProductLevel }[]; edges?: { source: number; target: number }[] }) => {
+    async (data: { steps?: Omit<PipelineStepDefinition, 'order'>[]; edges?: { source: number; target: number }[] }) => {
       if (!selectedPipelineId) return;
       const res = await service.파이프라인을_수정한다(selectedPipelineId, data);
       if (res.data) setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? res.data! : p)));
@@ -151,7 +160,6 @@ export default function ConsolePage() {
   const handleConnect = useCallback(
     (sourceOrder: number, targetOrder: number) => {
       if (!selectedPipeline) return;
-      // Add new edge (avoid duplicates)
       const exists = selectedPipeline.edges.some((e) => e.source === sourceOrder && e.target === targetOrder);
       if (exists) return;
       const newEdges = [...selectedPipeline.edges, { source: sourceOrder, target: targetOrder }];
@@ -167,8 +175,7 @@ export default function ConsolePage() {
       if (step?.kind === 'TRIGGER') return; // D-01: TRIGGER 노드는 삭제 불가
       const newSteps = selectedPipeline.steps
         .filter((s) => s.order !== order)
-        .map((s) => ({ targetCsc: s.targetCsc, productLevel: s.productLevel }));
-      // Remove edges that reference the deleted node
+        .map((s) => ({ kind: s.kind, sarStage: s.sarStage }));
       const newEdges = selectedPipeline.edges.filter((e) => e.source !== order && e.target !== order);
       updatePipeline({ steps: newSteps, edges: newEdges });
       if (consoleMode.type === 'node' && consoleMode.step.order === order) setConsoleMode({ type: 'idle' });
@@ -195,22 +202,20 @@ export default function ConsolePage() {
   );
 
   const handleConfirmAddStep = useCallback(
-    (afterOrder: number, targetCsc: TargetCsc, productLevel: ProductLevel) => {
+    (afterOrder: number, kind: PipelineNodeKind, sarStage?: SarStage) => {
       if (!selectedPipeline) return;
       const newSteps = [
-        ...selectedPipeline.steps.map((s) => ({ targetCsc: s.targetCsc, productLevel: s.productLevel })),
-        { targetCsc, productLevel },
+        ...selectedPipeline.steps.map((s) => ({ kind: s.kind, sarStage: s.sarStage })),
+        { kind, sarStage },
       ];
-      const newOrder = newSteps.length; // new step gets the last order
+      const newOrder = newSteps.length;
       const beforeOrder = consoleMode.type === 'addStep' ? consoleMode.beforeOrder : undefined;
       let newEdges = [...selectedPipeline.edges];
       if (beforeOrder !== undefined) {
-        // Inserting between two nodes: remove old edge, add two new edges
         newEdges = newEdges.filter((e) => !(e.source === afterOrder && e.target === beforeOrder));
         newEdges.push({ source: afterOrder, target: newOrder });
         newEdges.push({ source: newOrder, target: beforeOrder });
       } else {
-        // Appending after a node
         if (afterOrder > 0) {
           newEdges.push({ source: afterOrder, target: newOrder });
         }
@@ -226,8 +231,8 @@ export default function ConsolePage() {
       if (!selectedPipeline) return;
       const newSteps = selectedPipeline.steps.map((s) =>
         s.order === updated.order
-          ? { targetCsc: updated.targetCsc, productLevel: updated.productLevel }
-          : { targetCsc: s.targetCsc, productLevel: s.productLevel },
+          ? { kind: updated.kind, sarStage: updated.sarStage }
+          : { kind: s.kind, sarStage: s.sarStage },
       );
       updatePipeline({ steps: newSteps });
     },
@@ -285,19 +290,16 @@ export default function ConsolePage() {
   }, [service, selectedJob]);
 
   // D-02: 부분 재처리
-  const handlePartialReprocess = useCallback(async (targetLevel: ProductLevel) => {
+  const handlePartialReprocess = useCallback(async (sarStage: SarStage) => {
     if (!selectedJob) return;
-    // 해당 레벨의 첫 번째 CSC 스텝을 대상으로 지정
-    const targetStep = selectedJob.steps.find((s) => s.kind !== 'TRIGGER' && s.productLevel === targetLevel);
-    const targetCsc = targetStep?.targetCsc ?? 'CSC-03';
-    await service.부분_재처리를_요청한다(selectedJob.jobId, { targetLevel, targetCsc });
+    await service.부분_재처리를_요청한다(selectedJob.jobId, { sarStage });
     const [jRes, jsRes] = await Promise.all([service.Job_상세를_조회한다(selectedJob.jobId), service.Job_목록을_조회한다({ limit: 50 })]);
     if (jRes.data) { setSelectedJob(jRes.data); setConsoleMode({ type: 'job', job: jRes.data }); }
     if (jsRes.data) setJobs(jsRes.data.items);
   }, [service, selectedJob]);
 
   // --- Pipeline handlers ---
-  const handleSavePipeline = useCallback(async (data: { name: string; satelliteId: string; mode: string; steps: { targetCsc: TargetCsc; productLevel: ProductLevel }[] }) => {
+  const handleSavePipeline = useCallback(async (data: { name: string; satelliteId: string; mode: string; steps: { kind: PipelineNodeKind; sarStage?: SarStage }[] }) => {
     if (!selectedPipelineId) return;
     setEditSaving(true);
     const res = await service.파이프라인을_수정한다(selectedPipelineId, data);
@@ -312,29 +314,32 @@ export default function ConsolePage() {
 
   const handleCreatePipelineConfirm = useCallback(async (data: { name: string; satelliteId: string; mode: string }) => {
     setCreatePipelineDialogOpen(false);
-    const modeSteps: Record<string, { targetCsc: TargetCsc; productLevel: ProductLevel }[]> = {
+    const modeSteps: Record<string, { kind: PipelineNodeKind; sarStage?: SarStage }[]> = {
       Stripmap: [
-        { targetCsc: 'CSC-02', productLevel: 'LEVEL_0' },
-        { targetCsc: 'CSC-03', productLevel: 'LEVEL_0' },
-        { targetCsc: 'CSC-04', productLevel: 'LEVEL_1' },
-        { targetCsc: 'CSC-05', productLevel: 'LEVEL_2' },
-        { targetCsc: 'CSC-06', productLevel: 'LEVEL_3' },
-        { targetCsc: 'CSC-07', productLevel: 'LEVEL_3' },
+        { kind: 'TRIGGER' },
+        { kind: 'SAR', sarStage: 'L0' },
+        { kind: 'SAR', sarStage: 'L1A' },
+        { kind: 'SAR', sarStage: 'L1B' },
+        { kind: 'SAR', sarStage: 'L1C' },
+        { kind: 'SAR', sarStage: 'L2A' },
+        { kind: 'SAR', sarStage: 'L2B' },
+        { kind: 'SAR', sarStage: 'L3' },
+        { kind: 'CATALOG' },
       ],
       ScanSAR: [
-        { targetCsc: 'CSC-02', productLevel: 'LEVEL_0' },
-        { targetCsc: 'CSC-03', productLevel: 'LEVEL_0' },
-        { targetCsc: 'CSC-04', productLevel: 'LEVEL_1' },
-        { targetCsc: 'CSC-07', productLevel: 'LEVEL_1' },
+        { kind: 'TRIGGER' },
+        { kind: 'SAR', sarStage: 'L0' },
+        { kind: 'SAR', sarStage: 'L1A' },
+        { kind: 'SAR', sarStage: 'L1B' },
+        { kind: 'CATALOG' },
       ],
       Spotlight: [
-        { targetCsc: 'CSC-02', productLevel: 'LEVEL_0' },
-        { targetCsc: 'CSC-03', productLevel: 'LEVEL_0' },
-        { targetCsc: 'CSC-04', productLevel: 'LEVEL_1' },
-        { targetCsc: 'CSC-05', productLevel: 'LEVEL_2' },
-        { targetCsc: 'CSC-06', productLevel: 'LEVEL_3' },
-        { targetCsc: 'CSC-05', productLevel: 'LEVEL_3' },
-        { targetCsc: 'CSC-07', productLevel: 'LEVEL_3' },
+        { kind: 'TRIGGER' },
+        { kind: 'SAR', sarStage: 'L0' },
+        { kind: 'SAR', sarStage: 'L1A' },
+        { kind: 'SAR', sarStage: 'L1B' },
+        { kind: 'SAR', sarStage: 'L1C' },
+        { kind: 'CATALOG' },
       ],
     };
     const steps = modeSteps[data.mode] ?? modeSteps['Stripmap']!;

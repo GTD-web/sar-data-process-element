@@ -10,6 +10,7 @@ import type {
   PipelineDefinition,
   PipelineStep,
   QueueHealth,
+  SarStage,
   ServiceResponse,
   ServiceResponseWithData,
   UpdatePipelineData,
@@ -20,6 +21,10 @@ import type {
   AlertKind,
   AuditEventType,
   PipelineNodeKind,
+} from '@/types/pipeline';
+import {
+  SAR_STAGE_TO_CSC,
+  SAR_STAGE_TO_LEVEL,
 } from '@/types/pipeline';
 
 // =============================================================================
@@ -50,39 +55,42 @@ const SCENE_IDS = [
 const SATELLITE_IDS = ['KS-5', 'KS-6', 'KS-7'];
 const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
 
-type StepDef = { kind?: PipelineNodeKind; targetCsc: TargetCsc; productLevel: ProductLevel };
+type StepDef = { kind: PipelineNodeKind; sarStage?: SarStage };
 
 /** D-01: 파이프라인 첫 노드 — RAW_DATA_RECEIVED 트리거 (EI-01) */
-const TRIGGER_STEP: StepDef = { kind: 'TRIGGER', targetCsc: 'CSC-02', productLevel: 'LEVEL_0' };
+const TRIGGER_STEP: StepDef = { kind: 'TRIGGER' };
+const CATALOG_STEP: StepDef = { kind: 'CATALOG' };
 
+/** Stripmap 전체 파이프라인: L0 → L1A → L1B → L1C → L2A → L2B → L3 → CATALOG */
 const PIPELINE_STEPS: StepDef[] = [
   TRIGGER_STEP,
-  { targetCsc: 'CSC-02', productLevel: 'LEVEL_0' },
-  { targetCsc: 'CSC-03', productLevel: 'LEVEL_0' },
-  { targetCsc: 'CSC-04', productLevel: 'LEVEL_1' },
-  { targetCsc: 'CSC-05', productLevel: 'LEVEL_2' },
-  { targetCsc: 'CSC-06', productLevel: 'LEVEL_3' },
-  { targetCsc: 'CSC-07', productLevel: 'LEVEL_3' },
+  { kind: 'SAR', sarStage: 'L0' },
+  { kind: 'SAR', sarStage: 'L1A' },
+  { kind: 'SAR', sarStage: 'L1B' },
+  { kind: 'SAR', sarStage: 'L1C' },
+  { kind: 'SAR', sarStage: 'L2A' },
+  { kind: 'SAR', sarStage: 'L2B' },
+  { kind: 'SAR', sarStage: 'L3' },
+  CATALOG_STEP,
 ];
 
-function buildSteps(status: JobStatus, retryCount: number): PipelineStep[] {
-  // TRIGGER 스텝은 항상 COMPLETED. 나머지 CSC 스텝에만 completedCount 적용
-  const cscSteps = PIPELINE_STEPS.filter((s) => s.kind !== 'TRIGGER');
+function buildSteps(pipelineSteps: StepDef[], status: JobStatus, retryCount: number): PipelineStep[] {
+  // TRIGGER 스텝은 항상 COMPLETED. 나머지 스텝에만 completedCount 적용
+  const nonTriggerSteps = pipelineSteps.filter((s) => s.kind !== 'TRIGGER');
   const completedCount =
-    status === 'COMPLETED' ? cscSteps.length
-    : status === 'ASSIGNED' ? Math.floor(Math.random() * (cscSteps.length - 1))
-    : status === 'FAILED' ? Math.floor(Math.random() * (cscSteps.length - 1))
+    status === 'COMPLETED' ? nonTriggerSteps.length
+    : status === 'ASSIGNED' ? Math.floor(Math.random() * (nonTriggerSteps.length - 1))
+    : status === 'FAILED' ? Math.floor(Math.random() * (nonTriggerSteps.length - 1))
     : 0;
 
-  let cscIdx = 0;
-  return PIPELINE_STEPS.map((def, i): PipelineStep => {
+  let nonTriggerIdx = 0;
+  return pipelineSteps.map((def, i): PipelineStep => {
     let stepStatus: StepStatus;
 
     if (def.kind === 'TRIGGER') {
-      // D-01: TRIGGER 노드는 RAW_DATA_RECEIVED — 항상 COMPLETED
       stepStatus = 'COMPLETED';
     } else {
-      const idx = cscIdx++;
+      const idx = nonTriggerIdx++;
       if (idx < completedCount) {
         stepStatus = 'COMPLETED';
       } else if (idx === completedCount && status === 'ASSIGNED') {
@@ -94,23 +102,33 @@ function buildSteps(status: JobStatus, retryCount: number): PipelineStep[] {
       }
     }
 
+    // 백엔드 호환용 CSC/Level 파생
+    const targetCsc: TargetCsc = def.kind === 'TRIGGER' ? 'CSC-02'
+      : def.kind === 'CATALOG' ? 'CSC-07'
+      : SAR_STAGE_TO_CSC[def.sarStage!];
+    const productLevel: ProductLevel = def.kind === 'TRIGGER' ? 'LEVEL_0'
+      : def.kind === 'CATALOG' ? 'LEVEL_3'
+      : SAR_STAGE_TO_LEVEL[def.sarStage!];
+
     const baseTime = new Date();
-    baseTime.setHours(baseTime.getHours() - (PIPELINE_STEPS.length - i) * 0.5);
+    baseTime.setHours(baseTime.getHours() - (pipelineSteps.length - i) * 0.5);
+    const stageId = def.sarStage ?? def.kind;
 
     return {
       order: i + 1,
       kind: def.kind,
-      targetCsc: def.targetCsc,
-      productLevel: def.productLevel,
+      sarStage: def.sarStage,
+      targetCsc,
+      productLevel,
       status: stepStatus,
       startedAt: stepStatus !== 'PENDING' ? baseTime.toISOString() : undefined,
       finishedAt: stepStatus === 'COMPLETED' ? new Date(baseTime.getTime() + (600 + Math.random() * 3000) * 1000).toISOString() : undefined,
       durationMs: stepStatus === 'COMPLETED' && def.kind !== 'TRIGGER' ? Math.floor((600 + Math.random() * 3000) * 1000) : undefined,
-      errorCode: stepStatus === 'FAILED' ? `ERR_${def.targetCsc.replace('-', '')}_${1000 + Math.floor(Math.random() * 100)}` : undefined,
+      errorCode: stepStatus === 'FAILED' ? `ERR_${targetCsc.replace('-', '')}_${1000 + Math.floor(Math.random() * 100)}` : undefined,
       errorMessage: stepStatus === 'FAILED'
-        ? retryCount >= 3 ? `Max retry exceeded for ${def.targetCsc}` : `Processing timeout at ${def.targetCsc}`
+        ? retryCount >= 3 ? `Max retry exceeded for ${stageId}` : `Processing timeout at ${stageId}`
         : undefined,
-      outputPath: stepStatus === 'COMPLETED' && def.kind !== 'TRIGGER' ? `/mnt/nas/sdpe/output/${def.productLevel.toLowerCase()}/scene_xxx.h5` : undefined,
+      outputPath: stepStatus === 'COMPLETED' && def.kind !== 'TRIGGER' ? `/mnt/nas/sdpe/output/${productLevel.toLowerCase()}/scene_xxx.h5` : undefined,
     };
   });
 }
@@ -133,7 +151,7 @@ function generateJobs(count: number): JobDetail[] {
     }
 
     const retryCount = status === 'FAILED' ? Math.floor(Math.random() * 4) : 0;
-    const steps = buildSteps(status, retryCount);
+    const steps = buildSteps(PIPELINE_STEPS, status, retryCount);
     const runningStep = steps.find((s) => s.status === 'RUNNING' || s.status === 'FAILED');
     const acqStart = randomDate(7);
     const acqEnd = new Date(new Date(acqStart).getTime() + 120000).toISOString();
@@ -234,12 +252,11 @@ function generateQueueHealth(): QueueHealth[] {
 }
 
 /** 순차 steps -> steps + edges 변환 */
-function toDAGSteps(flat: StepDef[]) {
+function toDAGSteps(flat: Omit<import('@/types/pipeline').PipelineStepDefinition, 'order'>[]) {
   const steps = flat.map((s, i) => ({
     order: i + 1,
     kind: s.kind,
-    targetCsc: s.targetCsc,
-    productLevel: s.productLevel,
+    sarStage: s.sarStage,
   }));
   const edges: { source: number; target: number }[] = [];
   for (let i = 0; i < steps.length - 1; i++) {
@@ -250,23 +267,21 @@ function toDAGSteps(flat: StepDef[]) {
 
 /** 모드별로 서로 다른 파이프라인 구성 */
 const MODE_STEP_VARIANTS: Record<string, StepDef[]> = {
-  Stripmap: PIPELINE_STEPS, // TRIGGER + full 6-step CSC
+  Stripmap: PIPELINE_STEPS,
   ScanSAR: [
     TRIGGER_STEP,
-    { targetCsc: 'CSC-02', productLevel: 'LEVEL_0' },
-    { targetCsc: 'CSC-03', productLevel: 'LEVEL_0' },
-    { targetCsc: 'CSC-04', productLevel: 'LEVEL_1' },
-    { targetCsc: 'CSC-07', productLevel: 'LEVEL_1' },
+    { kind: 'SAR', sarStage: 'L0' },
+    { kind: 'SAR', sarStage: 'L1A' },
+    { kind: 'SAR', sarStage: 'L1B' },
+    CATALOG_STEP,
   ],
   Spotlight: [
     TRIGGER_STEP,
-    { targetCsc: 'CSC-02', productLevel: 'LEVEL_0' },
-    { targetCsc: 'CSC-03', productLevel: 'LEVEL_0' },
-    { targetCsc: 'CSC-04', productLevel: 'LEVEL_1' },
-    { targetCsc: 'CSC-05', productLevel: 'LEVEL_2' },
-    { targetCsc: 'CSC-06', productLevel: 'LEVEL_3' },
-    { targetCsc: 'CSC-05', productLevel: 'LEVEL_3' },
-    { targetCsc: 'CSC-07', productLevel: 'LEVEL_3' },
+    { kind: 'SAR', sarStage: 'L0' },
+    { kind: 'SAR', sarStage: 'L1A' },
+    { kind: 'SAR', sarStage: 'L1B' },
+    { kind: 'SAR', sarStage: 'L1C' },
+    CATALOG_STEP,
   ],
 };
 
@@ -381,19 +396,19 @@ class MockPipelineUIService implements IPipelineUIService {
     return { success: true, message: `Job ${jobId} 재처리가 요청되었습니다` };
   }
 
-  async 부분_재처리를_요청한다(jobId: string, params: { targetLevel: ProductLevel; targetCsc: TargetCsc }): Promise<ServiceResponse> {
+  async 부분_재처리를_요청한다(jobId: string, params: { sarStage: SarStage }): Promise<ServiceResponse> {
     const job = this.jobs.find((j) => j.jobId === jobId);
     if (!job) return { success: false, message: 'Job을 찾을 수 없습니다' };
-    // targetLevel 이후 스텝을 PENDING으로 리셋 (TRIGGER는 항상 COMPLETED 유지)
+    // 해당 sarStage 이후 스텝을 PENDING으로 리셋 (TRIGGER는 항상 COMPLETED 유지)
     let resetActive = false;
     job.steps.forEach((s) => {
       if (s.kind === 'TRIGGER') return;
-      if (s.productLevel === params.targetLevel) resetActive = true;
+      if (s.sarStage === params.sarStage) resetActive = true;
       if (resetActive) s.status = 'PENDING';
     });
     job.status = 'CREATED';
     job.updatedAt = new Date().toISOString();
-    return { success: true, message: `Job ${jobId} 부분 재처리(${params.targetLevel}부터)가 요청되었습니다` };
+    return { success: true, message: `Job ${jobId} 부분 재처리(${params.sarStage}부터)가 요청되었습니다` };
   }
 
   async Job을_취소한다(jobId: string): Promise<ServiceResponse> {
@@ -492,8 +507,8 @@ class MockPipelineUIService implements IPipelineUIService {
     if (data.steps !== undefined) {
       pl.steps = data.steps.map((s, i) => ({
         order: i + 1,
-        targetCsc: s.targetCsc,
-        productLevel: s.productLevel,
+        kind: s.kind,
+        sarStage: s.sarStage,
       }));
     }
     if (data.edges !== undefined) {

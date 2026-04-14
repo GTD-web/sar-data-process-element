@@ -118,7 +118,8 @@ function buildNodes(
       draggable: nodeEditable,
       data: {
         kind: step.kind,
-        targetCsc: step.targetCsc, productLevel: step.productLevel, status: step.status,
+        sarStage: step.sarStage,
+        status: step.status,
         order: step.order, durationMs: step.durationMs, errorMessage: step.errorMessage,
         editable: nodeEditable, isLeaf: !sources.has(step.order), isHead: !targets.has(step.order),
         onDelete: onDeleteNode, onAddAfter,
