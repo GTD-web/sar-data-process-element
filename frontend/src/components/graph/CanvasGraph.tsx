@@ -108,6 +108,10 @@ function buildNodes(
   onTrigger?: () => void,
   jobInitWarningReason?: string,
   onExecuteStep?: (order: number) => void,
+  disabledNodeOrders?: Set<number>,
+  onToggleNodeActive?: (order: number) => void,
+  onReprocessStep?: (order: number) => void,
+  isJobMode?: boolean,
 ): Node[] {
   const sources = new Set(pipelineEdges.map((e) => e.source));
   const targets = new Set(pipelineEdges.map((e) => e.target));
@@ -131,6 +135,10 @@ function buildNodes(
         onTrigger: isEntryNode ? onTrigger : undefined,
         onExecuteStep,
         warningReason,
+        enabled: !disabledNodeOrders?.has(step.order),
+        onToggleActive: isEntryNode ? undefined : onToggleNodeActive,
+        onReprocess: step.kind === 'SAR' && onReprocessStep ? onReprocessStep : undefined,
+        isJobMode,
       } satisfies PipelineNodeData,
     };
   });
@@ -144,6 +152,7 @@ function buildEdges(
   onInsertNode?: (afterOrder: number, beforeOrder?: number) => void,
   onHoverStay?: () => void,
   onHoverLeave?: () => void,
+  isJobMode?: boolean,
 ): Edge[] {
   const stepMap = new Map(steps.map((s) => [s.order, s]));
   return pipelineEdges.map(({ source, target }) => {
@@ -151,7 +160,13 @@ function buildEdges(
     const tgtStep = stepMap.get(target);
     const completed = srcStep?.status === 'COMPLETED';
     const running = tgtStep?.status === 'RUNNING';
-    const stroke = completed ? t.edgeSuccess : running ? t.accent : t.edge;
+    const srcFailed = srcStep?.status === 'FAILED';
+    const tgtCanceled = tgtStep?.status === 'CANCELED';
+    const tgtPendingInJob = isJobMode && tgtStep?.status === 'PENDING';
+    const dimmed = srcFailed || tgtCanceled || tgtPendingInJob;
+    const stroke = dimmed
+      ? t.nodeDefault
+      : completed ? t.edgeSuccess : running ? t.accent : t.edge;
     const edgeId = `e-${source}-${target}`;
     return {
       id: edgeId,
@@ -174,10 +189,13 @@ function buildEdges(
 /** 새 파이프라인 생성 시 entry 노드로 줌인하는 내부 컨트롤러 */
 function FlowEntryFocus({ trigger, nodes }: { trigger: number; nodes: Node[] }) {
   const { setCenter } = useReactFlow();
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
 
   useEffect(() => {
     if (trigger === 0) return;
-    const entryNode = nodes.find((n) => (n.data as PipelineNodeData).isHead === true);
+    // trigger가 변경된 시점의 nodes를 사용 (nodes 자체를 deps에 넣으면 nodes 변경마다 재실행됨)
+    const entryNode = nodesRef.current.find((n) => (n.data as PipelineNodeData).isHead === true);
     if (!entryNode) return;
     const cx = entryNode.position.x + NODE_WIDTH / 2;
     const cy = entryNode.position.y + NODE_HEIGHT / 2;
@@ -186,7 +204,7 @@ function FlowEntryFocus({ trigger, nodes }: { trigger: number; nodes: Node[] }) 
       setCenter(cx, cy, { zoom: 1.5, duration: 600 });
     }, 120);
     return () => window.clearTimeout(id);
-  }, [trigger, nodes, setCenter]);
+  }, [trigger, setCenter]); // nodes 제거 — nodes가 deps에 있으면 폴링/업데이트마다 재실행됨
 
   return null;
 }
@@ -208,9 +226,17 @@ interface CanvasGraphProps {
   focusEntryTrigger?: number;
   /** 노드 더블클릭 또는 툴바 Play → 노드 상세 모달 열기 */
   onNodeOpenDetail?: (stepOrder: number) => void;
+  /** 바이패스 상태인 노드 order 집합 */
+  disabledNodeOrders?: Set<number>;
+  /** Power 버튼 클릭 → 활성/비활성 토글 */
+  onToggleNodeActive?: (order: number) => void;
+  /** SAR 노드 부분 재처리 콜백 */
+  onReprocessStep?: (order: number) => void;
+  /** Job 선택 모드 — PENDING 노드를 회색으로 표시 */
+  isJobMode?: boolean;
 }
 
-export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable = false, onNodeClick, onDeleteNode, onAddNode, onConnect: onConnectProp, onDeleteEdge, onTrigger, jobInitWarningReason, focusEntryTrigger = 0, onNodeOpenDetail }: CanvasGraphProps) {
+export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable = false, onNodeClick, onDeleteNode, onAddNode, onConnect: onConnectProp, onDeleteEdge, onTrigger, jobInitWarningReason, focusEntryTrigger = 0, onNodeOpenDetail, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode }: CanvasGraphProps) {
   const positionsRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const lastPipelineIdRef = useRef<string | null | undefined>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
@@ -272,17 +298,17 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
   }, [onNodeOpenDetail]);
 
   // Build nodes and edges WITHOUT hover dependency
-  const pipelineNodes = buildNodes(steps, pipelineEdges, positionsRef.current, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep);
-  const allEdges = buildEdges(steps, pipelineEdges, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave);
+  const pipelineNodes = buildNodes(steps, pipelineEdges, positionsRef.current, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode);
+  const allEdges = buildEdges(steps, pipelineEdges, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave, isJobMode);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(pipelineNodes);
   const [edges, setEdges] = useEdgesState(allEdges);
 
   // Update nodes/edges only when pipeline data changes — NOT on hover
   useEffect(() => {
-    setNodes(buildNodes(steps, pipelineEdges, positionsRef.current, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep));
-    setEdges(buildEdges(steps, pipelineEdges, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave));
-  }, [steps, pipelineEdges, editable, onDeleteNode, onAddNode, onDeleteEdge, onTrigger, jobInitWarningReason, clearLeaveTimer, scheduleLeave, setNodes, setEdges, handleExecuteStep]);
+    setNodes(buildNodes(steps, pipelineEdges, positionsRef.current, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode));
+    setEdges(buildEdges(steps, pipelineEdges, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave, isJobMode));
+  }, [steps, pipelineEdges, editable, onDeleteNode, onAddNode, onDeleteEdge, onTrigger, jobInitWarningReason, clearLeaveTimer, scheduleLeave, setNodes, setEdges, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode]);
 
   const onInit = useCallback((instance: { fitView: () => void }) => {
     setTimeout(() => instance.fitView(), 100);
@@ -330,6 +356,7 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
         onConnect={handleConnect}
         fitView proOptions={{ hideAttribution: true }}
         minZoom={0.2} maxZoom={4} className="bg-background"
+        zoomOnDoubleClick={false}
         nodesDraggable={editable} nodesConnectable={editable} elementsSelectable
         snapToGrid snapGrid={[20, 20]}
         connectionLineStyle={{ stroke: t.accent, strokeWidth: 2 }}

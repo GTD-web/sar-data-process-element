@@ -7,7 +7,7 @@ import AddStepPanel from './AddStepPanel';
 import JobDetailPanel from './JobDetailPanel';
 import PipelineEditPanel from './PipelineEditPanel';
 import JobInitEditPanel from './JobInitEditPanel';
-import { MousePointer, Antenna, SlidersHorizontal, FileInput } from 'lucide-react';
+import { MousePointer, Antenna, SlidersHorizontal, FileInput, Power } from 'lucide-react';
 import { formatKST } from '@/lib/utils';
 
 export type ConsoleMode =
@@ -19,7 +19,8 @@ export type ConsoleMode =
   | { type: 'trigger'; receivedAt: string; rawDataPath: string }
   | { type: 'jobInit'; processingProfile?: ProcessingProfileSummary; jobCreatedAt?: string; priority?: number; triggerSource?: TriggerSource }
   | { type: 'jobInitEdit'; step: PipelineStepDefinition; satelliteId: string; mode: string }
-  | { type: 'fileInput'; inputLevel: ProductLevel };
+  | { type: 'fileInput'; inputLevel: ProductLevel }
+  | { type: 'nodeBypass'; step: PipelineStepDefinition };
 
 interface ConsoleTabProps {
   mode: ConsoleMode;
@@ -204,13 +205,41 @@ export default function ConsoleTab({
     );
   }
 
+  // 바이패스 노드 클릭 패널
+  if (mode.type === 'nodeBypass') {
+    const BYPASS_LABELS: Record<string, string> = {
+      TRIGGER: '원시 데이터 수신 트리거',
+      FILE_INPUT: '결과 파일 입력',
+      JOB_INIT: '작업 초기화',
+      SAR: mode.step.sarStage ?? 'SAR 처리',
+      CATALOG: '카탈로그 등록',
+    };
+    const nodeLabel = BYPASS_LABELS[mode.step.kind] ?? mode.step.kind;
+    return (
+      <div className="p-4 space-y-3">
+        <div className="flex items-center gap-2 mb-1">
+          <Power className="w-4 h-4 text-muted-foreground/60 flex-shrink-0" />
+          <span className="text-sm font-semibold text-foreground">바이패스됨</span>
+        </div>
+        <div className="text-[11px] text-muted-foreground">{nodeLabel} · 비활성화</div>
+        <div className="h-px bg-border" />
+        <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/10 p-3 space-y-2 text-[11px] text-muted-foreground leading-relaxed">
+          <p>이 노드는 현재 <span className="font-semibold text-foreground/70">바이패스 상태</span>입니다.</p>
+          <p>파이프라인 실행 시 이 처리 단계를 건너뛰고 다음 노드로 진행합니다.</p>
+          <p className="text-[10px]">노드 위에 마우스를 올리고 Power 버튼을 클릭하면 다시 활성화할 수 있습니다.</p>
+        </div>
+        <ProcessInfoSection kind={mode.step.kind} />
+      </div>
+    );
+  }
+
   // Idle
   return (
     <div className="flex flex-col items-center justify-center py-16 px-6 text-center gap-3">
       <MousePointer className="w-8 h-8 text-muted-foreground/50" />
       <div className="space-y-1">
-        <p className="text-xs text-muted-foreground">캔버스에서 노드를 클릭하면</p>
-        <p className="text-xs text-muted-foreground">여기에 속성이 표시됩니다</p>
+        <p className="text-xs text-muted-foreground">캔버스에서 노드를 더블 클릭하면</p>
+        <p className="text-xs text-muted-foreground">상세 설정 모달이 열립니다</p>
       </div>
     </div>
   );

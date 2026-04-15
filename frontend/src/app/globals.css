@@ -78,19 +78,43 @@ body {
 .node-icon-box.node-failed .node-hover-overlay {
   background: radial-gradient(circle at center, rgba(239, 68, 68, 0.12) 0%, rgba(239, 68, 68, 0.04) 100%);
 }
-.react-flow__node-pipeline:hover .node-icon-box .node-hover-overlay,
+.react-flow__node-pipeline:hover .node-icon-box .node-hover-overlay {
+  opacity: 1;
+}
+.react-flow__node-pipeline:hover .node-icon-box {
+  border-color: rgba(52, 211, 153, 0.8) !important;
+  box-shadow: 0 0 24px rgba(52, 211, 153, 0.35) !important;
+}
+.react-flow__node-pipeline:hover .node-icon-box.node-failed {
+  border-color: rgba(239, 68, 68, 0.8) !important;
+  box-shadow: 0 0 24px rgba(239, 68, 68, 0.4) !important;
+}
+.react-flow__node-pipeline:hover .node-icon-box.node-bypassed {
+  border-color: rgba(160, 160, 160, 0.35) !important;
+  box-shadow: none !important;
+}
+.react-flow__node-pipeline:hover .node-icon-box.node-bypassed .node-hover-overlay {
+  opacity: 0 !important;
+}
+
+/* Selected node — same bright style as hover */
 .react-flow__node-pipeline.selected .node-icon-box .node-hover-overlay {
   opacity: 1;
 }
-.react-flow__node-pipeline:hover .node-icon-box,
 .react-flow__node-pipeline.selected .node-icon-box {
   border-color: rgba(52, 211, 153, 0.8) !important;
   box-shadow: 0 0 24px rgba(52, 211, 153, 0.35) !important;
 }
-.react-flow__node-pipeline:hover .node-icon-box.node-failed,
 .react-flow__node-pipeline.selected .node-icon-box.node-failed {
   border-color: rgba(239, 68, 68, 0.8) !important;
   box-shadow: 0 0 24px rgba(239, 68, 68, 0.4) !important;
+}
+.react-flow__node-pipeline.selected .node-icon-box.node-bypassed {
+  border-color: rgba(160, 160, 160, 0.35) !important;
+  box-shadow: none !important;
+}
+.react-flow__node-pipeline.selected .node-icon-box.node-bypassed .node-hover-overlay {
+  opacity: 0 !important;
 }
 
 /* Trigger button — smooth slide-in on hover */
@@ -120,6 +144,13 @@ body {
 .react-flow__node-pipeline:hover .react-flow__handle,
 .react-flow__node-pipeline.selected .react-flow__handle {
   opacity: 1;
+}
+/* Source handle: 투명 ::after로 히트 영역 확대 (시각적 크기는 동일) */
+.react-flow__node-pipeline .react-flow__handle.source-handle-wide::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
 }
 
 /* Edge paths: smooth transition + emerald glow */

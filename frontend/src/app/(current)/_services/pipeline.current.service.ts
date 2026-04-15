@@ -115,6 +115,8 @@ export const pipelineCurrentService: IPipelineUIService = {
     to?: string;
     page?: number;
     size?: number;
+    sortBy?: keyof AuditEvent;
+    sortOrder?: 'asc' | 'desc';
   }): Promise<ServiceResponseWithData<PaginatedResponse<AuditEvent>>> {
     const query = new URLSearchParams();
     if (params?.jobId) query.set('jobId', params.jobId);
@@ -122,6 +124,8 @@ export const pipelineCurrentService: IPipelineUIService = {
     if (params?.to) query.set('to', params.to);
     if (params?.page) query.set('page', String(params.page));
     if (params?.size) query.set('size', String(params.size));
+    if (params?.sortBy) query.set('sortBy', params.sortBy);
+    if (params?.sortOrder) query.set('sortOrder', params.sortOrder);
     const res = await fetch(`${API_BASE}/audit?${query}`);
     return handleResponse(res, '감사로그 조회 실패');
   },

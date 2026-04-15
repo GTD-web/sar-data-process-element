@@ -18,6 +18,7 @@ import {
   FlaskConical,
   Play,
   Power,
+  RotateCcw,
   AlertTriangle,
   Antenna,
   SlidersHorizontal,
@@ -52,6 +53,14 @@ export interface PipelineNodeData {
   onExecuteStep?: (order: number) => void;
   /** 설정 누락 등 — 해당 노드에만 표시 (예: JOB_INIT 프로파일 미선택) */
   warningReason?: string;
+  /** 노드 활성화 여부. false면 바이패스 상태로 처리를 건너뜀. 기본값: true */
+  enabled?: boolean;
+  /** 활성화/비활성화 토글 콜백 (진입 노드에는 제공하지 않음) */
+  onToggleActive?: (order: number) => void;
+  /** SAR 노드 부분 재처리 콜백 (Job 선택 + FAILED/COMPLETED 상태일 때만 제공) */
+  onReprocess?: (order: number) => void;
+  /** Job 선택 모드 — PENDING 노드를 회색으로 표시 */
+  isJobMode?: boolean;
   [key: string]: unknown;
 }
 
@@ -71,6 +80,7 @@ const STATUS_BORDER: Record<StepStatus, string> = {
   COMPLETED: 'border-accent',
   FAILED: 'border-destructive',
   SKIPPED: 'border-accent/20',
+  CANCELED: 'border-muted-foreground/30',
 };
 
 const STATUS_GLOW: Record<StepStatus, string> = {
@@ -79,7 +89,12 @@ const STATUS_GLOW: Record<StepStatus, string> = {
   COMPLETED: '0 0 16px rgba(52, 211, 153, 0.25)',
   FAILED: '0 0 16px rgba(239, 68, 68, 0.25)',
   SKIPPED: 'none',
+  CANCELED: 'none',
 };
+
+/** Job 모드에서 PENDING 노드용 — 실행되지 않았음을 표시 */
+const JOB_PENDING_BORDER = 'border-muted-foreground/30';
+const JOB_PENDING_GLOW = 'none';
 
 const STATUS_INDICATOR: Record<StepStatus, { icon: React.ElementType; color: string }> = {
   PENDING: { icon: Circle, color: 'text-muted-foreground' },
@@ -87,6 +102,7 @@ const STATUS_INDICATOR: Record<StepStatus, { icon: React.ElementType; color: str
   COMPLETED: { icon: CheckCircle, color: 'text-success' },
   FAILED: { icon: XCircle, color: 'text-destructive' },
   SKIPPED: { icon: Ban, color: 'text-muted-foreground' },
+  CANCELED: { icon: Ban, color: 'text-muted-foreground' },
 };
 
 const NODE_SIZE = 64;
@@ -148,7 +164,7 @@ const NodeWarningHint = memo(function NodeWarningHint({ text }: { text: string }
 /**
  * n8n 스타일 노드 위 툴바 — 호버 시 표시
  * - Play: 개별 노드 실행 → 노드 상세 모달 (더블클릭과 동일)
- * - Power: 활성화/비활성화 토글 (로컬 상태)
+ * - Power: 활성화/비활성화 토글 (진입 노드 제외)
  * - Trash: 노드 삭제 (non-entry 노드만)
  * 파이프라인 전체 실행은 진입 노드 좌측의 별도 버튼이 담당.
  */
@@ -156,21 +172,32 @@ const NodeHoverToolbar = memo(function NodeHoverToolbar({
   showDelete,
   onDelete,
   onExecute,
+  isVisible,
+  isEntryNode,
+  isEnabled,
+  onToggle,
+  onReprocess,
 }: {
   showDelete: boolean;
   onDelete?: () => void;
   onExecute?: () => void;
+  isVisible: boolean;
+  isEntryNode: boolean;
+  isEnabled: boolean;
+  onToggle?: () => void;
+  onReprocess?: () => void;
 }) {
-  const [active, setActive] = useState(true);
-
   const btnClass =
     'nodrag w-7 h-7 rounded-md flex items-center justify-center text-[#a0a0a0] hover:text-[#f5f5f5] hover:bg-white/10 transition-colors cursor-pointer';
 
   return (
     <div
-      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20 nodrag
-                 flex items-center gap-0.5 bg-[#333333] rounded-lg px-1 py-1 shadow-lg border border-[#3a3a3a]
-                 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none group-hover:pointer-events-auto"
+      className={cn(
+        'absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20 nodrag',
+        'flex items-center gap-0.5 bg-[#333333] rounded-lg px-1 py-1 shadow-lg border border-[#3a3a3a]',
+        'transition-opacity duration-150',
+        isVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
+      )}
     >
       <button
         type="button"
@@ -180,14 +207,26 @@ const NodeHoverToolbar = memo(function NodeHoverToolbar({
       >
         <Play className="w-3.5 h-3.5" fill="currentColor" strokeWidth={0} />
       </button>
-      <button
-        type="button"
-        className={cn(btnClass, !active && 'opacity-40')}
-        title={active ? '비활성화' : '활성화'}
-        onClick={(e) => { e.stopPropagation(); setActive((v) => !v); }}
-      >
-        <Power className="w-3.5 h-3.5" />
-      </button>
+      {onReprocess && (
+        <button
+          type="button"
+          className={cn(btnClass, 'hover:text-amber-400')}
+          title="이 단계부터 재처리"
+          onClick={(e) => { e.stopPropagation(); onReprocess(); }}
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+        </button>
+      )}
+      {!isEntryNode && (
+        <button
+          type="button"
+          className={cn(btnClass, !isEnabled && 'text-muted-foreground')}
+          title={isEnabled ? '비활성화 (바이패스)' : '활성화'}
+          onClick={(e) => { e.stopPropagation(); onToggle?.(); }}
+        >
+          <Power className="w-3.5 h-3.5" />
+        </button>
+      )}
       {showDelete && (
         <button
           type="button"
@@ -204,7 +243,33 @@ const NodeHoverToolbar = memo(function NodeHoverToolbar({
 
 function PipelineNodeComponent({ data, selected }: NodeProps) {
   const nodeData = data as unknown as PipelineNodeData;
-  const { kind, sarStage, inputLevel, status, order, durationMs, errorMessage, editable, isLeaf, isHead: _isHead, enabledTasks, onDelete, onAddAfter, onTrigger, onExecuteStep, warningReason } = nodeData;
+
+  const [isHovering, setIsHovering] = useState(false);
+  const hoverLeaveTimerRef = useRef<number | null>(null);
+
+  const handleMouseEnter = useCallback(() => {
+    if (hoverLeaveTimerRef.current != null) {
+      window.clearTimeout(hoverLeaveTimerRef.current);
+      hoverLeaveTimerRef.current = null;
+    }
+    setIsHovering(true);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    hoverLeaveTimerRef.current = window.setTimeout(() => {
+      setIsHovering(false);
+      hoverLeaveTimerRef.current = null;
+    }, 150);
+  }, []);
+
+  useEffect(() => () => {
+    if (hoverLeaveTimerRef.current != null) window.clearTimeout(hoverLeaveTimerRef.current);
+  }, []);
+
+  const { kind, sarStage, inputLevel, status, order, durationMs, errorMessage, editable, isLeaf, isHead: _isHead, enabledTasks, onDelete, onAddAfter, onTrigger, onExecuteStep, warningReason, enabled, onToggleActive, onReprocess, isJobMode } = nodeData;
+
+  const isEnabled = enabled !== false;
+  const isSelected = !!selected;
 
   const isTrigger = kind === 'TRIGGER';
   const isFileInput = kind === 'FILE_INPUT';
@@ -259,7 +324,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
 
   const statusInd = STATUS_INDICATOR[status];
   const StatusIcon = statusInd.icon;
-  const showStatusBadge = status !== 'PENDING';
+  const showStatusBadge = status !== 'PENDING' && status !== 'CANCELED';
 
   const showTargetHandle = !isEntryNode;
   const showDeleteButton = !isEntryNode && !!editable && !!onDelete;
@@ -271,8 +336,13 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
   const showNodeWarning = !!warningReason;
   const leafAddAffordance = Boolean(isLeaf && editable && onAddAfter);
 
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onExecuteStep?.(order);
+  }, [onExecuteStep, order]);
+
   return (
-    <div className="relative flex items-start group">
+    <div className="relative flex items-start group" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onDoubleClick={handleDoubleClick}>
       {/* 파이프라인 실행 버튼 — 진입 노드 좌측에 고정 (n8n 스타일) */}
       {showTriggerButton && (
         <div
@@ -307,22 +377,42 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
               showDelete={showDeleteButton}
               onDelete={onDelete ? () => onDelete(order) : undefined}
               onExecute={onExecuteStep ? () => onExecuteStep(order) : undefined}
+              isVisible={isHovering || isSelected}
+              isEntryNode={isEntryNode}
+              isEnabled={isEnabled}
+              onToggle={onToggleActive ? () => onToggleActive(order) : undefined}
+              onReprocess={onReprocess ? () => onReprocess(order) : undefined}
             />
           )}
 
           <div
             className={cn(
               'node-icon-box relative rounded-xl border-2 flex items-center justify-center',
-              STATUS_BORDER[status],
+              !isEnabled
+                ? 'border-dashed border-muted-foreground/30 node-bypassed'
+                : isSelected
+                  ? (status === 'FAILED' ? 'border-destructive/80' : 'border-accent/80')
+                  : (isJobMode && status === 'PENDING') ? JOB_PENDING_BORDER : STATUS_BORDER[status],
               'bg-card',
-              status === 'FAILED' && 'node-failed',
+              status === 'FAILED' && isEnabled && 'node-failed',
+              status === 'CANCELED' && 'opacity-40',
               leafAddAffordance && 'cursor-pointer',
               editable && !isEntryNode && !leafAddAffordance && 'cursor-grab active:cursor-grabbing',
-              status === 'RUNNING' && 'animate-status-pulse',
+              status === 'RUNNING' && isEnabled && 'animate-status-pulse',
             )}
-            style={{ width: NODE_SIZE, height: NODE_SIZE, boxShadow: STATUS_GLOW[status] }}
+            style={{
+              width: NODE_SIZE,
+              height: NODE_SIZE,
+              boxShadow: !isEnabled
+                ? 'none'
+                : isSelected
+                  ? (status === 'FAILED'
+                    ? '0 0 0 2px rgba(239, 68, 68, 0.6), 0 0 32px rgba(239, 68, 68, 0.5)'
+                    : '0 0 0 2px rgba(52, 211, 153, 0.6), 0 0 32px rgba(52, 211, 153, 0.5)')
+                  : (isJobMode && status === 'PENDING') ? JOB_PENDING_GLOW : STATUS_GLOW[status],
+            }}
           >
-            <div className="node-hover-overlay" />
+            <div className="node-hover-overlay" style={isSelected && isEnabled ? { opacity: 1 } : undefined} />
             {showNodeWarning && warningReason && (
               <NodeWarningHint text={warningReason} />
             )}
@@ -346,13 +436,13 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
               />
             )}
 
-            <CscIcon className="w-7 h-7 text-accent" />
+            <CscIcon className={cn('w-7 h-7', !isEnabled ? 'text-muted-foreground/40' : status === 'FAILED' ? 'text-destructive' : status === 'CANCELED' || (isJobMode && status === 'PENDING') ? 'text-muted-foreground/40' : 'text-accent')} />
 
             <Handle
               type="source"
               position={Position.Right}
               className={cn(
-                '!w-3 !h-3 !border-2 !border-card !-right-1.5 hover:!bg-accent hover:!scale-125 !transition-all',
+                '!w-3 !h-3 !border-2 !border-card !-right-1.5 hover:!bg-accent hover:!scale-125 !transition-all source-handle-wide',
                 isLeaf && editable ? '!bg-accent !opacity-100' : '!bg-accent/50',
               )}
             />
@@ -362,7 +452,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
           {isLeaf && editable && onAddAfter && (
             <div
               className="absolute left-full top-1/2 -translate-y-1/2 flex items-center nodrag z-10 cursor-pointer"
-              style={{ marginLeft: 1 }}
+              style={{ marginLeft: 8 }}
             >
               <svg width="52" height="2" className="shrink-0 pointer-events-none">
                 <line x1="0" y1="1" x2="52" y2="1" stroke="var(--accent)" strokeWidth="2" style={{ opacity: 0.4 }} />
@@ -380,9 +470,12 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
 
         {/* Label below — n8n style */}
         <div className="mt-2 text-center max-w-[130px]">
-          <div className="text-[11px] font-semibold text-foreground leading-tight">{label}</div>
+          <div className={cn('text-[11px] font-semibold leading-tight', !isEnabled || status === 'CANCELED' || (isJobMode && status === 'PENDING') ? 'text-muted-foreground/50' : 'text-foreground')}>{label}</div>
           <div className="text-[10px] text-muted-foreground">{subLabel}</div>
-          {taskCount > 0 && (
+          {!isEnabled && (
+            <div className="text-[9px] font-semibold text-muted-foreground/50 mt-0.5 tracking-wide uppercase">바이패스</div>
+          )}
+          {taskCount > 0 && isEnabled && (
             <div className={`text-[9px] ${hasPartialTasks ? 'text-accent font-semibold' : 'text-muted-foreground/60'}`}>
               {hasPartialTasks ? `${activeTaskCount}/${taskCount} tasks` : `${taskCount} tasks`}
             </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { CheckCircle, Circle, Loader, XCircle, ChevronRight } from 'lucide-react';
+import { Ban, CheckCircle, Circle, Loader, XCircle, ChevronRight } from 'lucide-react';
 import { cn, formatDuration } from '@/lib/utils';
 import type { PipelineStep, StepStatus } from '@/types/pipeline';
 import { CSC_PROCESSING_LEVELS } from '@/types/pipeline';
@@ -54,11 +54,12 @@ function buildGroups(steps: PipelineStep[]): StepperGroup[] {
     );
     if (matching.length === 0) continue;
 
-    // 집계 상태: FAILED > RUNNING > COMPLETED > PENDING
+    // 집계 상태: FAILED > RUNNING > COMPLETED > CANCELED > PENDING
     let groupStatus: StepStatus = 'PENDING';
     if (matching.some((s) => s.status === 'FAILED')) groupStatus = 'FAILED';
     else if (matching.some((s) => s.status === 'RUNNING')) groupStatus = 'RUNNING';
     else if (matching.every((s) => s.status === 'COMPLETED' || s.status === 'SKIPPED')) groupStatus = 'COMPLETED';
+    else if (matching.some((s) => s.status === 'CANCELED')) groupStatus = 'CANCELED';
 
     const totalDuration = matching.reduce((sum, s) => sum + (s.durationMs ?? 0), 0);
     const firstStarted = matching
@@ -99,6 +100,7 @@ function StatusIcon({ status, className }: { status: StepStatus; className?: str
   if (status === 'COMPLETED') return <CheckCircle className={cn('w-3.5 h-3.5 text-success', className)} />;
   if (status === 'RUNNING') return <Loader className={cn('w-3.5 h-3.5 text-accent animate-spin', className)} />;
   if (status === 'FAILED') return <XCircle className={cn('w-3.5 h-3.5 text-destructive', className)} />;
+  if (status === 'CANCELED') return <Ban className={cn('w-3.5 h-3.5 text-muted-foreground/40', className)} />;
   return <Circle className={cn('w-3.5 h-3.5 text-muted-foreground/40', className)} />;
 }
 
@@ -109,6 +111,7 @@ function StepperCell({ group }: { group: StepperGroup }) {
   const isCompleted = group.status === 'COMPLETED';
   const isFailed = group.status === 'FAILED';
   const isPending = group.status === 'PENDING';
+  const isCanceled = group.status === 'CANCELED';
 
   const vtMin = group.vtSeconds !== undefined ? Math.floor(group.vtSeconds / 60) : undefined;
 
@@ -120,6 +123,7 @@ function StepperCell({ group }: { group: StepperGroup }) {
         isFailed && 'bg-destructive/10 border border-destructive/30',
         isCompleted && 'bg-success/5',
         isPending && 'opacity-45',
+        isCanceled && 'opacity-35',
       )}
     >
       {/* 상태 아이콘 + 레이블 */}
@@ -132,6 +136,7 @@ function StepperCell({ group }: { group: StepperGroup }) {
             isRunning && 'text-accent',
             isFailed && 'text-destructive',
             isPending && 'text-muted-foreground',
+            isCanceled && 'text-muted-foreground',
           )}
         >
           {group.label}

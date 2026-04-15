@@ -1,11 +1,14 @@
 'use client';
 
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
-import type { PipelineDefinition, DashboardStats } from '@/types/pipeline';
+import { formatRelativeTime } from '@/lib/utils';
+import type { PipelineDefinition, DashboardStats, JobSummary } from '@/types/pipeline';
+import { JobStatusBadge } from '@/components/ui/StatusBadge';
 import {
   Activity, AlertTriangle, CheckCircle, XCircle,
   GitBranch, Plus, PanelLeftClose, PanelLeftOpen,
-  Settings, User, Bell, Trash2,
+  Settings, User, Bell, Trash2, ChevronDown, Briefcase,
 } from 'lucide-react';
 
 interface LeftSidebarProps {
@@ -20,6 +23,9 @@ interface LeftSidebarProps {
   stats: DashboardStats | null;
   alertCount: number;
   onAlertClick: () => void;
+  jobs: JobSummary[];
+  selectedJobId: string | null;
+  onSelectJob: (jobId: string) => void;
 }
 
 export default function LeftSidebar({
@@ -34,7 +40,15 @@ export default function LeftSidebar({
   stats,
   alertCount,
   onAlertClick,
+  jobs,
+  selectedJobId,
+  onSelectJob,
 }: LeftSidebarProps) {
+  const [pipelinesOpen, setPipelinesOpen] = useState(true);
+  const [jobsOpen, setJobsOpen] = useState(true);
+
+  const activeJobCount = jobs.filter((j) => j.status === 'ASSIGNED' || j.status === 'CREATED').length;
+
   return (
     <div
       className={cn(
@@ -42,7 +56,7 @@ export default function LeftSidebar({
         collapsed ? 'w-12' : 'w-56',
       )}
     >
-      {/* Header — n8n style: logo + action icons */}
+      {/* Header */}
       <div className="h-11 flex items-center gap-1.5 px-2 border-b border-border flex-shrink-0">
         {collapsed ? (
           <button onClick={onToggle} className="mx-auto p-1.5 rounded-md hover:bg-muted/50 transition-colors">
@@ -66,6 +80,14 @@ export default function LeftSidebar({
         <div className="flex-1 flex flex-col items-center py-2 gap-1">
           <button onClick={onToggle} className="p-2 rounded-md hover:bg-muted/50" title="파이프라인">
             <GitBranch className="w-4 h-4 text-muted-foreground" />
+          </button>
+          <button onClick={onToggle} className="relative p-2 rounded-md hover:bg-muted/50" title="실행 작업">
+            <Briefcase className="w-4 h-4 text-muted-foreground" />
+            {activeJobCount > 0 && (
+              <span className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-accent text-[8px] text-accent-foreground flex items-center justify-center font-bold">
+                {activeJobCount > 9 ? '9+' : activeJobCount}
+              </span>
+            )}
           </button>
           <button onClick={onAlertClick} className="relative p-2 rounded-md hover:bg-muted/50" title="알림">
             <Bell className="w-4 h-4 text-muted-foreground" />
@@ -98,41 +120,102 @@ export default function LeftSidebar({
             </div>
           )}
 
-          {/* Pipeline List */}
-          <div className="px-1.5 py-2">
-            <div className="px-1 mb-1">
-              <span className="text-[9px] font-medium text-muted-foreground uppercase tracking-wider">파이프라인</span>
-            </div>
-            <div className="space-y-0.5">
-              {pipelines.map((pl) => (
-                <div
-                  key={pl.id}
-                  className={cn(
-                    'group flex items-center rounded-md text-[11px] transition-colors',
-                    selectedPipelineId === pl.id
-                      ? 'bg-accent/10 text-accent'
-                      : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground',
-                  )}
-                >
-                  <button
-                    onClick={() => onSelectPipeline(pl.id)}
-                    className="flex-1 min-w-0 text-left px-2 py-1.5"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <GitBranch className="w-3 h-3 flex-shrink-0" />
-                      <span className="truncate">{pl.name}</span>
+          {/* ── 파이프라인 섹션 ── */}
+          <div className="border-b border-border">
+            <button
+              onClick={() => setPipelinesOpen((v) => !v)}
+              className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:bg-muted/20 transition-colors"
+            >
+              <ChevronDown className={cn('w-3 h-3 transition-transform', !pipelinesOpen && '-rotate-90')} />
+              <GitBranch className="w-3 h-3" />
+              <span className="flex-1 text-left">파이프라인</span>
+              <span className="text-[9px] font-mono font-normal normal-case">{pipelines.length}</span>
+            </button>
+            {pipelinesOpen && (
+              <div className="px-1.5 pb-2">
+                <div className="space-y-0.5">
+                  {pipelines.map((pl) => (
+                    <div
+                      key={pl.id}
+                      className={cn(
+                        'group flex items-center rounded-md text-[11px] transition-colors',
+                        selectedPipelineId === pl.id
+                          ? 'bg-accent/10 text-accent'
+                          : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground',
+                      )}
+                    >
+                      <button
+                        onClick={() => onSelectPipeline(pl.id)}
+                        className="flex-1 min-w-0 text-left px-2 py-1.5"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <GitBranch className="w-3 h-3 flex-shrink-0" />
+                          <span className="truncate">{pl.name}</span>
+                        </div>
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onDeletePipeline(pl.id); }}
+                        className="flex-shrink-0 p-1 mr-1 rounded opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
+                        title="파이프라인 삭제"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
                     </div>
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onDeletePipeline(pl.id); }}
-                    className="flex-shrink-0 p-1 mr-1 rounded opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
-                    title="파이프라인 삭제"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── 실행 작업 섹션 ── */}
+          <div>
+            <button
+              onClick={() => setJobsOpen((v) => !v)}
+              className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:bg-muted/20 transition-colors"
+            >
+              <ChevronDown className={cn('w-3 h-3 transition-transform', !jobsOpen && '-rotate-90')} />
+              <Briefcase className="w-3 h-3" />
+              <span className="flex-1 text-left">실행 작업</span>
+              {activeJobCount > 0 && (
+                <span className="px-1 rounded-full text-[9px] bg-accent/15 text-accent font-normal normal-case">{activeJobCount}</span>
+              )}
+            </button>
+            {jobsOpen && (
+              <div className="pb-1">
+                {jobs.length === 0 ? (
+                  <div className="px-3 py-3 text-[10px] text-muted-foreground/60 text-center">실행 기록 없음</div>
+                ) : (
+                  <div className="space-y-0.5 px-1.5">
+                    {jobs.slice(0, 20).map((job) => (
+                      <button
+                        key={job.jobId}
+                        onClick={() => onSelectJob(job.jobId)}
+                        className={cn(
+                          'w-full text-left px-2 py-1.5 rounded-md transition-colors',
+                          selectedJobId === job.jobId
+                            ? 'bg-accent/10 text-accent'
+                            : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground',
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-[10px] font-mono font-semibold truncate">{job.jobId}</span>
+                          <JobStatusBadge status={job.status} retryCount={job.retryCount} />
+                        </div>
+                        <div className="flex items-center justify-between text-[9px] text-muted-foreground mt-0.5">
+                          <span className="truncate">{job.sceneId}</span>
+                          <span className="shrink-0">{formatRelativeTime(job.updatedAt)}</span>
+                        </div>
+                      </button>
+                    ))}
+                    {jobs.length > 20 && (
+                      <div className="text-[9px] text-muted-foreground/50 text-center py-1">
+                        +{jobs.length - 20}건 더
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

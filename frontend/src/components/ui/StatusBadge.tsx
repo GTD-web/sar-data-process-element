@@ -19,6 +19,7 @@ const STEP_STATUS_STYLES: Record<StepStatus, { bg: string; text: string; icon: R
   COMPLETED: { bg: 'bg-success/15', text: 'text-success', icon: CheckCircle },
   FAILED: { bg: 'bg-destructive/15', text: 'text-destructive', icon: XCircle },
   SKIPPED: { bg: 'bg-muted/50', text: 'text-muted-foreground', icon: Ban },
+  CANCELED: { bg: 'bg-muted/50', text: 'text-muted-foreground', icon: Ban },
 };
 
 export function JobStatusBadge({ status, retryCount }: { status: JobStatus; retryCount?: number }) {

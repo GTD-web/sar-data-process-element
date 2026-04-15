@@ -77,6 +77,8 @@ export interface IPipelineUIService {
     to?: string;
     page?: number;
     size?: number;
+    sortBy?: keyof AuditEvent;
+    sortOrder?: 'asc' | 'desc';
   }): Promise<ServiceResponseWithData<PaginatedResponse<AuditEvent>>>;
 
   // =========================================================================

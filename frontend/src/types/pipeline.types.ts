@@ -6,7 +6,7 @@
 // --- Primitive Unions ---
 
 export type JobStatus = 'CREATED' | 'ASSIGNED' | 'COMPLETED' | 'FAILED' | 'CANCELED';
-export type StepStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
+export type StepStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED' | 'CANCELED';
 export type ProductLevel = 'LEVEL_0' | 'LEVEL_1' | 'LEVEL_2' | 'LEVEL_3';
 
 /** SAR 처리 레벨 단위 스테이지. 파이프라인 노드의 기본 식별자. */
@@ -49,6 +49,17 @@ export type LogLevel = 'INFO' | 'WARN' | 'ERROR';
 // --- Domain Interfaces ---
 
 /**
+ * FILE_INPUT 노드 전용 설정.
+ * 부분 재처리 시 파이프라인에 입력할 기존 처리 결과 파일을 지정합니다.
+ */
+export interface FileInputConfig {
+  /** 입력 파일에 해당하는 씬 식별자 */
+  sceneId: string;
+  /** 입력 파일 경로 (부분 재처리 시 사용할 기존 처리 결과) */
+  inputFilePath: string;
+}
+
+/**
  * CSU-08.02: JOB_INIT 노드 전용 설정.
  * 파이프라인 정의(template)에서 프로파일 선택 규칙과 작업 기본값을 정의.
  */
@@ -71,6 +82,7 @@ export interface ProcessingProfileSummary {
 
 export interface JobSummary {
   jobId: string;
+  pipelineId: string;
   sceneId: string;
   status: JobStatus;
   currentLevel: ProductLevel | null;
@@ -164,6 +176,8 @@ export interface PipelineStepDefinition {
   enabledTasks?: string[];
   /** JOB_INIT 노드 전용. 처리 프로파일 선택 규칙 + 작업 기본값. */
   jobInitConfig?: JobInitConfig;
+  /** FILE_INPUT 노드 전용. 입력 파일 선택 설정. */
+  fileInputConfig?: FileInputConfig;
 }
 
 export interface PipelineEdge {

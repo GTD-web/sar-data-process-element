@@ -76,7 +76,7 @@ const MODE_DEFAULT_POLARIZATION: Record<string, string> = {
   Spotlight: 'HH',
 };
 
-type StepDef = { kind: PipelineNodeKind; sarStage?: SarStage };
+type StepDef = { kind: PipelineNodeKind; sarStage?: SarStage; inputLevel?: ProductLevel };
 
 /** D-01: 파이프라인 첫 노드 — RAW_DATA_RECEIVED 트리거 (EI-01) */
 const TRIGGER_STEP: StepDef = { kind: 'TRIGGER' };
@@ -94,6 +94,39 @@ const PIPELINE_STEPS: StepDef[] = [
   { kind: 'SAR', sarStage: 'L1C' },
   { kind: 'SAR', sarStage: 'L2A' },
   { kind: 'SAR', sarStage: 'L2B' },
+  { kind: 'SAR', sarStage: 'L3' },
+  CATALOG_STEP,
+];
+
+// ─── 부분 재처리 파이프라인 스텝 정의 (OPS-06) ─────────────────────────────
+/** L1 결과 입력 → L2A부터 처리 (OPS-06 주요 시나리오, Stripmap) */
+const PARTIAL_L1_STRIPMAP_STEPS: StepDef[] = [
+  { kind: 'FILE_INPUT', inputLevel: 'LEVEL_1' },
+  JOB_INIT_STEP,
+  { kind: 'SAR', sarStage: 'L2A' },
+  { kind: 'SAR', sarStage: 'L2B' },
+  { kind: 'SAR', sarStage: 'L3' },
+  CATALOG_STEP,
+];
+
+/** L1 결과 입력 → ScanSAR (L1B까지가 끝이므로 등록만 수행) */
+const PARTIAL_L1_SCANSAR_STEPS: StepDef[] = [
+  { kind: 'FILE_INPUT', inputLevel: 'LEVEL_1' },
+  JOB_INIT_STEP,
+  CATALOG_STEP,
+];
+
+/** L1 결과 입력 → Spotlight (L1C까지가 끝이므로 등록만 수행) */
+const PARTIAL_L1_SPOTLIGHT_STEPS: StepDef[] = [
+  { kind: 'FILE_INPUT', inputLevel: 'LEVEL_1' },
+  JOB_INIT_STEP,
+  CATALOG_STEP,
+];
+
+/** L2 결과 입력 → L3만 처리 후 등록 */
+const PARTIAL_L2_STEPS: StepDef[] = [
+  { kind: 'FILE_INPUT', inputLevel: 'LEVEL_2' },
+  JOB_INIT_STEP,
   { kind: 'SAR', sarStage: 'L3' },
   CATALOG_STEP,
 ];
@@ -122,7 +155,7 @@ function buildSteps(pipelineSteps: StepDef[], status: JobStatus, retryCount: num
       } else if (idx === completedCount && status === 'FAILED') {
         stepStatus = 'FAILED';
       } else {
-        stepStatus = 'PENDING';
+        stepStatus = status === 'CANCELED' ? 'CANCELED' : 'PENDING';
       }
     }
 
@@ -150,7 +183,7 @@ function buildSteps(pipelineSteps: StepDef[], status: JobStatus, retryCount: num
       targetCsc,
       productLevel,
       status: stepStatus,
-      startedAt: stepStatus !== 'PENDING' ? baseTime.toISOString() : undefined,
+      startedAt: stepStatus !== 'PENDING' && stepStatus !== 'CANCELED' ? baseTime.toISOString() : undefined,
       finishedAt: stepStatus === 'COMPLETED' ? new Date(baseTime.getTime() + (isFixed ? 1500 : (600 + Math.random() * 3000)) * 1000).toISOString() : undefined,
       durationMs: stepStatus === 'COMPLETED'
         ? (def.kind === 'TRIGGER' ? undefined : def.kind === 'JOB_INIT' ? Math.floor(500 + Math.random() * 1500) : Math.floor((600 + Math.random() * 3000) * 1000))
@@ -168,7 +201,7 @@ function buildSteps(pipelineSteps: StepDef[], status: JobStatus, retryCount: num
 // Generate Mock Dataset
 // =============================================================================
 
-function generateJobs(count: number): JobDetail[] {
+function generateJobs(count: number, pipelineIds: string[]): JobDetail[] {
   const statuses: JobStatus[] = ['CREATED', 'ASSIGNED', 'COMPLETED', 'FAILED', 'CANCELED'];
   const weights = [0.05, 0.25, 0.45, 0.15, 0.1];
 
@@ -207,6 +240,7 @@ function generateJobs(count: number): JobDetail[] {
 
     return {
       jobId: `JOB-${String(idx + 1).padStart(4, '0')}`,
+      pipelineId: pipelineIds[idx % pipelineIds.length],
       sceneId: SCENE_IDS[idx % SCENE_IDS.length],
       status,
       currentLevel: runningStep?.productLevel ?? (status === 'COMPLETED' ? 'LEVEL_3' : null),
@@ -431,6 +465,7 @@ function toDAGSteps(flat: Omit<import('@/types/pipeline').PipelineStepDefinition
     ...(s.inputLevel !== undefined && { inputLevel: s.inputLevel }),
     ...(s.enabledTasks !== undefined && { enabledTasks: s.enabledTasks }),
     ...(s.jobInitConfig !== undefined && { jobInitConfig: s.jobInitConfig }),
+    ...(s.fileInputConfig !== undefined && { fileInputConfig: s.fileInputConfig }),
   }));
   const edges: { source: number; target: number }[] = [];
   for (let i = 0; i < steps.length - 1; i++) {
@@ -461,40 +496,92 @@ const MODE_STEP_VARIANTS: Record<string, StepDef[]> = {
   ],
 };
 
+function buildPipelineFromSteps(
+  id: string,
+  name: string,
+  sat: string,
+  mode: string,
+  stepDefs: StepDef[],
+  createdAt = '2026-01-15T09:00:00Z',
+): PipelineDefinition {
+  const pol = MODE_DEFAULT_POLARIZATION[mode] ?? 'HH';
+  const matchingProfile = MOCK_PROCESSING_PROFILES.find(
+    (p) => p.satelliteId === sat && p.mode === mode && p.polarization === pol,
+  );
+  const stepsWithConfig = stepDefs.map((s) => {
+    if (s.kind === 'JOB_INIT') {
+      const config: JobInitConfig = {
+        polarization: pol,
+        profileId: matchingProfile?.id,
+        priority: 5,
+        deadlineHours: 4,
+        retryInterval: 'IMMEDIATE',
+      };
+      return { ...s, jobInitConfig: config };
+    }
+    return s;
+  });
+  const { steps, edges } = toDAGSteps(stepsWithConfig);
+  return { id, name, satelliteId: sat, mode, steps, edges, createdAt, updatedAt: createdAt };
+}
+
 function generatePipelines(): PipelineDefinition[] {
-  return SATELLITE_IDS.flatMap((sat) =>
+  // 전체 처리 파이프라인 (위성 × 모드)
+  const full = SATELLITE_IDS.flatMap((sat) =>
     MODES.map((mode) => {
       const modeSteps = MODE_STEP_VARIANTS[mode] ?? PIPELINE_STEPS;
-      const pol = MODE_DEFAULT_POLARIZATION[mode] ?? 'HH';
-      const matchingProfile = MOCK_PROCESSING_PROFILES.find(
-        (p) => p.satelliteId === sat && p.mode === mode && p.polarization === pol,
+      return buildPipelineFromSteps(
+        `PL-${sat}-${mode}`.replace(/\s/g, ''),
+        `${sat} ${mode} Pipeline`,
+        sat, mode, modeSteps,
       );
-      const stepsWithConfig = modeSteps.map((s) => {
-        if (s.kind === 'JOB_INIT') {
-          const config: JobInitConfig = {
-            polarization: pol,
-            profileId: matchingProfile?.id,
-            priority: 5,
-            deadlineHours: 4,
-            retryInterval: 'IMMEDIATE',
-          };
-          return { ...s, jobInitConfig: config };
-        }
-        return s;
-      });
-      const { steps, edges } = toDAGSteps(stepsWithConfig);
-      return {
-        id: `PL-${sat}-${mode}`.replace(/\s/g, ''),
-        name: `${sat} ${mode} Pipeline`,
-        satelliteId: sat,
-        mode,
-        steps,
-        edges,
-        createdAt: '2026-01-15T09:00:00Z',
-        updatedAt: '2026-01-15T09:00:00Z',
-      };
     }),
   );
+
+  // 부분 재처리 파이프라인 (OPS-06) — FILE_INPUT 시작
+  const partial: PipelineDefinition[] = [
+    // L1 입력 → L2부터 처리 (Stripmap, 위성별 각 1개)
+    buildPipelineFromSteps(
+      'PL-KS5-Partial-L1-Stripmap',
+      'KS-5 L1 입력 재처리 (Stripmap)',
+      'KS-5', 'Stripmap', PARTIAL_L1_STRIPMAP_STEPS, '2026-02-01T09:00:00Z',
+    ),
+    buildPipelineFromSteps(
+      'PL-KS6-Partial-L1-Stripmap',
+      'KS-6 L1 입력 재처리 (Stripmap)',
+      'KS-6', 'Stripmap', PARTIAL_L1_STRIPMAP_STEPS, '2026-02-10T09:00:00Z',
+    ),
+    buildPipelineFromSteps(
+      'PL-KS7-Partial-L1-Stripmap',
+      'KS-7 L1 입력 재처리 (Stripmap)',
+      'KS-7', 'Stripmap', PARTIAL_L1_STRIPMAP_STEPS, '2026-02-10T09:00:00Z',
+    ),
+    // L1 입력 → ScanSAR (L1B까지이므로 등록만)
+    buildPipelineFromSteps(
+      'PL-KS5-Partial-L1-ScanSAR',
+      'KS-5 L1 입력 재처리 (ScanSAR)',
+      'KS-5', 'ScanSAR', PARTIAL_L1_SCANSAR_STEPS, '2026-02-15T09:00:00Z',
+    ),
+    // L1 입력 → Spotlight (L1C까지이므로 등록만)
+    buildPipelineFromSteps(
+      'PL-KS5-Partial-L1-Spotlight',
+      'KS-5 L1 입력 재처리 (Spotlight)',
+      'KS-5', 'Spotlight', PARTIAL_L1_SPOTLIGHT_STEPS, '2026-02-15T09:00:00Z',
+    ),
+    // L2 입력 → L3만 처리 (KS-5, KS-6 Stripmap)
+    buildPipelineFromSteps(
+      'PL-KS5-Partial-L2-Stripmap',
+      'KS-5 L2 입력 재처리 (Stripmap)',
+      'KS-5', 'Stripmap', PARTIAL_L2_STEPS, '2026-03-01T09:00:00Z',
+    ),
+    buildPipelineFromSteps(
+      'PL-KS6-Partial-L2-Stripmap',
+      'KS-6 L2 입력 재처리 (Stripmap)',
+      'KS-6', 'Stripmap', PARTIAL_L2_STEPS, '2026-03-01T09:00:00Z',
+    ),
+  ];
+
+  return [...full, ...partial];
 }
 
 let nextPipelineSeq = 100;
@@ -512,11 +599,12 @@ class MockPipelineUIService implements IPipelineUIService {
   private executionLogs: ExecutionLog[];
 
   constructor() {
-    this.jobs = generateJobs(50);
+    this.pipelines = generatePipelines();
+    const pipelineIds = this.pipelines.map((p) => p.id);
+    this.jobs = generateJobs(50, pipelineIds);
     this.alerts = generateAlerts(this.jobs);
     this.auditEvents = generateAuditEvents(this.jobs);
     this.queueHealth = generateQueueHealth();
-    this.pipelines = generatePipelines();
     this.executionLogs = generateExecutionLogs(this.jobs);
   }
 
@@ -568,6 +656,7 @@ class MockPipelineUIService implements IPipelineUIService {
       data: {
         items: page.map((j): JobSummary => ({
             jobId: j.jobId,
+            pipelineId: j.pipelineId,
             sceneId: j.sceneId,
             status: j.status,
             currentLevel: j.currentLevel,
@@ -620,6 +709,9 @@ class MockPipelineUIService implements IPipelineUIService {
     if (!job) return { success: false, message: 'Job을 찾을 수 없습니다' };
     job.status = 'CANCELED';
     job.updatedAt = new Date().toISOString();
+    job.steps.forEach((s) => {
+      if (s.status === 'PENDING' || s.status === 'RUNNING') s.status = 'CANCELED';
+    });
     return { success: true, message: `Job ${jobId}이(가) 취소되었습니다` };
   }
 
@@ -652,10 +744,21 @@ class MockPipelineUIService implements IPipelineUIService {
     jobId?: string;
     page?: number;
     size?: number;
+    sortBy?: keyof AuditEvent;
+    sortOrder?: 'asc' | 'desc';
   }): Promise<ServiceResponseWithData<PaginatedResponse<AuditEvent>>> {
     let filtered = [...this.auditEvents];
     if (params?.jobId) {
       filtered = filtered.filter((e) => e.jobId === params.jobId);
+    }
+    if (params?.sortBy) {
+      const key = params.sortBy;
+      const dir = params.sortOrder === 'desc' ? -1 : 1;
+      filtered.sort((a, b) => {
+        const va = a[key] ?? '';
+        const vb = b[key] ?? '';
+        return va < vb ? -dir : va > vb ? dir : 0;
+      });
     }
     const page = params?.page ?? 1;
     const size = params?.size ?? 20;
@@ -717,6 +820,7 @@ class MockPipelineUIService implements IPipelineUIService {
         ...(s.inputLevel !== undefined && { inputLevel: s.inputLevel }),
         ...(s.enabledTasks !== undefined && { enabledTasks: s.enabledTasks }),
         ...(s.jobInitConfig !== undefined && { jobInitConfig: s.jobInitConfig }),
+        ...(s.fileInputConfig !== undefined && { fileInputConfig: s.fileInputConfig }),
       }));
     }
     if (data.edges !== undefined) {
@@ -740,6 +844,7 @@ class MockPipelineUIService implements IPipelineUIService {
     const now = new Date().toISOString();
     const summary: JobSummary = {
       jobId,
+      pipelineId,
       sceneId: `SCN-${Date.now().toString(36).toUpperCase()}`,
       status: 'CREATED',
       currentLevel: null,

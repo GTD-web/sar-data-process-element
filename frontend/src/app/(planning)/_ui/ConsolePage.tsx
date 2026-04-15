@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import PipelineProgressStepper from '@/components/graph/PipelineProgressStepper';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
@@ -8,8 +9,6 @@ import TopBar from '@/components/panels/TopBar';
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import RightTabbedPanel, { type RightTab } from '@/components/panels/RightTabbedPanel';
 import ConsoleTab, { type ConsoleMode } from '@/components/panels/ConsoleTab';
-import JobsTab from '@/components/panels/JobsTab';
-import AlertsTab from '@/components/panels/AlertsTab';
 import AuditTab from '@/components/panels/AuditTab';
 import QueuesTab from '@/components/panels/QueuesTab';
 import AlertModal from '@/components/panels/AlertModal';
@@ -18,12 +17,14 @@ import CancelConfirmDialog from '@/components/panels/CancelConfirmDialog';
 import CreatePipelineDialog, { type CreatePipelineBasicData } from '@/components/panels/CreatePipelineDialog';
 import SelectStartNodeDialog, { type StartNodeSelection } from '@/components/panels/SelectStartNodeDialog';
 import ExecutionLogPanel from '@/components/panels/ExecutionLogPanel';
-import NodeDetailModal from '@/components/panels/NodeDetailModal';
+import NodeDetailModal, { type PrevNodeInfo } from '@/components/panels/NodeDetailModal';
+import FileInputConfigDialog from '@/components/panels/FileInputConfigDialog';
 import Toast, { type ToastMessage } from '@/components/ui/Toast';
-import { FlaskConical } from 'lucide-react';
+import { FlaskConical, Plus, PanelRightOpen } from 'lucide-react';
 import type {
   PipelineDefinition,
   PipelineStepDefinition,
+  FileInputConfig,
   ProcessingProfile,
   ExecutionLog,
   JobSummary,
@@ -36,7 +37,7 @@ import type {
   SarStage,
   PipelineNodeKind,
 } from '@/types/pipeline';
-import { SAR_STAGE_TO_CSC, SAR_STAGE_TO_LEVEL, JOB_INIT_PROFILE_MISSING_MESSAGE } from '@/types/pipeline';
+import { SAR_STAGE_TO_CSC, SAR_STAGE_TO_LEVEL, SAR_STAGE_LABELS, JOB_INIT_PROFILE_MISSING_MESSAGE } from '@/types/pipeline';
 
 const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
   ssr: false,
@@ -49,6 +50,20 @@ const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
 
 export default function ConsolePage() {
   const service = usePipelineService();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const updateJobIdParam = useCallback((jobId: string | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (jobId) {
+      params.set('jobId', jobId);
+    } else {
+      params.delete('jobId');
+    }
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }, [searchParams, router, pathname]);
 
   // --- Data ---
   const [pipelines, setPipelines] = useState<PipelineDefinition[]>([]);
@@ -77,6 +92,10 @@ export default function ConsolePage() {
   const [logPanelOpen, setLogPanelOpen] = useState(false);
   const [focusEntryTrigger, setFocusEntryTrigger] = useState(0);
   const [nodeDetailStep, setNodeDetailStep] = useState<PipelineStepDefinition | null>(null);
+  const [fileInputConfigStep, setFileInputConfigStep] = useState<PipelineStepDefinition | null>(null);
+  const [disabledNodeOrders, setDisabledNodeOrders] = useState<Set<number>>(new Set());
+  const [auditSortBy, setAuditSortBy] = useState<keyof AuditEvent | null>(null);
+  const [auditSortOrder, setAuditSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // --- Load ---
   useEffect(() => {
@@ -102,12 +121,37 @@ export default function ConsolePage() {
       if (queuesRes.data) setQueues(queuesRes.data);
       if (profRes.data) setProfiles(profRes.data);
       if (logRes.data) setExecutionLogs(logRes.data);
+
+      // URL에 jobId가 있으면 자동 선택
+      const urlJobId = searchParams.get('jobId');
+      if (urlJobId) {
+        const jobRes = await service.Job_상세를_조회한다(urlJobId);
+        if (jobRes.data) {
+          setSelectedJob(jobRes.data);
+          setConsoleMode({ type: 'job', job: jobRes.data });
+          setRightTab('console');
+          setRightCollapsed(false);
+        }
+      }
     })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- searchParams는 초기 로드에만 사용
   }, [service]);
+
+
+  const handleToggleNodeActive = useCallback((order: number) => {
+    setDisabledNodeOrders((prev) => {
+      const next = new Set(prev);
+      if (next.has(order)) {
+        next.delete(order);
+      } else {
+        next.add(order);
+      }
+      return next;
+    });
+  }, []);
 
   // --- Derived ---
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId) ?? null;
-  const activeJobs = jobs.filter((j) => j.status === 'ASSIGNED' || j.status === 'CREATED');
   const unackedAlerts = alerts.filter((a) => !a.acknowledged);
   const canvasEditable = !selectedJob;
 
@@ -145,71 +189,20 @@ export default function ConsolePage() {
     async (data: { steps?: Omit<PipelineStepDefinition, 'order'>[]; edges?: { source: number; target: number }[] }) => {
       if (!selectedPipelineId) return;
       const res = await service.파이프라인을_수정한다(selectedPipelineId, data);
-      if (res.data) setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? res.data! : p)));
+      if (res.data) {
+        setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? res.data! : p)));
+        setDisabledNodeOrders(new Set()); // 노드 order 재배치 시 바이패스 상태 초기화
+      }
     },
     [service, selectedPipelineId],
   );
 
   // --- Canvas handlers ---
   const handleNodeClick = useCallback(
-    (stepOrder: number) => {
-      const step = selectedPipeline?.steps.find((s) => s.order === stepOrder);
-
-      // D-01: TRIGGER 노드 클릭 — job 선택 여부와 관계없이 수신 정보 표시
-      if (step?.kind === 'TRIGGER') {
-        setConsoleMode({
-          type: 'trigger',
-          receivedAt: selectedJob?.receivedAt ?? '—',
-          rawDataPath: selectedJob?.rawDataPath ?? '—',
-        });
-        setRightTab('console');
-        setRightCollapsed(false);
-        return;
-      }
-
-      // FILE_INPUT 노드 클릭 — 부분 재처리 입력 레벨 표시
-      if (step?.kind === 'FILE_INPUT') {
-        setConsoleMode({
-          type: 'fileInput',
-          inputLevel: step.inputLevel ?? 'LEVEL_1',
-        });
-        setRightTab('console');
-        setRightCollapsed(false);
-        return;
-      }
-
-      // CSU-08.02: JOB_INIT 노드 클릭
-      if (step?.kind === 'JOB_INIT') {
-        if (selectedJob) {
-          setConsoleMode({
-            type: 'jobInit',
-            processingProfile: selectedJob.processingProfile,
-            jobCreatedAt: selectedJob.startedAt,
-            priority: selectedJob.priority,
-            triggerSource: selectedJob.triggerSource,
-          });
-        } else if (selectedPipeline) {
-          setConsoleMode({
-            type: 'jobInitEdit',
-            step,
-            satelliteId: selectedPipeline.satelliteId,
-            mode: selectedPipeline.mode,
-          });
-        }
-        setRightTab('console');
-        setRightCollapsed(false);
-        return;
-      }
-
-      if (selectedJob) return;
-
-      if (step) {
-        setConsoleMode({ type: 'node', step });
-        setRightTab('console');
-        setRightCollapsed(false);
-      }
+    (_stepOrder: number) => {
+      // 싱글 클릭 — no-op (더블클릭으로 상세 모달 열림)
     },
-    [selectedJob, selectedPipeline],
+    [],
   );
 
   const handleConnect = useCallback(
@@ -274,8 +267,6 @@ export default function ConsolePage() {
       ]);
       if (jobsRes.success && jobsRes.data) setJobs(jobsRes.data.items);
       if (logRes.data) setExecutionLogs(logRes.data);
-      setRightTab('jobs');
-      setRightCollapsed(false);
       setLogPanelOpen(true);
     } else {
       setToast({ message: res.message, type: 'error' });
@@ -341,8 +332,14 @@ export default function ConsolePage() {
       setConsoleMode({ type: 'job', job: res.data });
       setRightTab('console');
       setRightCollapsed(false);
+      updateJobIdParam(jobId);
+      // Job의 파이프라인으로 자동 전환
+      if (res.data.pipelineId && res.data.pipelineId !== selectedPipelineId) {
+        setSelectedPipelineId(res.data.pipelineId);
+        setDisabledNodeOrders(new Set());
+      }
     }
-  }, [service]);
+  }, [service, updateJobIdParam, selectedPipelineId]);
 
   const handleAckAlert = useCallback(async (alertId: string) => {
     const alert = alerts.find((a) => a.id === alertId);
@@ -392,6 +389,14 @@ export default function ConsolePage() {
     if (jsRes.data) setJobs(jsRes.data.items);
   }, [service, selectedJob]);
 
+  // D-02: 노드 order 기반 부분 재처리 (캔버스 노드 toolbar에서 호출)
+  const handleReprocessFromNode = useCallback((order: number) => {
+    if (!selectedJob || !selectedPipeline) return;
+    const step = selectedPipeline.steps.find((s) => s.order === order);
+    if (!step || step.kind !== 'SAR' || !step.sarStage) return;
+    handlePartialReprocess(step.sarStage);
+  }, [selectedJob, selectedPipeline, handlePartialReprocess]);
+
   const handleDeletePipeline = useCallback(async (id: string) => {
     await service.파이프라인을_삭제한다(id);
     setPipelines((prev) => prev.filter((p) => p.id !== id));
@@ -399,8 +404,10 @@ export default function ConsolePage() {
       setSelectedPipelineId(null);
       setSelectedJob(null);
       setConsoleMode({ type: 'idle' });
+      setDisabledNodeOrders(new Set());
+      updateJobIdParam(null);
     }
-  }, [service, selectedPipelineId]);
+  }, [service, selectedPipelineId, updateJobIdParam]);
 
   // --- Pipeline handlers ---
   const handleSavePipeline = useCallback(async (data: { name: string; satelliteId: string; mode: string; steps: { kind: PipelineNodeKind; sarStage?: SarStage }[] }) => {
@@ -443,8 +450,64 @@ export default function ConsolePage() {
 
   const handleNodeOpenDetail = useCallback((stepOrder: number) => {
     const step = selectedPipeline?.steps.find((s) => s.order === stepOrder);
-    if (step) setNodeDetailStep(step);
+    if (!step) return;
+    if (step.kind === 'FILE_INPUT') {
+      setFileInputConfigStep(step);
+      return;
+    }
+    setNodeDetailStep(step);
   }, [selectedPipeline]);
+
+  /** 노드 상세 모달용 — 이전 노드 정보 계산 */
+  const getPrevNodes = useCallback((stepOrder: number): PrevNodeInfo[] => {
+    if (!selectedPipeline) return [];
+    const sourceOrders = selectedPipeline.edges
+      .filter((e) => e.target === stepOrder)
+      .map((e) => e.source);
+    const results: PrevNodeInfo[] = [];
+    for (const order of sourceOrders) {
+      const s = selectedPipeline.steps.find((st) => st.order === order);
+      if (!s) continue;
+      let label: string;
+      let csc: string;
+      if (s.kind === 'TRIGGER') { label = '원시 데이터 수신 트리거'; csc = 'EI-01'; }
+      else if (s.kind === 'FILE_INPUT') { label = '결과 파일 입력'; csc = 'SI-07'; }
+      else if (s.kind === 'JOB_INIT') { label = '작업 초기화'; csc = 'CSC-08.02'; }
+      else if (s.kind === 'CATALOG') { label = '카탈로그 등록'; csc = 'CSC-07'; }
+      else if (s.kind === 'SAR' && s.sarStage) { label = SAR_STAGE_LABELS[s.sarStage]; csc = SAR_STAGE_TO_CSC[s.sarStage]; }
+      else { label = '노드'; csc = '—'; }
+      results.push({ order: s.order, kind: s.kind, sarStage: s.sarStage, inputLevel: s.inputLevel, label, csc });
+    }
+    return results;
+  }, [selectedPipeline]);
+
+  const handleAuditSort = useCallback(async (column: keyof AuditEvent) => {
+    const nextOrder = auditSortBy === column && auditSortOrder === 'asc' ? 'desc' : 'asc';
+    setAuditSortBy(column);
+    setAuditSortOrder(nextOrder);
+    const res = await service.감사로그를_조회한다({ size: 50, sortBy: column, sortOrder: nextOrder });
+    if (res.data) setAuditEvents(res.data.items);
+  }, [service, auditSortBy, auditSortOrder]);
+
+  const handleOpenNodesPanel = useCallback(() => {
+    if (!selectedPipeline || selectedPipeline.steps.length === 0) return;
+    const lastOrder = Math.max(...selectedPipeline.steps.map((s) => s.order));
+    setConsoleMode({ type: 'addStep', afterOrder: lastOrder });
+    setRightTab('console');
+    setRightCollapsed(false);
+  }, [selectedPipeline]);
+
+  const handleFileInputConfigApply = useCallback(async (config: FileInputConfig) => {
+    if (!selectedPipelineId || !fileInputConfigStep || !selectedPipeline) return;
+    const updatedSteps = selectedPipeline.steps.map((s) =>
+      s.order === fileInputConfigStep.order ? { ...s, fileInputConfig: config } : s,
+    );
+    const res = await service.파이프라인을_수정한다(selectedPipelineId, { steps: updatedSteps });
+    if (res.success && res.data) {
+      setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? res.data! : p)));
+    }
+    setFileInputConfigStep(null);
+  }, [selectedPipelineId, fileInputConfigStep, selectedPipeline, service]);
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -459,20 +522,21 @@ export default function ConsolePage() {
           setSelectedPipelineId(id);
           setSelectedJob(null);
           setConsoleMode({ type: 'idle' });
+          setDisabledNodeOrders(new Set());
+          updateJobIdParam(null);
         }}
         onCreatePipeline={handleCreatePipeline}
         onDeletePipeline={handleDeletePipeline}
         stats={stats}
         alertCount={unackedAlerts.length}
         onAlertClick={() => setAlertModalOpen(true)}
+        jobs={jobs}
+        selectedJobId={selectedJob?.jobId ?? null}
+        onSelectJob={handleSelectJob}
       />
 
       {/* Center: Canvas */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <TopBar queues={queues} />
-        {selectedJob && graphSteps.length > 0 && (
-          <PipelineProgressStepper steps={graphSteps} />
-        )}
           {graphSteps.length > 0 ? (
             <div className="flex-1 relative overflow-hidden">
               <CanvasGraph
@@ -489,7 +553,38 @@ export default function ConsolePage() {
                 jobInitWarningReason={jobInitWarningReason}
                 focusEntryTrigger={focusEntryTrigger}
                 onNodeOpenDetail={handleNodeOpenDetail}
+                disabledNodeOrders={disabledNodeOrders}
+                onToggleNodeActive={handleToggleNodeActive}
+                onReprocessStep={selectedJob ? handleReprocessFromNode : undefined}
+                isJobMode={!!selectedJob}
               />
+              {/* 캔버스 좌측 상단 — 상태 뱃지 */}
+              <TopBar queues={queues} />
+              {/* 캔버스 우측 상단 툴바 — 세로 정렬 */}
+              <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5">
+                {canvasEditable && selectedPipeline && (
+                  <button
+                    type="button"
+                    onClick={handleOpenNodesPanel}
+                    className="p-1.5 rounded-md bg-card/80 backdrop-blur-sm border border-border shadow-sm
+                               text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                    title="노드 추가"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                )}
+                {rightCollapsed && (
+                  <button
+                    type="button"
+                    onClick={() => setRightCollapsed(false)}
+                    className="p-1.5 rounded-md bg-card/80 backdrop-blur-sm border border-border shadow-sm
+                               text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                    title="패널 열기"
+                  >
+                    <PanelRightOpen className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
               {/* n8n 스타일 플로팅 실행 버튼 — 캔버스 하단 중앙 */}
               <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
                 <button
@@ -519,6 +614,10 @@ export default function ConsolePage() {
             </div>
           )}
 
+          {/* Progress Stepper — 실행 로그 패널 위 */}
+          {selectedJob && graphSteps.length > 0 && (
+            <PipelineProgressStepper steps={graphSteps} />
+          )}
           {/* Bottom: Execution Log Panel */}
           <ExecutionLogPanel
             logs={executionLogs}
@@ -534,8 +633,8 @@ export default function ConsolePage() {
           onToggle={() => setRightCollapsed((v) => !v)}
           activeTab={rightTab}
           onTabChange={setRightTab}
-          alertCount={unackedAlerts.length}
-          jobCount={activeJobs.length}
+          showCollapsedToggle={false}
+          tabLabelOverrides={consoleMode.type === 'addStep' ? { console: '노드 추가' } : undefined}
         >
           {rightTab === 'console' && (
             <ConsoleTab
@@ -551,17 +650,17 @@ export default function ConsolePage() {
               availableProfiles={profiles}
             />
           )}
-          {rightTab === 'jobs' && (
-            <JobsTab jobs={jobs} selectedJobId={selectedJob?.jobId ?? null} onSelectJob={handleSelectJob} />
-          )}
-          {rightTab === 'alerts' && (
-            <AlertsTab alerts={alerts} onAck={handleAckAlert} onSelectJob={handleSelectJob} />
-          )}
           {rightTab === 'queues' && (
             <QueuesTab queues={queues} />
           )}
           {rightTab === 'audit' && (
-            <AuditTab events={auditEvents} onSelectJob={handleSelectJob} />
+            <AuditTab
+              events={auditEvents}
+              onSelectJob={handleSelectJob}
+              sortBy={auditSortBy}
+              sortOrder={auditSortOrder}
+              onSort={handleAuditSort}
+            />
           )}
       </RightTabbedPanel>
 
@@ -613,11 +712,26 @@ export default function ConsolePage() {
         />
       )}
 
+      {/* FILE_INPUT 노드 설정 다이얼로그 — 더블클릭 또는 툴바 Play */}
+      {fileInputConfigStep && fileInputConfigStep.inputLevel && (
+        <FileInputConfigDialog
+          inputLevel={fileInputConfigStep.inputLevel}
+          current={fileInputConfigStep.fileInputConfig}
+          onConfirm={handleFileInputConfigApply}
+          onCancel={() => setFileInputConfigStep(null)}
+        />
+      )}
+
       {/* 노드 상세 모달 — 더블클릭 또는 툴바 Play */}
       {nodeDetailStep && (
         <NodeDetailModal
           step={nodeDetailStep}
           onClose={() => setNodeDetailStep(null)}
+          onSaveNode={canvasEditable ? handleSaveNode : undefined}
+          availableProfiles={profiles}
+          satelliteId={selectedPipeline?.satelliteId}
+          mode={selectedPipeline?.mode}
+          prevNodes={getPrevNodes(nodeDetailStep.order)}
         />
       )}
 

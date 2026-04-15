@@ -3,22 +3,22 @@
 import { cn } from '@/lib/utils';
 import { PanelRightClose, PanelRightOpen } from 'lucide-react';
 
-export type RightTab = 'console' | 'jobs' | 'alerts' | 'queues' | 'audit';
+export type RightTab = 'console' | 'queues' | 'audit';
 
 interface RightTabbedPanelProps {
   collapsed: boolean;
   onToggle: () => void;
   activeTab: RightTab;
   onTabChange: (tab: RightTab) => void;
-  alertCount: number;
-  jobCount: number;
+  /** 외부에서 토글 버튼을 제공할 때 내장 버튼 숨김 (기본: true) */
+  showCollapsedToggle?: boolean;
+  /** 탭 라벨 오버라이드 (예: { console: '노드 추가' }) */
+  tabLabelOverrides?: Partial<Record<RightTab, string>>;
   children: React.ReactNode;
 }
 
 const TABS: { id: RightTab; label: string }[] = [
   { id: 'console', label: '콘솔' },
-  { id: 'jobs', label: 'Jobs' },
-  { id: 'alerts', label: 'Alerts' },
   { id: 'queues', label: '큐' },
   { id: 'audit', label: '감사' },
 ];
@@ -28,14 +28,14 @@ export default function RightTabbedPanel({
   onToggle,
   activeTab,
   onTabChange,
-  alertCount,
-  jobCount,
+  showCollapsedToggle = true,
+  tabLabelOverrides,
   children,
 }: RightTabbedPanelProps) {
   return (
     <>
       {/* Collapsed toggle button — floats on the canvas edge */}
-      {collapsed && (
+      {collapsed && showCollapsedToggle && (
         <button
           onClick={onToggle}
           className="absolute right-3 top-3 z-30 p-1.5 rounded-md bg-card/80 backdrop-blur-sm border border-border hover:bg-muted/50 transition-colors"
@@ -51,7 +51,9 @@ export default function RightTabbedPanel({
           'h-full bg-card border-l border-border flex flex-col flex-shrink-0 z-20 transition-all duration-300 ease-in-out',
           collapsed
             ? 'w-0 min-w-0 border-l-0 opacity-0 overflow-hidden'
-            : 'w-[420px] min-w-[420px] opacity-100',
+            : activeTab === 'audit'
+              ? 'w-[750px] min-w-[750px] opacity-100'
+              : 'w-[420px] min-w-[420px] opacity-100',
         )}
       >
         {/* Tabs */}
@@ -71,13 +73,7 @@ export default function RightTabbedPanel({
                     : 'border-transparent text-muted-foreground hover:text-foreground',
                 )}
               >
-                {tab.label}
-                {tab.id === 'alerts' && alertCount > 0 && (
-                  <span className="ml-1 px-1 rounded-full text-[9px] bg-destructive/15 text-destructive">{alertCount}</span>
-                )}
-                {tab.id === 'jobs' && jobCount > 0 && (
-                  <span className="ml-1 px-1 rounded-full text-[9px] bg-accent/15 text-accent">{jobCount}</span>
-                )}
+                {tabLabelOverrides?.[tab.id] ?? tab.label}
               </button>
             ))}
           </div>
