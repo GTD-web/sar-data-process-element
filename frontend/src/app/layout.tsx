@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'SDPE Pipeline Console',
-  description: 'SAR Data Process Element — Pipeline Operations Console',
+  title: 'SDPE DAG',
+  description: 'SAR Data Processing Pipeline Operations Console',
 };
 
 export default function RootLayout({

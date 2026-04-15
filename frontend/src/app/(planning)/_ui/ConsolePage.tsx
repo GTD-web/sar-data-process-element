@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import PipelineProgressStepper from '@/components/graph/PipelineProgressStepper';
@@ -10,17 +10,17 @@ import LeftSidebar from '@/components/panels/LeftSidebar';
 import RightTabbedPanel, { type RightTab } from '@/components/panels/RightTabbedPanel';
 import ConsoleTab, { type ConsoleMode } from '@/components/panels/ConsoleTab';
 import AuditTab from '@/components/panels/AuditTab';
-import QueuesTab from '@/components/panels/QueuesTab';
 import AlertModal from '@/components/panels/AlertModal';
 import ReprocessConfirmDialog from '@/components/panels/ReprocessConfirmDialog';
 import CancelConfirmDialog from '@/components/panels/CancelConfirmDialog';
 import CreatePipelineDialog, { type CreatePipelineBasicData } from '@/components/panels/CreatePipelineDialog';
 import SelectStartNodeDialog, { type StartNodeSelection } from '@/components/panels/SelectStartNodeDialog';
 import ExecutionLogPanel from '@/components/panels/ExecutionLogPanel';
+import StepDetailPopover from '@/components/panels/StepDetailPopover';
 import NodeDetailModal, { type PrevNodeInfo } from '@/components/panels/NodeDetailModal';
 import FileInputConfigDialog from '@/components/panels/FileInputConfigDialog';
 import Toast, { type ToastMessage } from '@/components/ui/Toast';
-import { FlaskConical, Plus, PanelRightOpen } from 'lucide-react';
+import { FlaskConical, Plus, PanelRightOpen, GitBranch } from 'lucide-react';
 import type {
   PipelineDefinition,
   PipelineStepDefinition,
@@ -96,6 +96,9 @@ export default function ConsolePage() {
   const [disabledNodeOrders, setDisabledNodeOrders] = useState<Set<number>>(new Set());
   const [auditSortBy, setAuditSortBy] = useState<keyof AuditEvent | null>(null);
   const [auditSortOrder, setAuditSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [activeStepOrder, setActiveStepOrder] = useState<number | null>(null);
+  const [popoverClickY, setPopoverClickY] = useState(0);
+  const canvasRef = useRef<HTMLDivElement>(null);
 
   // --- Load ---
   useEffect(() => {
@@ -110,9 +113,12 @@ export default function ConsolePage() {
         service.처리_프로파일_목록을_조회한다(),
         service.실행_로그를_조회한다({ limit: 300 }),
       ]);
+      const isCreateMode = searchParams.get('create') === 'true';
+
       if (plRes.data) {
         setPipelines(plRes.data);
-        if (plRes.data.length > 0) setSelectedPipelineId(plRes.data[0].id);
+        // create 모드가 아닐 때만 첫 파이프라인 자동 선택
+        if (!isCreateMode && plRes.data.length > 0) setSelectedPipelineId(plRes.data[0].id);
       }
       if (statsRes.data) setStats(statsRes.data);
       if (jobsRes.data) setJobs(jobsRes.data.items);
@@ -199,10 +205,19 @@ export default function ConsolePage() {
 
   // --- Canvas handlers ---
   const handleNodeClick = useCallback(
-    (_stepOrder: number) => {
-      // 싱글 클릭 — no-op (더블클릭으로 상세 모달 열림)
+    (stepOrder: number, clickY: number) => {
+      if (!selectedJob) return;
+      const activeStep = selectedJob.steps.find((s) => s.order === stepOrder);
+      if (!activeStep) return;
+      // 이미 열려 있는 팝오버를 다시 클릭하면 닫기
+      if (activeStepOrder === stepOrder) {
+        setActiveStepOrder(null);
+        return;
+      }
+      setActiveStepOrder(stepOrder);
+      setPopoverClickY(clickY);
     },
-    [],
+    [selectedJob, activeStepOrder],
   );
 
   const handleConnect = useCallback(
@@ -329,6 +344,7 @@ export default function ConsolePage() {
     const res = await service.Job_상세를_조회한다(jobId);
     if (res.data) {
       setSelectedJob(res.data);
+      setActiveStepOrder(null);
       setConsoleMode({ type: 'job', job: res.data });
       setRightTab('console');
       setRightCollapsed(false);
@@ -403,6 +419,7 @@ export default function ConsolePage() {
     if (selectedPipelineId === id) {
       setSelectedPipelineId(null);
       setSelectedJob(null);
+      setActiveStepOrder(null);
       setConsoleMode({ type: 'idle' });
       setDisabledNodeOrders(new Set());
       updateJobIdParam(null);
@@ -420,7 +437,12 @@ export default function ConsolePage() {
   }, [service, selectedPipelineId]);
 
   const handleCreatePipeline = useCallback(() => {
-    setCreateStep('step1');
+    // 파이프라인 선택 해제 → 빈 캔버스로 이동 (거기서 모달 진입)
+    setSelectedPipelineId(null);
+    setSelectedJob(null);
+    setActiveStepOrder(null);
+    setConsoleMode({ type: 'idle' });
+    setDisabledNodeOrders(new Set());
   }, []);
 
   const handleCreateStep1Next = useCallback((data: CreatePipelineBasicData) => {
@@ -521,6 +543,7 @@ export default function ConsolePage() {
         onSelectPipeline={(id) => {
           setSelectedPipelineId(id);
           setSelectedJob(null);
+          setActiveStepOrder(null);
           setConsoleMode({ type: 'idle' });
           setDisabledNodeOrders(new Set());
           updateJobIdParam(null);
@@ -533,12 +556,13 @@ export default function ConsolePage() {
         jobs={jobs}
         selectedJobId={selectedJob?.jobId ?? null}
         onSelectJob={handleSelectJob}
+        activePage="console"
       />
 
       {/* Center: Canvas */}
       <div className="flex-1 flex flex-col overflow-hidden">
           {graphSteps.length > 0 ? (
-            <div className="flex-1 relative overflow-hidden">
+            <div ref={canvasRef} className="flex-1 relative overflow-hidden">
               <CanvasGraph
                 pipelineId={selectedPipelineId}
                 steps={graphSteps}
@@ -549,7 +573,7 @@ export default function ConsolePage() {
                 onAddNode={handleAddNode}
                 onConnect={handleConnect}
                 onDeleteEdge={handleDeleteEdge}
-                onTrigger={handleTriggerPipeline}
+                onTrigger={selectedJob?.status === 'ASSIGNED' ? undefined : handleTriggerPipeline}
                 jobInitWarningReason={jobInitWarningReason}
                 focusEntryTrigger={focusEntryTrigger}
                 onNodeOpenDetail={handleNodeOpenDetail}
@@ -558,8 +582,7 @@ export default function ConsolePage() {
                 onReprocessStep={selectedJob ? handleReprocessFromNode : undefined}
                 isJobMode={!!selectedJob}
               />
-              {/* 캔버스 좌측 상단 — 상태 뱃지 */}
-              <TopBar queues={queues} />
+              {/* 캔버스 좌측 상단 — (제거됨) */}
               {/* 캔버스 우측 상단 툴바 — 세로 정렬 */}
               <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5">
                 {canvasEditable && selectedPipeline && (
@@ -585,32 +608,81 @@ export default function ConsolePage() {
                   </button>
                 )}
               </div>
-              {/* n8n 스타일 플로팅 실행 버튼 — 캔버스 하단 중앙 */}
-              <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-                <button
-                  type="button"
-                  disabled={!selectedPipelineId || !!selectedJob}
-                  onClick={handleTriggerPipeline}
-                  className="pointer-events-auto flex items-center gap-2 pl-2.5 pr-3.5 py-2 rounded-lg
-                             text-[11px] font-semibold shadow-lg whitespace-nowrap
-                             bg-accent text-accent-foreground
-                             hover:brightness-110 active:brightness-95 transition-all
-                             disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <FlaskConical className="w-3.5 h-3.5" />
-                  파이프라인 실행
-                </button>
-              </div>
+              {/* n8n 스타일 플로팅 실행 버튼 — 캔버스 하단 중앙 (Job 선택 시 숨김) */}
+              {!selectedJob && (
+                <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+                  <button
+                    type="button"
+                    disabled={!selectedPipelineId}
+                    onClick={handleTriggerPipeline}
+                    className="pointer-events-auto flex items-center gap-2 pl-2.5 pr-3.5 py-2 rounded-lg
+                               text-[11px] font-semibold shadow-lg whitespace-nowrap
+                               bg-accent text-accent-foreground
+                               hover:brightness-110 active:brightness-95 transition-all
+                               disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <FlaskConical className="w-3.5 h-3.5" />
+                    파이프라인 실행
+                  </button>
+                </div>
+              )}
+              {/* 단계 상세 팝오버 — 클릭한 카드 높이에 맞춰 캔버스 우측에 렌더링 */}
+              {selectedJob && activeStepOrder != null && activeStepOrder > 0 && (() => {
+                const activeStep = selectedJob.steps.find((s) => s.order === activeStepOrder);
+                if (!activeStep) return null;
+                const canvasRect = canvasRef.current?.getBoundingClientRect();
+                const canvasTop = canvasRect?.top ?? 0;
+                const canvasHeight = canvasRect?.height ?? 600;
+                const relativeTop = Math.max(8, popoverClickY - canvasTop);
+                return (
+                  <StepDetailPopover
+                    step={activeStep}
+                    job={selectedJob}
+                    logs={executionLogs}
+                    onClose={() => setActiveStepOrder(null)}
+                    topOffset={relativeTop}
+                    containerHeight={canvasHeight}
+                  />
+                );
+              })()}
             </div>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center bg-background text-muted-foreground gap-3">
-              <span className="text-sm">파이프라인을 선택하거나 새로 만드세요</span>
-              <button
-                onClick={handleCreatePipeline}
-                className="px-3 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 transition-colors"
-              >
-                새 파이프라인
-              </button>
+            <div className="flex-1 flex items-center justify-center bg-background">
+              <div className="flex items-center gap-6">
+                {/* 새 파이프라인 만들기 */}
+                <button
+                  type="button"
+                  onClick={() => setCreateStep('step1')}
+                  className="group flex flex-col items-center justify-center w-40 h-40
+                             border-2 border-dashed border-border rounded-xl
+                             hover:border-accent/50 hover:bg-accent/5 transition-all"
+                >
+                  <Plus className="w-10 h-10 text-muted-foreground/50 group-hover:text-accent transition-colors" />
+                  <span className="text-sm text-muted-foreground group-hover:text-foreground mt-3 transition-colors">
+                    새 파이프라인 만들기
+                  </span>
+                </button>
+
+                <span className="text-sm text-muted-foreground/40">or</span>
+
+                {/* 기존 파이프라인 선택 */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (pipelines.length > 0) {
+                      setSelectedPipelineId(pipelines[0]!.id);
+                    }
+                  }}
+                  className="group flex flex-col items-center justify-center w-40 h-40
+                             border-2 border-dashed border-border rounded-xl
+                             hover:border-accent/50 hover:bg-accent/5 transition-all"
+                >
+                  <GitBranch className="w-10 h-10 text-muted-foreground/50 group-hover:text-accent transition-colors" />
+                  <span className="text-sm text-muted-foreground group-hover:text-foreground mt-3 transition-colors">
+                    기존 파이프라인 열기
+                  </span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -648,10 +720,9 @@ export default function ConsolePage() {
               onSavePipeline={handleSavePipeline}
               pipelineSaving={editSaving}
               availableProfiles={profiles}
+              onStepClick={(order, clickY) => { setActiveStepOrder(order); setPopoverClickY(clickY); }}
+              activeStepOrder={activeStepOrder}
             />
-          )}
-          {rightTab === 'queues' && (
-            <QueuesTab queues={queues} />
           )}
           {rightTab === 'audit' && (
             <AuditTab

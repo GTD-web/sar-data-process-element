@@ -16,6 +16,7 @@ import {
   type EdgeTypes,
   type Connection,
   BackgroundVariant,
+  MarkerType,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
@@ -175,6 +176,12 @@ function buildEdges(
       type: 'deletable',
       selectable: false,
       animated: running,
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: stroke,
+        width: 20,
+        height: 20,
+      },
       data: {
         stroke, strokeWidth: 2, animated: running, editable,
         sourceOrder: source, targetOrder: target,
@@ -214,7 +221,7 @@ interface CanvasGraphProps {
   steps: PipelineStep[];
   pipelineEdges: PipelineEdge[];
   editable?: boolean;
-  onNodeClick?: (stepOrder: number) => void;
+  onNodeClick?: (stepOrder: number, clickY: number) => void;
   onDeleteNode?: (order: number) => void;
   onAddNode?: (afterOrder: number, beforeOrder?: number) => void;
   onConnect?: (sourceOrder: number, targetOrder: number) => void;
@@ -314,8 +321,8 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
     setTimeout(() => instance.fitView(), 100);
   }, []);
 
-  const handleNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
-    onNodeClick?.(parseInt(node.id.replace('step-', ''), 10));
+  const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    onNodeClick?.(parseInt(node.id.replace('step-', ''), 10), event.clientY);
   }, [onNodeClick]);
 
   const handleNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {

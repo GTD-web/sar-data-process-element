@@ -94,35 +94,35 @@ type MockRecord = Record<string, string | number | boolean | string[]>;
 
 
 const MOCK_SAR_OUTPUT: Record<SarStage, MockRecord> = {
-  L0:  { output_path: '/nas/sar/l0/KS7_STRIP_20240312_L0.h5',   tasks_completed: 4, duration_s: 42,  status: 'SUCCESS' },
-  L1A: { output_path: '/nas/sar/l1a/KS7_STRIP_20240312_SLC.tif',tasks_completed: 5, duration_s: 382, resolution_m: 1.5, status: 'SUCCESS' },
-  L1B: { output_path: '/nas/sar/l1b/KS7_STRIP_20240312_GRD.tif',tasks_completed: 4, duration_s: 118, looks: 4, status: 'SUCCESS' },
-  L1C: { output_path: '/nas/sar/l1c/KS7_STRIP_20240312_RTC.tif',tasks_completed: 4, duration_s: 213, dem_used: 'SRTM-30m', epsg: 32652, status: 'SUCCESS' },
-  L2A: { output_path: '/nas/sar/l2a/KS7_STRIP_20240312_MAPS.tif',tasks_completed: 4, duration_s: 97, layers: ['incidence_angle', 'nesz', 'nlooks', 'layover_shadow'], status: 'SUCCESS' },
-  L2B: { output_path: '/nas/sar/l2b/KS7_STRIP_20240312_ANALYSIS.tif', detections: 12, change_ratio: 0.03, duration_s: 177, status: 'SUCCESS' },
-  L3:  { output_path: '/nas/sar/l3/KS7_STRIP_20240312_APP.tif', product_type: 'application', duration_s: 58, status: 'SUCCESS' },
+  L0:  { output_path: '/nas/sar/l0/LX3_STRIP_20240312_L0.h5',   tasks_completed: 4, duration_s: 42,  status: 'SUCCESS' },
+  L1A: { output_path: '/nas/sar/l1a/LX3_STRIP_20240312_SLC.tif',tasks_completed: 5, duration_s: 382, resolution_m: 1.5, status: 'SUCCESS' },
+  L1B: { output_path: '/nas/sar/l1b/LX3_STRIP_20240312_GRD.tif',tasks_completed: 4, duration_s: 118, looks: 4, status: 'SUCCESS' },
+  L1C: { output_path: '/nas/sar/l1c/LX3_STRIP_20240312_RTC.tif',tasks_completed: 4, duration_s: 213, dem_used: 'SRTM-30m', epsg: 32652, status: 'SUCCESS' },
+  L2A: { output_path: '/nas/sar/l2a/LX3_STRIP_20240312_MAPS.tif',tasks_completed: 4, duration_s: 97, layers: ['incidence_angle', 'nesz', 'nlooks', 'layover_shadow'], status: 'SUCCESS' },
+  L2B: { output_path: '/nas/sar/l2b/LX3_STRIP_20240312_ANALYSIS.tif', detections: 12, change_ratio: 0.03, duration_s: 177, status: 'SUCCESS' },
+  L3:  { output_path: '/nas/sar/l3/LX3_STRIP_20240312_APP.tif', product_type: 'application', duration_s: 58, status: 'SUCCESS' },
 };
 
 function getMockOutput(step: PipelineStepDefinition): MockRecord {
   if (step.kind === 'SAR' && step.sarStage) return MOCK_SAR_OUTPUT[step.sarStage] ?? {};
   if (step.kind === 'TRIGGER') return {
-    event: 'RAW_DATA_RECEIVED', raw_data_path: '/nas/sar/raw/KS7_STRIP_20240312_RAW.h5',
-    satellite_id: 'KS-7', mode: 'Stripmap', received_at: new Date().toISOString(),
+    event: 'RAW_DATA_RECEIVED', raw_data_path: '/nas/sar/raw/LX3_STRIP_20240312_RAW.h5',
+    satellite_id: 'Lumir-X3', mode: 'Stripmap', received_at: new Date().toISOString(),
     file_size_bytes: 2_147_483_648, checksum_ok: true,
   };
   if (step.kind === 'JOB_INIT') return {
     job_id: `JOB-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
-    profile_id: step.jobInitConfig?.profileId ?? 'PROF-KS7-STRIP-HH',
+    profile_id: step.jobInitConfig?.profileId ?? 'PROF-LX3-STRIP-HH',
     priority: step.jobInitConfig?.priority ?? 5,
     dag_node_count: 6, estimated_duration_s: 18_000, status: 'CREATED',
   };
   if (step.kind === 'CATALOG') return {
-    stac_item_id: 'KS7-STRIP-20240312-001',
-    catalog_url: '/catalog/items/KS7-STRIP-20240312-001',
+    stac_item_id: 'LX3-STRIP-20240312-001',
+    catalog_url: '/catalog/items/LX3-STRIP-20240312-001',
     registered_at: new Date().toISOString(), product_count: 7, status: 'REGISTERED',
   };
   if (step.kind === 'FILE_INPUT') return {
-    validated_path: '/nas/sar/raw/KS7_STRIP_20240312_RAW.h5',
+    validated_path: '/nas/sar/raw/LX3_STRIP_20240312_RAW.h5',
     start_stage: 'L1A', job_context: 'PARTIAL_REPROCESS', status: 'VALIDATED',
   };
   return {};

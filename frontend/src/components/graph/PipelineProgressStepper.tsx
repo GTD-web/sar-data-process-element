@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { Ban, CheckCircle, Circle, Loader, XCircle, ChevronRight } from 'lucide-react';
 import { cn, formatDuration } from '@/lib/utils';
 import type { PipelineStep, StepStatus } from '@/types/pipeline';
-import { CSC_PROCESSING_LEVELS } from '@/types/pipeline';
+import { SAR_STAGE_LABELS, SAR_STAGE_TO_CSC, CSC_VT_SECONDS } from '@/types/pipeline';
 
 // ─── 스테퍼 그룹 정의 ────────────────────────────────────────────────────────
 
@@ -47,34 +47,18 @@ function buildGroups(steps: PipelineStep[]): StepperGroup[] {
     });
   }
 
-  // ③ SAR 처리 레벨별 그룹 (L0/L1/L2/L3)
-  for (const levelDef of CSC_PROCESSING_LEVELS) {
-    const matching = steps.filter(
-      (s) => s.kind === 'SAR' && s.sarStage !== undefined && levelDef.stages.includes(s.sarStage as typeof levelDef.stages[number]),
-    );
-    if (matching.length === 0) continue;
-
-    // 집계 상태: FAILED > RUNNING > COMPLETED > CANCELED > PENDING
-    let groupStatus: StepStatus = 'PENDING';
-    if (matching.some((s) => s.status === 'FAILED')) groupStatus = 'FAILED';
-    else if (matching.some((s) => s.status === 'RUNNING')) groupStatus = 'RUNNING';
-    else if (matching.every((s) => s.status === 'COMPLETED' || s.status === 'SKIPPED')) groupStatus = 'COMPLETED';
-    else if (matching.some((s) => s.status === 'CANCELED')) groupStatus = 'CANCELED';
-
-    const totalDuration = matching.reduce((sum, s) => sum + (s.durationMs ?? 0), 0);
-    const firstStarted = matching
-      .map((s) => s.startedAt)
-      .filter(Boolean)
-      .sort()[0];
-
+  // ③ SAR 처리 스테이지별 개별 항목 (L0, L1A, L1B, L1C, L2A, L2B, L3)
+  for (const step of steps) {
+    if (step.kind !== 'SAR' || !step.sarStage) continue;
+    const csc = SAR_STAGE_TO_CSC[step.sarStage];
     groups.push({
-      id: levelDef.csc,
-      label: levelDef.label,
-      cscLabel: levelDef.csc,
-      vtSeconds: levelDef.vtSeconds,
-      status: groupStatus,
-      durationMs: groupStatus === 'COMPLETED' ? totalDuration : undefined,
-      startedAt: firstStarted,
+      id: step.sarStage,
+      label: step.sarStage,
+      cscLabel: SAR_STAGE_LABELS[step.sarStage],
+      vtSeconds: CSC_VT_SECONDS[csc],
+      status: step.status,
+      durationMs: step.status === 'COMPLETED' ? step.durationMs : undefined,
+      startedAt: step.startedAt,
     });
   }
 

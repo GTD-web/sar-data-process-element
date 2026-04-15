@@ -153,12 +153,52 @@ export interface AuditEvent {
   operatorId?: string;
 }
 
+/** 큐 내 대기 중인 개별 메시지 */
+export interface QueueMessage {
+  messageId: string;
+  jobId: string;
+  satelliteId: string;
+  sarStage?: SarStage;
+  enqueuedAt: string;
+  priority: number;
+}
+
+/** 큐별 처리량 통계 */
+export interface QueueThroughput {
+  processed1h: number;
+  processed24h: number;
+  avgProcessingMs: number;
+}
+
+/** Dead Letter — 최대 재시도 초과 실패 메시지 */
+export interface QueueDeadLetter {
+  messageId: string;
+  jobId: string;
+  failedAt: string;
+  retryCount: number;
+  errorMessage: string;
+}
+
+/** 큐 depth 추이 데이터 포인트 (sparkline용) */
+export interface QueueDepthPoint {
+  timestamp: string;
+  depth: number;
+}
+
 export interface QueueHealth {
   queue: string;
   depth: number;
   oldestMessageAge: number;
   consumers: number;
   healthy: boolean;
+  /** 대기 중인 메시지 목록 */
+  messages: QueueMessage[];
+  /** 처리량 통계 */
+  throughput: QueueThroughput;
+  /** Dead Letter 목록 */
+  deadLetters: QueueDeadLetter[];
+  /** 최근 1시간 depth 추이 (5분 간격, 12개 포인트) */
+  depthHistory: QueueDepthPoint[];
 }
 
 export interface PipelineStepDefinition {
@@ -194,6 +234,7 @@ export interface PipelineDefinition {
   edges: PipelineEdge[];
   createdAt: string;
   updatedAt: string;
+  archived?: boolean;
 }
 
 export interface CreatePipelineData {

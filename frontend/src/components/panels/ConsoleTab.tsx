@@ -33,6 +33,8 @@ interface ConsoleTabProps {
   onSavePipeline: (data: { name: string; satelliteId: string; mode: string; steps: { kind: PipelineNodeKind; sarStage?: SarStage }[] }) => void;
   pipelineSaving: boolean;
   availableProfiles: ProcessingProfile[];
+  onStepClick?: (stepOrder: number, clickY: number) => void;
+  activeStepOrder?: number | null;
 }
 
 export default function ConsoleTab({
@@ -46,6 +48,8 @@ export default function ConsoleTab({
   onSavePipeline,
   pipelineSaving,
   availableProfiles,
+  onStepClick,
+  activeStepOrder,
 }: ConsoleTabProps) {
   if (mode.type === 'node') {
     return (
@@ -75,6 +79,8 @@ export default function ConsoleTab({
         onReprocess={onReprocessJob}
         onPartialReprocess={onPartialReprocess}
         onCancel={onCancelJob}
+        onStepClick={onStepClick}
+        activeStepOrder={activeStepOrder}
       />
     );
   }

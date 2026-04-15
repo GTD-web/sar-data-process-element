@@ -2,12 +2,12 @@
 
 import { PipelineServiceProvider } from '@/app/(planning)/_context/pipeline-service-context';
 import { pipelineCurrentService } from '@/app/(current)/_services/pipeline.current.service';
-import HomePage from '@/app/(planning)/_ui/HomePage';
+import QueueDashboardPage from '@/app/(planning)/_ui/QueueDashboardPage';
 
-export default function CurrentHomePage() {
+export default function CurrentQueuesPage() {
   return (
     <PipelineServiceProvider service={pipelineCurrentService}>
-      <HomePage />
+      <QueueDashboardPage />
     </PipelineServiceProvider>
   );
 }

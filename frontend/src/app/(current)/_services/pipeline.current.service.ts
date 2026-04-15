@@ -140,6 +140,11 @@ export const pipelineCurrentService: IPipelineUIService = {
     return handleResponse(res, '파이프라인 목록 조회 실패');
   },
 
+  async 아카이브_파이프라인_목록을_조회한다(): Promise<ServiceResponseWithData<PipelineDefinition[]>> {
+    const res = await fetch(`${API_BASE}/pipelines?archived=true`);
+    return handleResponse(res, '아카이브 파이프라인 목록 조회 실패');
+  },
+
   async 파이프라인을_조회한다(id: string): Promise<ServiceResponseWithData<PipelineDefinition>> {
     const res = await fetch(`${API_BASE}/pipelines/${id}`);
     return handleResponse(res, '파이프라인 조회 실패');
@@ -166,6 +171,21 @@ export const pipelineCurrentService: IPipelineUIService = {
   async 파이프라인을_삭제한다(id: string): Promise<ServiceResponse> {
     const res = await fetch(`${API_BASE}/pipelines/${id}`, { method: 'DELETE' });
     if (!res.ok) return { success: false, message: `파이프라인 삭제 실패: ${res.status}` };
+    return { success: true, message: 'OK' };
+  },
+
+  async 파이프라인을_복제한다(id: string): Promise<ServiceResponseWithData<PipelineDefinition>> {
+    const res = await fetch(`${API_BASE}/pipelines/${id}/duplicate`, { method: 'POST' });
+    return handleResponse(res, '파이프라인 복제 실패');
+  },
+
+  async 파이프라인을_아카이브한다(id: string, archived: boolean): Promise<ServiceResponse> {
+    const res = await fetch(`${API_BASE}/pipelines/${id}/archive`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ archived }),
+    });
+    if (!res.ok) return { success: false, message: `아카이브 처리 실패: ${res.status}` };
     return { success: true, message: 'OK' };
   },
 

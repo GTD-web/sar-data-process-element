@@ -62,7 +62,7 @@ export default function FileInputConfigDialog({
               type="text"
               value={sceneId}
               onChange={(e) => setSceneId(e.target.value)}
-              placeholder="예: SCENE-KS5-20260101-001"
+              placeholder="예: SCENE-LX1-20260101-001"
               autoFocus
               className={cn(
                 'w-full bg-muted border rounded-md px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1',
@@ -77,7 +77,7 @@ export default function FileInputConfigDialog({
               type="text"
               value={inputFilePath}
               onChange={(e) => setInputFilePath(e.target.value)}
-              placeholder="예: /data/processed/l1/SCENE-KS5-20260101-001.h5"
+              placeholder="예: /data/processed/l1/SCENE-LX1-20260101-001.h5"
               className={cn(
                 'w-full bg-muted border rounded-md px-3 py-1.5 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1',
                 inputFilePath.trim() ? 'border-accent/40 focus:ring-accent/50' : 'border-border focus:ring-accent/50',

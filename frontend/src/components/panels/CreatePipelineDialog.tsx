@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Plus, X, ArrowRight } from 'lucide-react';
 
-const SATELLITE_IDS = ['KS-5', 'KS-6', 'KS-7'] as const;
+const SATELLITE_IDS = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'] as const;
 const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'] as const;
 
 export interface CreatePipelineBasicData {

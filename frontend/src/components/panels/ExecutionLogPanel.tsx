@@ -55,10 +55,11 @@ export default function ExecutionLogPanel({ logs, selectedJobId, open, onToggle 
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [autoScroll, setAutoScroll] = useState(true);
-  const [jobFilter, setJobFilter] = useState(false);
   const [panelHeight, setPanelHeight] = useState(DEFAULT_PANEL_HEIGHT);
   const [isResizing, setIsResizing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Job 선택 시 자동으로 해당 Job 로그 필터 활성화
+  const jobFilter = !!selectedJobId;
 
   const filteredLogs = useMemo(() => {
     let result = logs;
@@ -77,8 +78,15 @@ export default function ExecutionLogPanel({ logs, selectedJobId, open, onToggle 
     return result;
   }, [logs, levelFilter, searchTerm, jobFilter, selectedJobId]);
 
-  const errorCount = useMemo(() => logs.filter((l) => l.level === 'ERROR').length, [logs]);
-  const warnCount = useMemo(() => logs.filter((l) => l.level === 'WARN').length, [logs]);
+  // Job 필터 적용된 로그 기준으로 ERROR/WARN 카운트
+  const baseLogs = useMemo(() => {
+    if (jobFilter && selectedJobId) {
+      return logs.filter((l) => l.jobId === selectedJobId);
+    }
+    return logs;
+  }, [logs, jobFilter, selectedJobId]);
+  const errorCount = useMemo(() => baseLogs.filter((l) => l.level === 'ERROR').length, [baseLogs]);
+  const warnCount = useMemo(() => baseLogs.filter((l) => l.level === 'WARN').length, [baseLogs]);
 
   useEffect(() => {
     if (autoScroll && open && scrollRef.current) {
@@ -190,21 +198,12 @@ export default function ExecutionLogPanel({ logs, selectedJobId, open, onToggle 
         ))}
 
         {selectedJobId && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setJobFilter((v) => !v);
-              if (!open) onToggle();
-            }}
-            className={cn(
-              'px-2 py-0.5 text-[10px] font-medium rounded transition-colors ml-1 cursor-pointer',
-              jobFilter ? 'bg-accent/15 text-accent' : 'text-muted-foreground hover:text-foreground',
-            )}
+          <span
+            className="px-2 py-0.5 text-[10px] font-medium rounded bg-accent/15 text-accent ml-1"
             title={`${selectedJobId} 로그만 표시`}
           >
             {selectedJobId}
-          </button>
+          </span>
         )}
 
         <div className="flex-1 min-w-2" aria-hidden />

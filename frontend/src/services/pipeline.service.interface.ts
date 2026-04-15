@@ -93,6 +93,8 @@ export interface IPipelineUIService {
 
   파이프라인_목록을_조회한다(): Promise<ServiceResponseWithData<PipelineDefinition[]>>;
 
+  아카이브_파이프라인_목록을_조회한다(): Promise<ServiceResponseWithData<PipelineDefinition[]>>;
+
   파이프라인을_조회한다(id: string): Promise<ServiceResponseWithData<PipelineDefinition>>;
 
   파이프라인을_생성한다(data: CreatePipelineData): Promise<ServiceResponseWithData<PipelineDefinition>>;
@@ -100,6 +102,12 @@ export interface IPipelineUIService {
   파이프라인을_수정한다(id: string, data: UpdatePipelineData): Promise<ServiceResponseWithData<PipelineDefinition>>;
 
   파이프라인을_삭제한다(id: string): Promise<ServiceResponse>;
+
+  /** 파이프라인 복제. 이름에 "(복사)" 접미사 추가. */
+  파이프라인을_복제한다(id: string): Promise<ServiceResponseWithData<PipelineDefinition>>;
+
+  /** 파이프라인 아카이브/복원 토글. */
+  파이프라인을_아카이브한다(id: string, archived: boolean): Promise<ServiceResponse>;
 
   /** EI-01: 파이프라인 수동 실행 (테스트/운영). 새 Job을 생성하여 파이프라인을 기동합니다. */
   파이프라인을_실행한다(pipelineId: string): Promise<ServiceResponseWithData<JobSummary>>;

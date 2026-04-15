@@ -13,6 +13,9 @@ import type {
   PipelineStep,
   ProcessingProfile,
   QueueHealth,
+  QueueMessage,
+  QueueDeadLetter,
+  QueueDepthPoint,
   SarStage,
   ServiceResponse,
   ServiceResponseWithData,
@@ -52,13 +55,13 @@ function randomChoice<T>(arr: readonly T[]): T {
 }
 
 const SCENE_IDS = [
-  'KS5-20260401-001', 'KS5-20260401-002', 'KS5-20260402-003',
-  'KS5-20260403-004', 'KS5-20260403-005', 'KS5-20260404-006',
-  'KS5-20260405-007', 'KS5-20260406-008', 'KS5-20260407-009',
-  'KS5-20260408-010', 'KS5-20260409-011', 'KS5-20260410-012',
+  'LX1-20260401-001', 'LX1-20260401-002', 'LX1-20260402-003',
+  'LX1-20260403-004', 'LX1-20260403-005', 'LX1-20260404-006',
+  'LX1-20260405-007', 'LX1-20260406-008', 'LX1-20260407-009',
+  'LX1-20260408-010', 'LX1-20260409-011', 'LX1-20260410-012',
 ];
 
-const SATELLITE_IDS = ['KS-5', 'KS-6', 'KS-7'];
+const SATELLITE_IDS = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'];
 const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
 
 const MOCK_PROCESSING_PROFILES: ProcessingProfile[] = SATELLITE_IDS.flatMap((sat) => [
@@ -201,7 +204,16 @@ function buildSteps(pipelineSteps: StepDef[], status: JobStatus, retryCount: num
 // Generate Mock Dataset
 // =============================================================================
 
-function generateJobs(count: number, pipelineIds: string[]): JobDetail[] {
+/** PipelineDefinition의 steps를 buildSteps용 StepDef[]로 변환 */
+function toStepDefs(pipeline: PipelineDefinition): StepDef[] {
+  return pipeline.steps.map((s) => ({
+    kind: s.kind,
+    sarStage: s.sarStage,
+    ...(s.inputLevel !== undefined && { inputLevel: s.inputLevel }),
+  }));
+}
+
+function generateJobs(count: number, pipelines: PipelineDefinition[]): JobDetail[] {
   const statuses: JobStatus[] = ['CREATED', 'ASSIGNED', 'COMPLETED', 'FAILED', 'CANCELED'];
   const weights = [0.05, 0.25, 0.45, 0.15, 0.1];
 
@@ -214,14 +226,24 @@ function generateJobs(count: number, pipelineIds: string[]): JobDetail[] {
       if (r < cumulative) { status = statuses[j]; break; }
     }
 
+    const pipeline = pipelines[idx % pipelines.length];
+    const pipelineStepDefs = toStepDefs(pipeline);
+    const satelliteId = pipeline.satelliteId;
+    const mode = pipeline.mode;
+
     const retryCount = status === 'FAILED' ? Math.floor(Math.random() * 4) : 0;
-    const steps = buildSteps(PIPELINE_STEPS, status, retryCount);
+    const steps = buildSteps(pipelineStepDefs, status, retryCount);
     const runningStep = steps.find((s) => s.status === 'RUNNING' || s.status === 'FAILED');
     const acqStart = randomDate(7);
     const acqEnd = new Date(new Date(acqStart).getTime() + 120000).toISOString();
 
-    const satelliteId = randomChoice(SATELLITE_IDS);
-    const mode = randomChoice(MODES);
+    // 파이프라인에 FILE_INPUT이 있으면 부분 재처리
+    const isPartial = pipelineStepDefs.some((s) => s.kind === 'FILE_INPUT');
+    const triggerSource: TriggerSource = isPartial ? 'PARTIAL_REPROCESS' : (idx < 40 ? 'PIPELINE_AUTO' : randomChoice(['PIPELINE_AUTO', 'MANUAL_REQUEST', 'PARTIAL_REPROCESS'] as TriggerSource[]));
+
+    // 완료 시 최종 산출물 레벨은 파이프라인의 마지막 SAR 스테이지 기준
+    const lastSarStep = [...pipelineStepDefs].reverse().find((s) => s.kind === 'SAR');
+    const finalLevel: ProductLevel = lastSarStep?.sarStage ? SAR_STAGE_TO_LEVEL[lastSarStep.sarStage] : 'LEVEL_3';
 
     const PROFILE_POLARIZATIONS: Record<string, string> = {
       Stripmap: 'HH+HV',
@@ -236,14 +258,12 @@ function generateJobs(count: number, pipelineIds: string[]): JobDetail[] {
       description: `${mode} 모드 표준 처리 프로파일`,
     };
 
-    const triggerSources: TriggerSource[] = ['PIPELINE_AUTO', 'MANUAL_REQUEST', 'PARTIAL_REPROCESS'];
-
     return {
       jobId: `JOB-${String(idx + 1).padStart(4, '0')}`,
-      pipelineId: pipelineIds[idx % pipelineIds.length],
+      pipelineId: pipeline.id,
       sceneId: SCENE_IDS[idx % SCENE_IDS.length],
       status,
-      currentLevel: runningStep?.productLevel ?? (status === 'COMPLETED' ? 'LEVEL_3' : null),
+      currentLevel: runningStep?.productLevel ?? (status === 'COMPLETED' ? finalLevel : null),
       currentTargetCsc: runningStep?.targetCsc ?? null,
       retryCount,
       startedAt: randomDate(3),
@@ -257,7 +277,7 @@ function generateJobs(count: number, pipelineIds: string[]): JobDetail[] {
       rawDataPath: `/mnt/nas/sdpe/raw/${SCENE_IDS[idx % SCENE_IDS.length]}.raw`,
       processingProfile,
       priority: 3 + Math.floor(Math.random() * 5),
-      triggerSource: idx < 40 ? 'PIPELINE_AUTO' : randomChoice(triggerSources),
+      triggerSource,
     };
   });
 }
@@ -430,7 +450,7 @@ function generateExecutionLogs(jobs: JobDetail[]): ExecutionLog[] {
     }
   }
 
-  return logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  return logs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 }
 
 const QUEUE_NAMES = [
@@ -443,6 +463,58 @@ const QUEUE_NAMES = [
   'sdpe.catalog.registration',
 ];
 
+const QUEUE_SAR_STAGE_MAP: Record<string, SarStage | undefined> = {
+  'sdpe.jobs.csc03': 'L0',
+  'sdpe.jobs.csc04': 'L1A',
+  'sdpe.jobs.csc05': 'L2A',
+  'sdpe.jobs.csc06': 'L3',
+};
+
+const SATELLITES = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'];
+
+function generateQueueMessages(queue: string, depth: number): QueueMessage[] {
+  const now = Date.now();
+  return Array.from({ length: depth }, (_, i) => ({
+    messageId: `msg-${queue.split('.').pop()}-${String(i + 1).padStart(3, '0')}`,
+    jobId: `JOB-${String(1000 + Math.floor(Math.random() * 9000)).padStart(4, '0')}`,
+    satelliteId: SATELLITES[Math.floor(Math.random() * SATELLITES.length)]!,
+    sarStage: QUEUE_SAR_STAGE_MAP[queue],
+    enqueuedAt: new Date(now - Math.floor(Math.random() * 3600_000)).toISOString(),
+    priority: Math.random() > 0.7 ? 1 : Math.random() > 0.5 ? 2 : 3,
+  }));
+}
+
+function generateDeadLetters(queue: string): QueueDeadLetter[] {
+  const count = Math.random() > 0.6 ? Math.floor(Math.random() * 4) : 0;
+  const now = Date.now();
+  const errors = [
+    'Max retries exceeded: processing timeout after 3600s',
+    'OutOfMemoryError: heap limit reached during range compression',
+    'FileNotFoundException: raw data file missing from NAS',
+    'ChecksumMismatchError: corrupted input data detected',
+    'DEM integration failed: elevation model unavailable for region',
+  ];
+  return Array.from({ length: count }, (_, i) => ({
+    messageId: `dlq-${queue.split('.').pop()}-${String(i + 1).padStart(3, '0')}`,
+    jobId: `JOB-${String(2000 + Math.floor(Math.random() * 8000)).padStart(4, '0')}`,
+    failedAt: new Date(now - Math.floor(Math.random() * 86400_000)).toISOString(),
+    retryCount: 3,
+    errorMessage: errors[Math.floor(Math.random() * errors.length)]!,
+  }));
+}
+
+function generateDepthHistory(): QueueDepthPoint[] {
+  const now = Date.now();
+  let depth = Math.floor(Math.random() * 8);
+  return Array.from({ length: 12 }, (_, i) => {
+    depth = Math.max(0, depth + Math.floor(Math.random() * 7) - 3);
+    return {
+      timestamp: new Date(now - (11 - i) * 5 * 60_000).toISOString(),
+      depth,
+    };
+  });
+}
+
 function generateQueueHealth(): QueueHealth[] {
   return QUEUE_NAMES.map((queue) => {
     const depth = Math.floor(Math.random() * 20);
@@ -452,6 +524,14 @@ function generateQueueHealth(): QueueHealth[] {
       oldestMessageAge: depth > 0 ? Math.floor(Math.random() * 7200) : 0,
       consumers: 1 + Math.floor(Math.random() * 3),
       healthy: depth < 15 && Math.random() > 0.1,
+      messages: generateQueueMessages(queue, depth),
+      throughput: {
+        processed1h: Math.floor(Math.random() * 50),
+        processed24h: Math.floor(Math.random() * 500) + 50,
+        avgProcessingMs: Math.floor(Math.random() * 300_000) + 30_000,
+      },
+      deadLetters: generateDeadLetters(queue),
+      depthHistory: generateDepthHistory(),
     };
   });
 }
@@ -540,48 +620,60 @@ function generatePipelines(): PipelineDefinition[] {
 
   // 부분 재처리 파이프라인 (OPS-06) — FILE_INPUT 시작
   const partial: PipelineDefinition[] = [
-    // L1 입력 → L2부터 처리 (Stripmap, 위성별 각 1개)
     buildPipelineFromSteps(
-      'PL-KS5-Partial-L1-Stripmap',
-      'KS-5 L1 입력 재처리 (Stripmap)',
-      'KS-5', 'Stripmap', PARTIAL_L1_STRIPMAP_STEPS, '2026-02-01T09:00:00Z',
+      'PL-LX1-Partial-L1-Stripmap',
+      'Lumir-X1 L1 입력 재처리 (Stripmap)',
+      'Lumir-X1', 'Stripmap', PARTIAL_L1_STRIPMAP_STEPS, '2026-02-01T09:00:00Z',
     ),
     buildPipelineFromSteps(
-      'PL-KS6-Partial-L1-Stripmap',
-      'KS-6 L1 입력 재처리 (Stripmap)',
-      'KS-6', 'Stripmap', PARTIAL_L1_STRIPMAP_STEPS, '2026-02-10T09:00:00Z',
+      'PL-LX2-Partial-L1-Stripmap',
+      'Lumir-X2 L1 입력 재처리 (Stripmap)',
+      'Lumir-X2', 'Stripmap', PARTIAL_L1_STRIPMAP_STEPS, '2026-02-10T09:00:00Z',
     ),
     buildPipelineFromSteps(
-      'PL-KS7-Partial-L1-Stripmap',
-      'KS-7 L1 입력 재처리 (Stripmap)',
-      'KS-7', 'Stripmap', PARTIAL_L1_STRIPMAP_STEPS, '2026-02-10T09:00:00Z',
-    ),
-    // L1 입력 → ScanSAR (L1B까지이므로 등록만)
-    buildPipelineFromSteps(
-      'PL-KS5-Partial-L1-ScanSAR',
-      'KS-5 L1 입력 재처리 (ScanSAR)',
-      'KS-5', 'ScanSAR', PARTIAL_L1_SCANSAR_STEPS, '2026-02-15T09:00:00Z',
-    ),
-    // L1 입력 → Spotlight (L1C까지이므로 등록만)
-    buildPipelineFromSteps(
-      'PL-KS5-Partial-L1-Spotlight',
-      'KS-5 L1 입력 재처리 (Spotlight)',
-      'KS-5', 'Spotlight', PARTIAL_L1_SPOTLIGHT_STEPS, '2026-02-15T09:00:00Z',
-    ),
-    // L2 입력 → L3만 처리 (KS-5, KS-6 Stripmap)
-    buildPipelineFromSteps(
-      'PL-KS5-Partial-L2-Stripmap',
-      'KS-5 L2 입력 재처리 (Stripmap)',
-      'KS-5', 'Stripmap', PARTIAL_L2_STEPS, '2026-03-01T09:00:00Z',
+      'PL-LX3-Partial-L1-Stripmap',
+      'Lumir-X3 L1 입력 재처리 (Stripmap)',
+      'Lumir-X3', 'Stripmap', PARTIAL_L1_STRIPMAP_STEPS, '2026-02-10T09:00:00Z',
     ),
     buildPipelineFromSteps(
-      'PL-KS6-Partial-L2-Stripmap',
-      'KS-6 L2 입력 재처리 (Stripmap)',
-      'KS-6', 'Stripmap', PARTIAL_L2_STEPS, '2026-03-01T09:00:00Z',
+      'PL-LX1-Partial-L1-ScanSAR',
+      'Lumir-X1 L1 입력 재처리 (ScanSAR)',
+      'Lumir-X1', 'ScanSAR', PARTIAL_L1_SCANSAR_STEPS, '2026-02-15T09:00:00Z',
+    ),
+    buildPipelineFromSteps(
+      'PL-LX1-Partial-L1-Spotlight',
+      'Lumir-X1 L1 입력 재처리 (Spotlight)',
+      'Lumir-X1', 'Spotlight', PARTIAL_L1_SPOTLIGHT_STEPS, '2026-02-15T09:00:00Z',
+    ),
+    buildPipelineFromSteps(
+      'PL-LX1-Partial-L2-Stripmap',
+      'Lumir-X1 L2 입력 재처리 (Stripmap)',
+      'Lumir-X1', 'Stripmap', PARTIAL_L2_STEPS, '2026-03-01T09:00:00Z',
+    ),
+    buildPipelineFromSteps(
+      'PL-LX2-Partial-L2-Stripmap',
+      'Lumir-X2 L2 입력 재처리 (Stripmap)',
+      'Lumir-X2', 'Stripmap', PARTIAL_L2_STEPS, '2026-03-01T09:00:00Z',
     ),
   ];
 
-  return [...full, ...partial];
+  // 아카이브된 파이프라인 (구버전, 테스트용 등)
+  const archived: PipelineDefinition[] = [
+    { ...buildPipelineFromSteps(
+      'PL-LX1-Archive-1', 'Lumir-X1 Stripmap Pipeline (v1 — 폐기)',
+      'Lumir-X1', 'Stripmap', PIPELINE_STEPS, '2025-06-01T09:00:00Z',
+    ), archived: true },
+    { ...buildPipelineFromSteps(
+      'PL-LX1-Archive-2', 'Lumir-X1 ScanSAR 테스트 파이프라인',
+      'Lumir-X1', 'ScanSAR', MODE_STEP_VARIANTS['ScanSAR'] ?? PIPELINE_STEPS, '2025-08-15T09:00:00Z',
+    ), archived: true },
+    { ...buildPipelineFromSteps(
+      'PL-LX2-Archive-1', 'Lumir-X2 Spotlight 실험 파이프라인',
+      'Lumir-X2', 'Spotlight', MODE_STEP_VARIANTS['Spotlight'] ?? PIPELINE_STEPS, '2025-10-20T09:00:00Z',
+    ), archived: true },
+  ];
+
+  return [...full, ...partial, ...archived];
 }
 
 let nextPipelineSeq = 100;
@@ -600,8 +692,7 @@ class MockPipelineUIService implements IPipelineUIService {
 
   constructor() {
     this.pipelines = generatePipelines();
-    const pipelineIds = this.pipelines.map((p) => p.id);
-    this.jobs = generateJobs(50, pipelineIds);
+    this.jobs = generateJobs(50, this.pipelines);
     this.alerts = generateAlerts(this.jobs);
     this.auditEvents = generateAuditEvents(this.jobs);
     this.queueHealth = generateQueueHealth();
@@ -778,8 +869,14 @@ class MockPipelineUIService implements IPipelineUIService {
   }
 
   async 파이프라인_목록을_조회한다(): Promise<ServiceResponseWithData<PipelineDefinition[]>> {
-    // 참조 반환 시 외부 변이가 React state에 영향을 주므로 항상 복사본 반환
-    return { success: true, message: 'OK', data: this.pipelines.map((p) => ({ ...p, steps: [...p.steps] })) };
+    // 아카이브되지 않은 파이프라인만 반환, 참조 반환 방지를 위해 복사본 반환
+    const active = this.pipelines.filter((p) => !p.archived);
+    return { success: true, message: 'OK', data: active.map((p) => ({ ...p, steps: [...p.steps] })) };
+  }
+
+  async 아카이브_파이프라인_목록을_조회한다(): Promise<ServiceResponseWithData<PipelineDefinition[]>> {
+    const archived = this.pipelines.filter((p) => p.archived);
+    return { success: true, message: 'OK', data: archived.map((p) => ({ ...p, steps: [...p.steps] })) };
   }
 
   async 파이프라인을_조회한다(id: string): Promise<ServiceResponseWithData<PipelineDefinition>> {
@@ -835,6 +932,33 @@ class MockPipelineUIService implements IPipelineUIService {
     if (idx === -1) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
     this.pipelines.splice(idx, 1);
     return { success: true, message: '파이프라인이 삭제되었습니다' };
+  }
+
+  async 파이프라인을_복제한다(id: string): Promise<ServiceResponseWithData<PipelineDefinition>> {
+    const src = this.pipelines.find((p) => p.id === id);
+    if (!src) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
+    const now = new Date().toISOString();
+    const newId = `PL-${++nextPipelineSeq}`;
+    const dup: PipelineDefinition = {
+      ...src,
+      id: newId,
+      name: `${src.name} (복사)`,
+      steps: src.steps.map((s) => ({ ...s })),
+      edges: src.edges.map((e) => ({ ...e })),
+      createdAt: now,
+      updatedAt: now,
+      archived: false,
+    };
+    this.pipelines.push(dup);
+    return { success: true, message: '파이프라인이 복제되었습니다', data: { ...dup, steps: [...dup.steps] } };
+  }
+
+  async 파이프라인을_아카이브한다(id: string, archived: boolean): Promise<ServiceResponse> {
+    const pl = this.pipelines.find((p) => p.id === id);
+    if (!pl) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
+    pl.archived = archived;
+    pl.updatedAt = new Date().toISOString();
+    return { success: true, message: archived ? '파이프라인이 아카이브되었습니다' : '파이프라인이 복원되었습니다' };
   }
 
   async 파이프라인을_실행한다(pipelineId: string): Promise<ServiceResponseWithData<JobSummary>> {

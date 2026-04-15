@@ -1,13 +1,16 @@
 'use client';
 
+import { Suspense } from 'react';
 import { PipelineServiceProvider } from '@/app/(planning)/_context/pipeline-service-context';
 import { pipelineCurrentService } from '@/app/(current)/_services/pipeline.current.service';
-import HomePage from '@/app/(planning)/_ui/HomePage';
+import ConsolePage from '@/app/(planning)/_ui/ConsolePage';
 
-export default function CurrentHomePage() {
+export default function CurrentConsolePage() {
   return (
     <PipelineServiceProvider service={pipelineCurrentService}>
-      <HomePage />
+      <Suspense>
+        <ConsolePage />
+      </Suspense>
     </PipelineServiceProvider>
   );
 }

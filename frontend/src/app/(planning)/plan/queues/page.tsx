@@ -2,12 +2,12 @@
 
 import { PipelineServiceProvider } from '@/app/(planning)/_context/pipeline-service-context';
 import { pipelineMockService } from '@/app/(planning)/_services/pipeline.mock.service';
-import HomePage from '@/app/(planning)/_ui/HomePage';
+import QueueDashboardPage from '@/app/(planning)/_ui/QueueDashboardPage';
 
-export default function PlanHomePage() {
+export default function PlanQueuesPage() {
   return (
     <PipelineServiceProvider service={pipelineMockService}>
-      <HomePage />
+      <QueueDashboardPage />
     </PipelineServiceProvider>
   );
 }

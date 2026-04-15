@@ -27,6 +27,7 @@ export function DeletableEdge({
   sourceY,
   targetX,
   targetY,
+  markerEnd,
   data,
 }: EdgeProps<DeletableEdgeType>) {
   const stroke = data?.stroke ?? t.edge;
@@ -85,6 +86,7 @@ export function DeletableEdge({
         fill="none"
         className="react-flow__edge-path"
         strokeLinecap="round"
+        markerEnd={markerEnd}
         style={{
           stroke: showActions ? t.edgeActive : stroke,
           strokeWidth: showActions ? 3 : strokeWidth,

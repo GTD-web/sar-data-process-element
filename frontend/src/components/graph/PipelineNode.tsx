@@ -432,7 +432,10 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
               <Handle
                 type="target"
                 position={Position.Left}
-                className="!bg-accent/50 !w-3 !h-3 !border-2 !border-card !-left-1.5 hover:!bg-accent hover:!scale-125 !transition-all"
+                className={cn(
+                  '!w-3 !h-3 !border-2 !border-card !-left-1.5 hover:!scale-125 !transition-all',
+                  status === 'FAILED' ? '!bg-destructive/50 hover:!bg-destructive' : '!bg-accent/50 hover:!bg-accent',
+                )}
               />
             )}
 
@@ -442,8 +445,10 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
               type="source"
               position={Position.Right}
               className={cn(
-                '!w-3 !h-3 !border-2 !border-card !-right-1.5 hover:!bg-accent hover:!scale-125 !transition-all source-handle-wide',
-                isLeaf && editable ? '!bg-accent !opacity-100' : '!bg-accent/50',
+                '!w-3 !h-3 !border-2 !border-card !-right-1.5 hover:!scale-125 !transition-all source-handle-wide',
+                status === 'FAILED'
+                  ? '!bg-destructive/50'
+                  : isLeaf && editable ? '!bg-accent !opacity-100' : '!bg-accent/50',
               )}
             />
           </div>

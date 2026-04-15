@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils';
 import { PanelRightClose, PanelRightOpen } from 'lucide-react';
 
-export type RightTab = 'console' | 'queues' | 'audit';
+export type RightTab = 'console' | 'audit';
 
 interface RightTabbedPanelProps {
   collapsed: boolean;
@@ -19,7 +19,6 @@ interface RightTabbedPanelProps {
 
 const TABS: { id: RightTab; label: string }[] = [
   { id: 'console', label: '콘솔' },
-  { id: 'queues', label: '큐' },
   { id: 'audit', label: '감사' },
 ];
 
