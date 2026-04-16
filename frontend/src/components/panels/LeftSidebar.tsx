@@ -4,13 +4,12 @@ import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { formatRelativeTime } from '@/lib/utils';
-import type { PipelineDefinition, DashboardStats, JobSummary } from '@/types/pipeline';
+import type { PipelineDefinition, JobSummary } from '@/types/pipeline';
 import { JobStatusBadge } from '@/components/ui/StatusBadge';
 import {
-  Activity, AlertTriangle, CheckCircle, XCircle,
-  GitBranch, Plus, PanelLeftClose, PanelLeftOpen,
+  Activity, GitBranch, Plus, PanelLeftClose, PanelLeftOpen,
   Settings, User, Bell, Trash2, ChevronDown, Briefcase,
-  LayoutDashboard, Layers, Archive,
+  LayoutDashboard, Layers, Archive, SlidersHorizontal, Package, FileText,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -21,20 +20,16 @@ interface LeftSidebarBaseProps {
   collapsed: boolean;
   onToggle: () => void;
   /** 현재 활성 페이지 (nav highlight용) */
-  activePage?: 'home' | 'console' | 'queues' | 'archive';
+  activePage?: 'home' | 'console' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit';
 }
 
 interface LeftSidebarConsoleProps extends LeftSidebarBaseProps {
   mode?: 'console';
   pipelines: PipelineDefinition[];
   selectedPipelineId: string | null;
-  selectedPipelineName: string | null;
   onSelectPipeline: (id: string) => void;
   onCreatePipeline: () => void;
   onDeletePipeline: (id: string) => void;
-  stats: DashboardStats | null;
-  alertCount: number;
-  onAlertClick: () => void;
   jobs: JobSummary[];
   selectedJobId: string | null;
   onSelectJob: (jobId: string) => void;
@@ -72,10 +67,14 @@ export default function LeftSidebar(props: LeftSidebarProps) {
   const navProps = !isConsole ? (props as LeftSidebarNavProps) : null;
   const activeJobCount = consolePl?.jobs.filter((j) => j.status === 'ASSIGNED' || j.status === 'CREATED').length ?? 0;
 
-  const navItems: { id: 'home' | 'console' | 'queues' | 'archive'; icon: React.ElementType; label: string; href: string }[] = [
+  const navItems: { id: 'home' | 'console' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit'; icon: React.ElementType; label: string; href: string }[] = [
     { id: 'home', icon: LayoutDashboard, label: '오버뷰', href: base },
     { id: 'console', icon: GitBranch, label: '파이프라인', href: `${base}/console` },
+    { id: 'profiles', icon: SlidersHorizontal, label: '처리 프로파일', href: `${base}/profiles` },
+    { id: 'products', icon: Package, label: '제품', href: `${base}/products` },
     { id: 'queues', icon: Layers, label: '큐 모니터링', href: `${base}/queues` },
+    { id: 'alerts', icon: Bell, label: '알림', href: `${base}/alerts` },
+    { id: 'audit', icon: FileText, label: '감사 로그', href: `${base}/audit` },
     { id: 'archive', icon: Archive, label: '아카이브', href: `${base}/archive` },
   ];
 
@@ -126,14 +125,6 @@ export default function LeftSidebar(props: LeftSidebarProps) {
               <item.icon className="w-4 h-4" />
             </a>
           ))}
-          {isConsole && consolePl && consolePl.alertCount > 0 && (
-            <button onClick={consolePl.onAlertClick} className="relative p-2 rounded-md hover:bg-muted/50" title="알림">
-              <Bell className="w-4 h-4 text-muted-foreground" />
-              <span className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-destructive text-[8px] text-white flex items-center justify-center font-bold">
-                {consolePl.alertCount > 9 ? '9+' : consolePl.alertCount}
-              </span>
-            </button>
-          )}
         </div>
       ) : (
         /* ── Expanded content ── */
@@ -160,26 +151,6 @@ export default function LeftSidebar(props: LeftSidebarProps) {
           {/* ── Console-only content ── */}
           {isConsole && consolePl && (
             <>
-              {/* Selected Pipeline Info */}
-              {consolePl.selectedPipelineName && (
-                <div className="px-3 py-2.5 border-b border-border">
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">현재 파이프라인</div>
-                  <div className="text-xs font-semibold text-foreground truncate">{consolePl.selectedPipelineName}</div>
-                </div>
-              )}
-
-              {/* Stats */}
-              {consolePl.stats && (
-                <div className="px-2 py-2 border-b border-border">
-                  <div className="grid grid-cols-4 gap-0.5 text-center">
-                    <MiniStat icon={Activity} value={consolePl.stats.inflightJobs} label="진행" color="text-accent" />
-                    <MiniStat icon={CheckCircle} value={consolePl.stats.completedLast24h} label="완료" color="text-success" />
-                    <MiniStat icon={XCircle} value={consolePl.stats.failedLast24h} label="실패" color="text-destructive" />
-                    <MiniStat icon={AlertTriangle} value={consolePl.stats.unacknowledgedAlerts} label="Alert" color="text-destructive" />
-                  </div>
-                </div>
-              )}
-
               {/* 파이프라인 섹션 */}
               <div className="border-b border-border">
                 <button
@@ -362,9 +333,6 @@ export default function LeftSidebar(props: LeftSidebarProps) {
       {/* Bottom */}
       {!collapsed && (
         <div className="border-t border-border px-2 py-2 space-y-0.5">
-          {isConsole && consolePl && (
-            <SidebarItem icon={Bell} label={`알림${consolePl.alertCount > 0 ? ` (${consolePl.alertCount})` : ''}`} onClick={consolePl.onAlertClick} badge={consolePl.alertCount} />
-          )}
           <SidebarItem icon={Settings} label="설정" />
           <div className="flex items-center gap-2 px-2 py-1.5 text-[11px] text-muted-foreground">
             <User className="w-3 h-3 flex-shrink-0" />
@@ -389,15 +357,5 @@ function SidebarItem({ icon: Icon, label, onClick, badge }: { icon: React.Elemen
         <span className="ml-auto px-1.5 rounded-full text-[9px] bg-destructive text-white font-bold">{badge > 9 ? '9+' : badge}</span>
       )}
     </button>
-  );
-}
-
-function MiniStat({ icon: Icon, value, label, color }: { icon: React.ElementType; value: number; label: string; color: string }) {
-  return (
-    <div className="py-0.5">
-      <Icon className={cn('w-3 h-3 mx-auto mb-0.5', color)} />
-      <div className="text-[11px] font-semibold text-foreground">{value}</div>
-      <div className="text-[8px] text-muted-foreground">{label}</div>
-    </div>
   );
 }

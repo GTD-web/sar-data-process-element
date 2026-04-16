@@ -16,7 +16,6 @@ import {
   type EdgeTypes,
   type Connection,
   BackgroundVariant,
-  MarkerType,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
@@ -169,6 +168,8 @@ function buildEdges(
       ? t.nodeDefault
       : completed ? t.edgeSuccess : running ? t.accent : t.edge;
     const edgeId = `e-${source}-${target}`;
+    // Use custom marker ID so arrow size stays fixed on hover (markerUnits=userSpaceOnUse)
+    const markerId = `arrow-${edgeId}`;
     return {
       id: edgeId,
       source: `step-${source}`,
@@ -176,15 +177,11 @@ function buildEdges(
       type: 'deletable',
       selectable: false,
       animated: running,
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: stroke,
-        width: 20,
-        height: 20,
-      },
+      markerEnd: `url(#${markerId})`,
       data: {
         stroke, strokeWidth: 2, animated: running, editable,
         sourceOrder: source, targetOrder: target,
+        markerId,
         onDelete: onDeleteEdge,
         onInsert: onInsertNode,
         onHoverStay, onHoverLeave,

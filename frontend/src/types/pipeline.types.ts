@@ -259,8 +259,10 @@ export interface ProcessingProfile {
   satelliteId: string;
   mode: string;
   polarization: string;
+  priority: number;
   description?: string;
   parameters: Record<string, unknown>;
+  referencedPipelineCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -295,6 +297,37 @@ export interface ExecutionLog {
   source: string;
   message: string;
   detail?: string;
+}
+
+// --- Products ---
+
+export type ProductStatus = 'COMPLETED' | 'FAILED' | 'PROCESSING';
+
+export interface ProductQuality {
+  nesz: { value: number; unit: string; pass: boolean };
+  pslr: { value: number; unit: string; pass: boolean };
+  geometricAccuracy: { value: number; unit: string; pass: boolean };
+  radiometricCalibration: { pass: boolean; detail?: string };
+}
+
+export interface Product {
+  id: string;
+  sceneId: string;
+  jobId: string;
+  level: ProductLevel;
+  satelliteId: string;
+  mode: string;
+  polarization: string;
+  status: ProductStatus;
+  spatialExtent: { west: number; south: number; east: number; north: number };
+  acquisitionStart: string;
+  acquisitionEnd: string;
+  resolutionRange: number;
+  resolutionAzimuth: number;
+  processingTimeMs: number;
+  quality?: ProductQuality;
+  thumbnailUrl?: string;
+  createdAt: string;
 }
 
 // --- Dashboard Stats ---

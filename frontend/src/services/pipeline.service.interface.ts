@@ -1,6 +1,7 @@
 import type {
   Alert,
   AuditEvent,
+  AuditEventType,
   CreatePipelineData,
   DashboardStats,
   ExecutionLog,
@@ -9,6 +10,7 @@ import type {
   PaginatedResponse,
   PipelineDefinition,
   ProcessingProfile,
+  Product,
   QueueHealth,
   SarStage,
   ServiceResponse,
@@ -73,6 +75,7 @@ export interface IPipelineUIService {
 
   감사로그를_조회한다(params?: {
     jobId?: string;
+    eventType?: AuditEventType;
     from?: string;
     to?: string;
     page?: number;
@@ -121,6 +124,38 @@ export interface IPipelineUIService {
     satelliteId?: string;
     mode?: string;
   }): Promise<ServiceResponseWithData<ProcessingProfile[]>>;
+
+  /** 처리 프로파일 생성 (Admin only) */
+  처리_프로파일을_생성한다(data: Omit<ProcessingProfile, 'id' | 'createdAt' | 'updatedAt' | 'referencedPipelineCount'>): Promise<ServiceResponseWithData<ProcessingProfile>>;
+
+  /** 처리 프로파일 수정 (Admin only) */
+  처리_프로파일을_수정한다(id: string, data: Partial<Omit<ProcessingProfile, 'id' | 'createdAt' | 'updatedAt' | 'referencedPipelineCount'>>): Promise<ServiceResponseWithData<ProcessingProfile>>;
+
+  /** 처리 프로파일 삭제 (Admin only). 참조 파이프라인이 있으면 실패. */
+  처리_프로파일을_삭제한다(id: string): Promise<ServiceResponse>;
+
+  // =========================================================================
+  // Products
+  // =========================================================================
+
+  /** 제품 목록 조회 (UC27) */
+  제품_목록을_조회한다(params?: {
+    level?: string;
+    satelliteId?: string;
+    mode?: string;
+    status?: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<ServiceResponseWithData<PaginatedResponse<Product>>>;
+
+  /** 제품 상세 조회 (UC28) */
+  제품_상세를_조회한다(productId: string): Promise<ServiceResponseWithData<Product>>;
+
+  /** 제품 다운로드 URL 발급 (UC30) */
+  제품_다운로드_URL을_발급한다(productId: string): Promise<ServiceResponseWithData<{ url: string; expiresIn: number }>>;
+
+  /** 제품 기반 재처리 요청 (UC32) */
+  제품_재처리를_요청한다(productId: string, params: { targetLevel: string }): Promise<ServiceResponseWithData<{ jobId: string }>>;
 
   // =========================================================================
   // Execution Logs

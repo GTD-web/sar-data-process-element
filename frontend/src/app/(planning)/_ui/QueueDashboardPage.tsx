@@ -67,8 +67,8 @@ function QueueListItem({ q, selected, onSelect }: { q: QueueHealth; selected: bo
       </div>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-          <span>D:<span className="font-mono font-semibold text-foreground ml-0.5">{q.depth}</span></span>
-          <span>C:<span className="font-mono font-semibold text-foreground ml-0.5">{q.consumers}</span></span>
+          <span title="Depth — 큐 적체량 (대기 중인 메시지 수)">D:<span className="font-mono font-semibold text-foreground ml-0.5">{q.depth}</span></span>
+          <span title="Consumers — 처리 워커 수">C:<span className="font-mono font-semibold text-foreground ml-0.5">{q.consumers}</span></span>
         </div>
         <Sparkline data={q.depthHistory} />
       </div>

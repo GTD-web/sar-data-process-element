@@ -7,10 +7,9 @@ import PipelineProgressStepper from '@/components/graph/PipelineProgressStepper'
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import TopBar from '@/components/panels/TopBar';
 import LeftSidebar from '@/components/panels/LeftSidebar';
-import RightTabbedPanel, { type RightTab } from '@/components/panels/RightTabbedPanel';
+import RightTabbedPanel from '@/components/panels/RightTabbedPanel';
 import ConsoleTab, { type ConsoleMode } from '@/components/panels/ConsoleTab';
-import AuditTab from '@/components/panels/AuditTab';
-import AlertModal from '@/components/panels/AlertModal';
+
 import ReprocessConfirmDialog from '@/components/panels/ReprocessConfirmDialog';
 import CancelConfirmDialog from '@/components/panels/CancelConfirmDialog';
 import CreatePipelineDialog, { type CreatePipelineBasicData } from '@/components/panels/CreatePipelineDialog';
@@ -20,7 +19,7 @@ import StepDetailPopover from '@/components/panels/StepDetailPopover';
 import NodeDetailModal, { type PrevNodeInfo } from '@/components/panels/NodeDetailModal';
 import FileInputConfigDialog from '@/components/panels/FileInputConfigDialog';
 import Toast, { type ToastMessage } from '@/components/ui/Toast';
-import { FlaskConical, Plus, PanelRightOpen, GitBranch } from 'lucide-react';
+import { FlaskConical, Plus, PanelRightOpen, GitBranch, Pencil, Check, X } from 'lucide-react';
 import type {
   PipelineDefinition,
   PipelineStepDefinition,
@@ -29,15 +28,99 @@ import type {
   ExecutionLog,
   JobSummary,
   JobDetail,
-  Alert,
-  AuditEvent,
   QueueHealth,
-  DashboardStats,
   PipelineStep,
   SarStage,
   PipelineNodeKind,
 } from '@/types/pipeline';
 import { SAR_STAGE_TO_CSC, SAR_STAGE_TO_LEVEL, SAR_STAGE_LABELS, JOB_INIT_PROFILE_MISSING_MESSAGE } from '@/types/pipeline';
+
+// ---------------------------------------------------------------------------
+// Pipeline Name Badge (canvas overlay)
+// ---------------------------------------------------------------------------
+
+function PipelineNameBadge({
+  name,
+  satellite,
+  mode,
+  editable,
+  onRename,
+}: {
+  name: string;
+  satellite: string;
+  mode: string;
+  editable: boolean;
+  onRename: (newName: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Sync draft when pipeline changes
+  useEffect(() => { setDraft(name); setEditing(false); }, [name]);
+  useEffect(() => { if (editing) inputRef.current?.select(); }, [editing]);
+
+  const handleSubmit = () => {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== name) {
+      onRename(trimmed);
+    } else {
+      setDraft(name);
+    }
+    setEditing(false);
+  };
+
+  const handleCancel = () => {
+    setDraft(name);
+    setEditing(false);
+  };
+
+  return (
+    <div className="absolute top-3 left-3 z-10">
+      <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-card/80 backdrop-blur-sm border border-border shadow-sm">
+        <GitBranch className="w-3.5 h-3.5 text-accent shrink-0" />
+
+        {editing ? (
+          <div className="flex items-center gap-1">
+            <input
+              ref={inputRef}
+              type="text"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSubmit();
+                if (e.key === 'Escape') handleCancel();
+              }}
+              className="bg-background border border-accent rounded px-1.5 py-0.5 text-xs font-semibold text-foreground focus:outline-none w-48"
+              autoFocus
+            />
+            <button onClick={handleSubmit} className="p-0.5 rounded hover:bg-success/20 transition-colors" title="저장">
+              <Check className="w-3.5 h-3.5 text-success" />
+            </button>
+            <button onClick={handleCancel} className="p-0.5 rounded hover:bg-destructive/20 transition-colors" title="취소">
+              <X className="w-3.5 h-3.5 text-destructive" />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => editable && setEditing(true)}
+            className={`group flex items-center gap-1.5 ${editable ? 'cursor-pointer' : 'cursor-default'}`}
+            title={editable ? '클릭하여 이름 수정' : undefined}
+          >
+            <span className="text-xs font-semibold text-foreground">{name}</span>
+            <span className="text-[10px] text-muted-foreground">
+              {satellite} · {mode}
+            </span>
+            {editable && (
+              <Pencil className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            )}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
   ssr: false,
@@ -68,10 +151,7 @@ export default function ConsolePage() {
   // --- Data ---
   const [pipelines, setPipelines] = useState<PipelineDefinition[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
-  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [jobs, setJobs] = useState<JobSummary[]>([]);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [queues, setQueues] = useState<QueueHealth[]>([]);
   const [selectedJob, setSelectedJob] = useState<JobDetail | null>(null);
   const [profiles, setProfiles] = useState<ProcessingProfile[]>([]);
@@ -79,11 +159,9 @@ export default function ConsolePage() {
 
   // --- UI State ---
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [rightCollapsed, setRightCollapsed] = useState(false);
-  const [rightTab, setRightTab] = useState<RightTab>('console');
+  const [rightCollapsed, setRightCollapsed] = useState(true);
   const [consoleMode, setConsoleMode] = useState<ConsoleMode>({ type: 'idle' });
   const [editSaving, setEditSaving] = useState(false);
-  const [alertModalOpen, setAlertModalOpen] = useState(false);
   const [reprocessDialogOpen, setReprocessDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [createStep, setCreateStep] = useState<'step1' | 'step2' | null>(null);
@@ -94,8 +172,6 @@ export default function ConsolePage() {
   const [nodeDetailStep, setNodeDetailStep] = useState<PipelineStepDefinition | null>(null);
   const [fileInputConfigStep, setFileInputConfigStep] = useState<PipelineStepDefinition | null>(null);
   const [disabledNodeOrders, setDisabledNodeOrders] = useState<Set<number>>(new Set());
-  const [auditSortBy, setAuditSortBy] = useState<keyof AuditEvent | null>(null);
-  const [auditSortOrder, setAuditSortOrder] = useState<'asc' | 'desc'>('desc');
   const [activeStepOrder, setActiveStepOrder] = useState<number | null>(null);
   const [popoverClickY, setPopoverClickY] = useState(0);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -103,12 +179,9 @@ export default function ConsolePage() {
   // --- Load ---
   useEffect(() => {
     (async () => {
-      const [plRes, statsRes, jobsRes, alertsRes, auditRes, queuesRes, profRes, logRes] = await Promise.all([
+      const [plRes, jobsRes, queuesRes, profRes, logRes] = await Promise.all([
         service.파이프라인_목록을_조회한다(),
-        service.대시보드_통계를_조회한다(),
         service.Job_목록을_조회한다({ limit: 50 }),
-        service.Alert_목록을_조회한다(),
-        service.감사로그를_조회한다({ size: 50 }),
         service.큐_상태를_조회한다(),
         service.처리_프로파일_목록을_조회한다(),
         service.실행_로그를_조회한다({ limit: 300 }),
@@ -120,10 +193,7 @@ export default function ConsolePage() {
         // create 모드가 아닐 때만 첫 파이프라인 자동 선택
         if (!isCreateMode && plRes.data.length > 0) setSelectedPipelineId(plRes.data[0].id);
       }
-      if (statsRes.data) setStats(statsRes.data);
       if (jobsRes.data) setJobs(jobsRes.data.items);
-      if (alertsRes.data) setAlerts(alertsRes.data);
-      if (auditRes.data) setAuditEvents(auditRes.data.items);
       if (queuesRes.data) setQueues(queuesRes.data);
       if (profRes.data) setProfiles(profRes.data);
       if (logRes.data) setExecutionLogs(logRes.data);
@@ -135,7 +205,7 @@ export default function ConsolePage() {
         if (jobRes.data) {
           setSelectedJob(jobRes.data);
           setConsoleMode({ type: 'job', job: jobRes.data });
-          setRightTab('console');
+          
           setRightCollapsed(false);
         }
       }
@@ -143,6 +213,32 @@ export default function ConsolePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- searchParams는 초기 로드에만 사용
   }, [service]);
 
+  // --- 실행 중인 Job 폴링 (ASSIGNED/CREATED 상태일 때 1초 간격으로 갱신) ---
+  useEffect(() => {
+    if (!selectedJob) return;
+    if (selectedJob.status !== 'ASSIGNED' && selectedJob.status !== 'CREATED') return;
+
+    const interval = setInterval(async () => {
+      const res = await service.Job_상세를_조회한다(selectedJob.jobId);
+      if (res.data) {
+        setSelectedJob(res.data);
+        setConsoleMode({ type: 'job', job: res.data });
+
+        // Job 목록도 갱신
+        const jobsRes = await service.Job_목록을_조회한다({ limit: 50 });
+        if (jobsRes.data) setJobs(jobsRes.data.items);
+
+        // 완료/실패 시 폴링 중지 (다음 체크에서 조건 불일치로 자동 정리)
+        if (res.data.status === 'COMPLETED') {
+          setToast({ message: `Job ${res.data.jobId} 처리가 완료되었습니다`, type: 'success' });
+        } else if (res.data.status === 'FAILED') {
+          setToast({ message: `Job ${res.data.jobId} 처리 중 오류가 발생했습니다`, type: 'error' });
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [selectedJob?.jobId, selectedJob?.status, service]);
 
   const handleToggleNodeActive = useCallback((order: number) => {
     setDisabledNodeOrders((prev) => {
@@ -158,7 +254,6 @@ export default function ConsolePage() {
 
   // --- Derived ---
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId) ?? null;
-  const unackedAlerts = alerts.filter((a) => !a.acknowledged);
   const canvasEditable = !selectedJob;
 
   const graphSteps: PipelineStep[] = selectedPipeline
@@ -283,6 +378,17 @@ export default function ConsolePage() {
       if (jobsRes.success && jobsRes.data) setJobs(jobsRes.data.items);
       if (logRes.data) setExecutionLogs(logRes.data);
       setLogPanelOpen(true);
+
+      // 생성된 Job을 자동 선택하여 실행 진행 상황을 추적
+      if (res.data) {
+        const jobDetailRes = await service.Job_상세를_조회한다(res.data.jobId);
+        if (jobDetailRes.data) {
+          setSelectedJob(jobDetailRes.data);
+          setConsoleMode({ type: 'job', job: jobDetailRes.data });
+          
+          setRightCollapsed(false);
+        }
+      }
     } else {
       setToast({ message: res.message, type: 'error' });
     }
@@ -291,7 +397,7 @@ export default function ConsolePage() {
   const handleAddNode = useCallback(
     (afterOrder: number, beforeOrder?: number) => {
       setConsoleMode({ type: 'addStep', afterOrder, beforeOrder });
-      setRightTab('console');
+      
       setRightCollapsed(false);
     },
     [],
@@ -346,7 +452,7 @@ export default function ConsolePage() {
       setSelectedJob(res.data);
       setActiveStepOrder(null);
       setConsoleMode({ type: 'job', job: res.data });
-      setRightTab('console');
+      
       setRightCollapsed(false);
       updateJobIdParam(jobId);
       // Job의 파이프라인으로 자동 전환
@@ -356,17 +462,6 @@ export default function ConsolePage() {
       }
     }
   }, [service, updateJobIdParam, selectedPipelineId]);
-
-  const handleAckAlert = useCallback(async (alertId: string) => {
-    const alert = alerts.find((a) => a.id === alertId);
-    const res = await service.Alert을_확인한다(alertId, { ifMatchVersion: alert?.version });
-    if (!res.success && res.code === 409) {
-      setToast({ message: '이미 다른 운영자가 확인한 알림입니다', type: 'error' });
-    }
-    const [aRes, sRes] = await Promise.all([service.Alert_목록을_조회한다(), service.대시보드_통계를_조회한다()]);
-    if (aRes.data) setAlerts(aRes.data);
-    if (sRes.data) setStats(sRes.data);
-  }, [service, alerts]);
 
   const handleReprocessJob = useCallback(() => {
     if (!selectedJob) return;
@@ -503,19 +598,21 @@ export default function ConsolePage() {
     return results;
   }, [selectedPipeline]);
 
-  const handleAuditSort = useCallback(async (column: keyof AuditEvent) => {
-    const nextOrder = auditSortBy === column && auditSortOrder === 'asc' ? 'desc' : 'asc';
-    setAuditSortBy(column);
-    setAuditSortOrder(nextOrder);
-    const res = await service.감사로그를_조회한다({ size: 50, sortBy: column, sortOrder: nextOrder });
-    if (res.data) setAuditEvents(res.data.items);
-  }, [service, auditSortBy, auditSortOrder]);
+  const handleRenamePipeline = useCallback(async (newName: string) => {
+    if (!selectedPipelineId) return;
+    const res = await service.파이프라인을_수정한다(selectedPipelineId, { name: newName });
+    if (res.success && res.data) {
+      setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? { ...p, name: res.data!.name } : p)));
+      setToast({ message: '파이프라인 이름이 변경되었습니다', type: 'success' });
+    } else {
+      setToast({ message: res.message, type: 'error' });
+    }
+  }, [service, selectedPipelineId]);
 
   const handleOpenNodesPanel = useCallback(() => {
     if (!selectedPipeline || selectedPipeline.steps.length === 0) return;
     const lastOrder = Math.max(...selectedPipeline.steps.map((s) => s.order));
     setConsoleMode({ type: 'addStep', afterOrder: lastOrder });
-    setRightTab('console');
     setRightCollapsed(false);
   }, [selectedPipeline]);
 
@@ -539,7 +636,6 @@ export default function ConsolePage() {
         onToggle={() => setSidebarCollapsed((v) => !v)}
         pipelines={pipelines}
         selectedPipelineId={selectedPipelineId}
-        selectedPipelineName={selectedPipeline?.name ?? null}
         onSelectPipeline={(id) => {
           setSelectedPipelineId(id);
           setSelectedJob(null);
@@ -550,9 +646,6 @@ export default function ConsolePage() {
         }}
         onCreatePipeline={handleCreatePipeline}
         onDeletePipeline={handleDeletePipeline}
-        stats={stats}
-        alertCount={unackedAlerts.length}
-        onAlertClick={() => setAlertModalOpen(true)}
         jobs={jobs}
         selectedJobId={selectedJob?.jobId ?? null}
         onSelectJob={handleSelectJob}
@@ -582,7 +675,16 @@ export default function ConsolePage() {
                 onReprocessStep={selectedJob ? handleReprocessFromNode : undefined}
                 isJobMode={!!selectedJob}
               />
-              {/* 캔버스 좌측 상단 — (제거됨) */}
+              {/* 캔버스 좌측 상단 — 파이프라인 이름 */}
+              {selectedPipeline && (
+                <PipelineNameBadge
+                  name={selectedPipeline.name}
+                  satellite={selectedPipeline.satelliteId}
+                  mode={selectedPipeline.mode}
+                  editable={canvasEditable}
+                  onRename={handleRenamePipeline}
+                />
+              )}
               {/* 캔버스 우측 상단 툴바 — 세로 정렬 */}
               <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5">
                 {canvasEditable && selectedPipeline && (
@@ -703,46 +805,24 @@ export default function ConsolePage() {
       <RightTabbedPanel
           collapsed={rightCollapsed}
           onToggle={() => setRightCollapsed((v) => !v)}
-          activeTab={rightTab}
-          onTabChange={setRightTab}
           showCollapsedToggle={false}
-          tabLabelOverrides={consoleMode.type === 'addStep' ? { console: '노드 추가' } : undefined}
+          title={consoleMode.type === 'addStep' ? '노드 추가' : '콘솔'}
         >
-          {rightTab === 'console' && (
-            <ConsoleTab
-              mode={consoleMode}
-              onSaveNode={handleSaveNode}
-              onDeleteNode={handleDeleteNode}
-              onConfirmAddStep={handleConfirmAddStep}
-              onReprocessJob={handleReprocessJob}
-              onPartialReprocess={handlePartialReprocess}
-              onCancelJob={handleCancelJob}
-              onSavePipeline={handleSavePipeline}
-              pipelineSaving={editSaving}
-              availableProfiles={profiles}
-              onStepClick={(order, clickY) => { setActiveStepOrder(order); setPopoverClickY(clickY); }}
-              activeStepOrder={activeStepOrder}
-            />
-          )}
-          {rightTab === 'audit' && (
-            <AuditTab
-              events={auditEvents}
-              onSelectJob={handleSelectJob}
-              sortBy={auditSortBy}
-              sortOrder={auditSortOrder}
-              onSort={handleAuditSort}
-            />
-          )}
+          <ConsoleTab
+            mode={consoleMode}
+            onSaveNode={handleSaveNode}
+            onDeleteNode={handleDeleteNode}
+            onConfirmAddStep={handleConfirmAddStep}
+            onReprocessJob={handleReprocessJob}
+            onPartialReprocess={handlePartialReprocess}
+            onCancelJob={handleCancelJob}
+            onSavePipeline={handleSavePipeline}
+            pipelineSaving={editSaving}
+            availableProfiles={profiles}
+            onStepClick={(order, clickY) => { setActiveStepOrder(order); setPopoverClickY(clickY); }}
+            activeStepOrder={activeStepOrder}
+          />
       </RightTabbedPanel>
-
-      {/* Alert Modal */}
-      <AlertModal
-        open={alertModalOpen}
-        onClose={() => setAlertModalOpen(false)}
-        alerts={alerts}
-        onAck={handleAckAlert}
-        onSelectJob={(jobId) => { setAlertModalOpen(false); handleSelectJob(jobId); }}
-      />
 
       {/* S-01 + S-02: 재처리 확인 다이얼로그 — Job ID 타이핑 필요 */}
       {reprocessDialogOpen && selectedJob && (

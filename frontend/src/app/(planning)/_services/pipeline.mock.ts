@@ -12,6 +12,9 @@ import type {
   PipelineDefinition,
   PipelineStep,
   ProcessingProfile,
+  Product,
+  ProductQuality,
+  ProductStatus,
   QueueHealth,
   QueueMessage,
   QueueDeadLetter,
@@ -65,12 +68,12 @@ const SATELLITE_IDS = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'];
 const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
 
 const MOCK_PROCESSING_PROFILES: ProcessingProfile[] = SATELLITE_IDS.flatMap((sat) => [
-  { id: `PROF-${sat}-SM-HHHV`, name: `${sat} Stripmap Dual`, satelliteId: sat, mode: 'Stripmap', polarization: 'HH+HV', description: 'Stripmap 이중편파 표준 처리', parameters: { azimuthLooks: 4, rangeLooks: 1 }, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
-  { id: `PROF-${sat}-SM-HH`, name: `${sat} Stripmap Single`, satelliteId: sat, mode: 'Stripmap', polarization: 'HH', description: 'Stripmap 단일편파 표준 처리', parameters: { azimuthLooks: 4, rangeLooks: 1 }, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
-  { id: `PROF-${sat}-SC-VV`, name: `${sat} ScanSAR VV`, satelliteId: sat, mode: 'ScanSAR', polarization: 'VV', description: 'ScanSAR 단일편파 광역 처리', parameters: { burstOverlap: 0.1 }, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
-  { id: `PROF-${sat}-SC-VVVH`, name: `${sat} ScanSAR Dual`, satelliteId: sat, mode: 'ScanSAR', polarization: 'VV+VH', description: 'ScanSAR 이중편파 광역 처리', parameters: { burstOverlap: 0.1 }, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
-  { id: `PROF-${sat}-SL-HH`, name: `${sat} Spotlight HH`, satelliteId: sat, mode: 'Spotlight', polarization: 'HH', description: 'Spotlight 고해상도 처리', parameters: { azimuthLooks: 1, rangeLooks: 1 }, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
-  { id: `PROF-${sat}-SL-HHHV`, name: `${sat} Spotlight Dual`, satelliteId: sat, mode: 'Spotlight', polarization: 'HH+HV', description: 'Spotlight 이중편파 고해상도 처리', parameters: { azimuthLooks: 1, rangeLooks: 1 }, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: `PROF-${sat}-SM-HHHV`, name: `${sat} Stripmap Dual`, satelliteId: sat, mode: 'Stripmap', polarization: 'HH+HV', priority: 3, description: 'Stripmap 이중편파 표준 처리', parameters: { azimuthLooks: 4, rangeLooks: 1 }, referencedPipelineCount: 2, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: `PROF-${sat}-SM-HH`, name: `${sat} Stripmap Single`, satelliteId: sat, mode: 'Stripmap', polarization: 'HH', priority: 5, description: 'Stripmap 단일편파 표준 처리', parameters: { azimuthLooks: 4, rangeLooks: 1 }, referencedPipelineCount: 1, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: `PROF-${sat}-SC-VV`, name: `${sat} ScanSAR VV`, satelliteId: sat, mode: 'ScanSAR', polarization: 'VV', priority: 4, description: 'ScanSAR 단일편파 광역 처리', parameters: { burstOverlap: 0.1 }, referencedPipelineCount: 1, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: `PROF-${sat}-SC-VVVH`, name: `${sat} ScanSAR Dual`, satelliteId: sat, mode: 'ScanSAR', polarization: 'VV+VH', priority: 5, description: 'ScanSAR 이중편파 광역 처리', parameters: { burstOverlap: 0.1 }, referencedPipelineCount: 0, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: `PROF-${sat}-SL-HH`, name: `${sat} Spotlight HH`, satelliteId: sat, mode: 'Spotlight', polarization: 'HH', priority: 2, description: 'Spotlight 고해상도 처리', parameters: { azimuthLooks: 1, rangeLooks: 1 }, referencedPipelineCount: 1, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: `PROF-${sat}-SL-HHHV`, name: `${sat} Spotlight Dual`, satelliteId: sat, mode: 'Spotlight', polarization: 'HH+HV', priority: 6, description: 'Spotlight 이중편파 고해상도 처리', parameters: { azimuthLooks: 1, rangeLooks: 1 }, referencedPipelineCount: 0, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
 ]);
 
 const MODE_DEFAULT_POLARIZATION: Record<string, string> = {
@@ -311,24 +314,34 @@ function generateAlerts(jobs: JobDetail[]): Alert[] {
 
 function generateAuditEvents(jobs: JobDetail[]): AuditEvent[] {
   const events: AuditEvent[] = [];
-  const eventTypes: AuditEventType[] = [
-    'JOB_CREATED', 'JOB_ASSIGNED', 'JOB_COMPLETED', 'JOB_FAILED',
-    'PIPELINE_STARTED', 'PIPELINE_REPROCESSED', 'ALERT_DISPATCHED',
-  ];
 
   for (const job of jobs.slice(0, 30)) {
-    const count = 2 + Math.floor(Math.random() * 4);
-    for (let k = 0; k < count; k++) {
-      const eventType = eventTypes[Math.min(k, eventTypes.length - 1)];
+    const startMs = new Date(job.startedAt).getTime();
+    const updatedMs = new Date(job.updatedAt).getTime();
+    const endMs = updatedMs > startMs ? updatedMs : startMs + 30 * 60_000;
+
+    const isReprocess = job.triggerSource === 'MANUAL_REQUEST' || job.triggerSource === 'PARTIAL_REPROCESS';
+
+    const seq: AuditEventType[] = [
+      isReprocess ? 'PIPELINE_REPROCESSED' : 'PIPELINE_STARTED',
+      'JOB_CREATED',
+    ];
+    if (job.status !== 'CREATED') seq.push('JOB_ASSIGNED');
+    if (job.status === 'COMPLETED') seq.push('JOB_COMPLETED');
+    else if (job.status === 'FAILED') seq.push('JOB_FAILED', 'ALERT_DISPATCHED');
+
+    seq.forEach((eventType, idx) => {
+      const fraction = seq.length <= 1 ? 0 : idx / (seq.length - 1);
+      const timestamp = new Date(startMs + (endMs - startMs) * fraction).toISOString();
       events.push({
         id: `EVT-${randomId()}`,
         eventType,
         jobId: job.jobId,
-        timestamp: randomDate(3),
+        timestamp,
         detail: `${eventType} for ${job.jobId} (${job.sceneId})`,
         operatorId: eventType === 'PIPELINE_REPROCESSED' ? 'operator-01' : undefined,
       });
-    }
+    });
   }
 
   return events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -451,6 +464,61 @@ function generateExecutionLogs(jobs: JobDetail[]): ExecutionLog[] {
   }
 
   return logs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+}
+
+// =============================================================================
+// Product Mock Data
+// =============================================================================
+
+function generateProducts(jobs: JobDetail[]): Product[] {
+  const completedJobs = jobs.filter((j) => j.status === 'COMPLETED' || j.status === 'FAILED');
+  const products: Product[] = [];
+  const levels: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
+
+  for (const job of completedJobs) {
+    const numProducts = job.status === 'COMPLETED' ? 1 + Math.floor(Math.random() * 3) : (Math.random() > 0.5 ? 1 : 0);
+    for (let i = 0; i < numProducts; i++) {
+      const level = levels[Math.min(i, levels.length - 1)];
+      const status: ProductStatus = job.status === 'FAILED' && i === numProducts - 1 ? 'FAILED' : 'COMPLETED';
+
+      const quality: ProductQuality | undefined = status === 'COMPLETED' ? {
+        nesz: { value: -22 - Math.random() * 6, unit: 'dB', pass: Math.random() > 0.1 },
+        pslr: { value: -20 - Math.random() * 10, unit: 'dB', pass: Math.random() > 0.1 },
+        geometricAccuracy: { value: 1 + Math.random() * 4, unit: 'm', pass: Math.random() > 0.15 },
+        radiometricCalibration: { pass: Math.random() > 0.1, detail: 'Calibration within tolerance' },
+      } : undefined;
+
+      const baseLat = 35 + Math.random() * 3;
+      const baseLon = 126 + Math.random() * 3;
+
+      products.push({
+        id: `PROD-${job.jobId}-${level}`,
+        sceneId: job.sceneId,
+        jobId: job.jobId,
+        level,
+        satelliteId: job.satelliteId,
+        mode: job.mode,
+        polarization: job.processingProfile?.polarization ?? 'HH',
+        status,
+        spatialExtent: {
+          west: baseLon,
+          south: baseLat,
+          east: baseLon + 0.5 + Math.random() * 0.5,
+          north: baseLat + 0.5 + Math.random() * 0.5,
+        },
+        acquisitionStart: job.acquisitionStart,
+        acquisitionEnd: job.acquisitionEnd,
+        resolutionRange: level === 'LEVEL_0' ? 0 : 1 + Math.random() * 4,
+        resolutionAzimuth: level === 'LEVEL_0' ? 0 : 1 + Math.random() * 4,
+        processingTimeMs: Math.floor(60_000 + Math.random() * 3_600_000),
+        quality,
+        thumbnailUrl: status === 'COMPLETED' ? `/api/products/PROD-${job.jobId}-${level}/thumbnail` : undefined,
+        createdAt: job.updatedAt,
+      });
+    }
+  }
+
+  return products.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 const QUEUE_NAMES = [
@@ -679,6 +747,65 @@ function generatePipelines(): PipelineDefinition[] {
 let nextPipelineSeq = 100;
 
 // =============================================================================
+// Sequential Execution Simulator
+// =============================================================================
+
+/** 스텝 간 실행 시간 (ms). TRIGGER/JOB_INIT/FILE_INPUT은 짧고, SAR/CATALOG는 길다. */
+function stepDurationMs(kind: PipelineNodeKind): number {
+  if (kind === 'TRIGGER' || kind === 'FILE_INPUT') return 800;
+  if (kind === 'JOB_INIT') return 1200;
+  if (kind === 'CATALOG') return 1500;
+  return 2000 + Math.floor(Math.random() * 2000); // SAR: 2~4초
+}
+
+/**
+ * Job의 스텝을 순차적으로 RUNNING → COMPLETED로 진행시킨다.
+ * 각 스텝이 일정 시간 후 COMPLETED로 전환되고 다음 스텝이 RUNNING으로 변경된다.
+ */
+function simulateJobExecution(job: JobDetail) {
+  job.status = 'ASSIGNED';
+  job.updatedAt = new Date().toISOString();
+
+  const steps = job.steps;
+  let currentIdx = 0;
+
+  function advanceStep() {
+    if (currentIdx >= steps.length) {
+      // 모든 스텝 완료
+      job.status = 'COMPLETED';
+      job.updatedAt = new Date().toISOString();
+      return;
+    }
+
+    const step = steps[currentIdx];
+    step.status = 'RUNNING';
+    step.startedAt = new Date().toISOString();
+    job.updatedAt = new Date().toISOString();
+
+    // 현재 RUNNING 스텝에 맞는 currentLevel/currentTargetCsc 갱신
+    job.currentLevel = step.productLevel;
+    job.currentTargetCsc = step.targetCsc;
+
+    const duration = stepDurationMs(step.kind ?? 'SAR');
+
+    setTimeout(() => {
+      step.status = 'COMPLETED';
+      step.finishedAt = new Date().toISOString();
+      step.durationMs = duration;
+      step.outputPath = step.kind === 'SAR'
+        ? `/mnt/nas/sdpe/output/${step.productLevel.toLowerCase()}/${job.sceneId}.h5`
+        : undefined;
+      job.updatedAt = new Date().toISOString();
+
+      currentIdx++;
+      advanceStep();
+    }, duration);
+  }
+
+  advanceStep();
+}
+
+// =============================================================================
 // Mock Service Implementation
 // =============================================================================
 
@@ -689,6 +816,8 @@ class MockPipelineUIService implements IPipelineUIService {
   private queueHealth: QueueHealth[];
   private pipelines: PipelineDefinition[];
   private executionLogs: ExecutionLog[];
+  private profiles: ProcessingProfile[];
+  private products: Product[];
 
   constructor() {
     this.pipelines = generatePipelines();
@@ -697,6 +826,8 @@ class MockPipelineUIService implements IPipelineUIService {
     this.auditEvents = generateAuditEvents(this.jobs);
     this.queueHealth = generateQueueHealth();
     this.executionLogs = generateExecutionLogs(this.jobs);
+    this.profiles = [...MOCK_PROCESSING_PROFILES];
+    this.products = generateProducts(this.jobs);
   }
 
   async 대시보드_통계를_조회한다(): Promise<ServiceResponseWithData<DashboardStats>> {
@@ -833,6 +964,9 @@ class MockPipelineUIService implements IPipelineUIService {
 
   async 감사로그를_조회한다(params?: {
     jobId?: string;
+    eventType?: AuditEventType;
+    from?: string;
+    to?: string;
     page?: number;
     size?: number;
     sortBy?: keyof AuditEvent;
@@ -840,7 +974,18 @@ class MockPipelineUIService implements IPipelineUIService {
   }): Promise<ServiceResponseWithData<PaginatedResponse<AuditEvent>>> {
     let filtered = [...this.auditEvents];
     if (params?.jobId) {
-      filtered = filtered.filter((e) => e.jobId === params.jobId);
+      filtered = filtered.filter((e) => e.jobId.toLowerCase().includes(params.jobId!.toLowerCase()));
+    }
+    if (params?.eventType) {
+      filtered = filtered.filter((e) => e.eventType === params.eventType);
+    }
+    if (params?.from) {
+      const fromDate = new Date(params.from).getTime();
+      filtered = filtered.filter((e) => new Date(e.timestamp).getTime() >= fromDate);
+    }
+    if (params?.to) {
+      const toDate = new Date(params.to).getTime() + 86400000; // end of day
+      filtered = filtered.filter((e) => new Date(e.timestamp).getTime() < toDate);
     }
     if (params?.sortBy) {
       const key = params.sortBy;
@@ -848,7 +993,12 @@ class MockPipelineUIService implements IPipelineUIService {
       filtered.sort((a, b) => {
         const va = a[key] ?? '';
         const vb = b[key] ?? '';
-        return va < vb ? -dir : va > vb ? dir : 0;
+        if (va < vb) return -dir;
+        if (va > vb) return dir;
+        if (key !== 'timestamp') {
+          return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+        }
+        return 0;
       });
     }
     const page = params?.page ?? 1;
@@ -1008,6 +1158,10 @@ class MockPipelineUIService implements IPipelineUIService {
       processingProfile: undefined,
     };
     this.jobs.push(detail);
+
+    // 순차 실행 시뮬레이션 시작
+    simulateJobExecution(detail);
+
     return { success: true, message: `파이프라인 "${pl.name}" 실행이 요청되었습니다`, data: summary };
   }
 
@@ -1015,10 +1169,98 @@ class MockPipelineUIService implements IPipelineUIService {
     satelliteId?: string;
     mode?: string;
   }): Promise<ServiceResponseWithData<ProcessingProfile[]>> {
-    let filtered = [...MOCK_PROCESSING_PROFILES];
+    let filtered = [...this.profiles];
     if (params?.satelliteId) filtered = filtered.filter((p) => p.satelliteId === params.satelliteId);
     if (params?.mode) filtered = filtered.filter((p) => p.mode === params.mode);
     return { success: true, message: 'OK', data: filtered };
+  }
+
+  async 처리_프로파일을_생성한다(data: Omit<ProcessingProfile, 'id' | 'createdAt' | 'updatedAt' | 'referencedPipelineCount'>): Promise<ServiceResponseWithData<ProcessingProfile>> {
+    const now = new Date().toISOString();
+    const profile: ProcessingProfile = {
+      ...data,
+      id: `PROF-${randomId()}`,
+      referencedPipelineCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.profiles.push(profile);
+    return { success: true, message: '처리 프로파일이 생성되었습니다', data: profile };
+  }
+
+  async 처리_프로파일을_수정한다(id: string, data: Partial<Omit<ProcessingProfile, 'id' | 'createdAt' | 'updatedAt' | 'referencedPipelineCount'>>): Promise<ServiceResponseWithData<ProcessingProfile>> {
+    const profile = this.profiles.find((p) => p.id === id);
+    if (!profile) return { success: false, message: '프로파일을 찾을 수 없습니다' };
+    Object.assign(profile, data, { updatedAt: new Date().toISOString() });
+    return { success: true, message: '처리 프로파일이 수정되었습니다', data: { ...profile } };
+  }
+
+  async 처리_프로파일을_삭제한다(id: string): Promise<ServiceResponse> {
+    const idx = this.profiles.findIndex((p) => p.id === id);
+    if (idx === -1) return { success: false, message: '프로파일을 찾을 수 없습니다' };
+    const profile = this.profiles[idx];
+    if (profile.referencedPipelineCount && profile.referencedPipelineCount > 0) {
+      return { success: false, message: `이 프로파일을 참조하는 파이프라인이 ${profile.referencedPipelineCount}개 있습니다. 먼저 해제하세요.` };
+    }
+    this.profiles.splice(idx, 1);
+    return { success: true, message: '처리 프로파일이 삭제되었습니다' };
+  }
+
+  async 제품_목록을_조회한다(params?: {
+    level?: string;
+    satelliteId?: string;
+    mode?: string;
+    status?: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<ServiceResponseWithData<PaginatedResponse<Product>>> {
+    let filtered = [...this.products];
+    if (params?.level) filtered = filtered.filter((p) => p.level === params.level);
+    if (params?.satelliteId) filtered = filtered.filter((p) => p.satelliteId === params.satelliteId);
+    if (params?.mode) filtered = filtered.filter((p) => p.mode === params.mode);
+    if (params?.status) filtered = filtered.filter((p) => p.status === params.status);
+    const limit = params?.limit ?? 20;
+    const startIdx = params?.cursor ? filtered.findIndex((p) => p.id === params.cursor) + 1 : 0;
+    const page = filtered.slice(startIdx, startIdx + limit);
+    return {
+      success: true,
+      message: 'OK',
+      data: {
+        items: page,
+        total: filtered.length,
+        nextCursor: startIdx + limit < filtered.length ? page[page.length - 1]?.id : undefined,
+      },
+    };
+  }
+
+  async 제품_상세를_조회한다(productId: string): Promise<ServiceResponseWithData<Product>> {
+    const product = this.products.find((p) => p.id === productId);
+    if (!product) return { success: false, message: '제품을 찾을 수 없습니다' };
+    return { success: true, message: 'OK', data: { ...product } };
+  }
+
+  async 제품_다운로드_URL을_발급한다(productId: string): Promise<ServiceResponseWithData<{ url: string; expiresIn: number }>> {
+    const product = this.products.find((p) => p.id === productId);
+    if (!product) return { success: false, message: '제품을 찾을 수 없습니다' };
+    return {
+      success: true,
+      message: 'OK',
+      data: {
+        url: `https://storage.sdpe.example.com/products/${productId}/download?token=mock-presigned-token`,
+        expiresIn: 3600,
+      },
+    };
+  }
+
+  async 제품_재처리를_요청한다(productId: string, params: { targetLevel: string }): Promise<ServiceResponseWithData<{ jobId: string }>> {
+    const product = this.products.find((p) => p.id === productId);
+    if (!product) return { success: false, message: '제품을 찾을 수 없습니다' };
+    const newJobId = `JOB-RP-${Date.now().toString(36)}`;
+    return {
+      success: true,
+      message: `재처리가 요청되었습니다 (${params.targetLevel}부터)`,
+      data: { jobId: newJobId },
+    };
   }
 
   async 실행_로그를_조회한다(params?: {

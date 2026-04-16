@@ -9,6 +9,7 @@ import type { IPipelineUIService } from '@/services/pipeline.service.interface';
 import type {
   Alert,
   AuditEvent,
+  AuditEventType,
   CreatePipelineData,
   DashboardStats,
   ExecutionLog,
@@ -17,6 +18,7 @@ import type {
   PaginatedResponse,
   PipelineDefinition,
   ProcessingProfile,
+  Product,
   QueueHealth,
   SarStage,
   ServiceResponse,
@@ -111,6 +113,7 @@ export const pipelineCurrentService: IPipelineUIService = {
 
   async 감사로그를_조회한다(params?: {
     jobId?: string;
+    eventType?: AuditEventType;
     from?: string;
     to?: string;
     page?: number;
@@ -120,6 +123,7 @@ export const pipelineCurrentService: IPipelineUIService = {
   }): Promise<ServiceResponseWithData<PaginatedResponse<AuditEvent>>> {
     const query = new URLSearchParams();
     if (params?.jobId) query.set('jobId', params.jobId);
+    if (params?.eventType) query.set('eventType', params.eventType);
     if (params?.from) query.set('from', params.from);
     if (params?.to) query.set('to', params.to);
     if (params?.page) query.set('page', String(params.page));
@@ -203,6 +207,71 @@ export const pipelineCurrentService: IPipelineUIService = {
     if (params?.mode) query.set('mode', params.mode);
     const res = await fetch(`${API_BASE}/profiles?${query}`);
     return handleResponse(res, '처리 프로파일 조회 실패');
+  },
+
+  async 처리_프로파일을_생성한다(data: Omit<ProcessingProfile, 'id' | 'createdAt' | 'updatedAt' | 'referencedPipelineCount'>): Promise<ServiceResponseWithData<ProcessingProfile>> {
+    const res = await fetch(`${API_BASE}/profiles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res, '처리 프로파일 생성 실패');
+  },
+
+  async 처리_프로파일을_수정한다(id: string, data: Partial<Omit<ProcessingProfile, 'id' | 'createdAt' | 'updatedAt' | 'referencedPipelineCount'>>): Promise<ServiceResponseWithData<ProcessingProfile>> {
+    const res = await fetch(`${API_BASE}/profiles/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res, '처리 프로파일 수정 실패');
+  },
+
+  async 처리_프로파일을_삭제한다(id: string): Promise<ServiceResponse> {
+    const res = await fetch(`${API_BASE}/profiles/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      return { success: false, message: (body as { message?: string })?.message ?? `처리 프로파일 삭제 실패: ${res.status}` };
+    }
+    return { success: true, message: 'OK' };
+  },
+
+  async 제품_목록을_조회한다(params?: {
+    level?: string;
+    satelliteId?: string;
+    mode?: string;
+    status?: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<ServiceResponseWithData<PaginatedResponse<Product>>> {
+    const query = new URLSearchParams();
+    if (params?.level) query.set('level', params.level);
+    if (params?.satelliteId) query.set('satelliteId', params.satelliteId);
+    if (params?.mode) query.set('mode', params.mode);
+    if (params?.status) query.set('status', params.status);
+    if (params?.cursor) query.set('cursor', params.cursor);
+    if (params?.limit) query.set('limit', String(params.limit));
+    const res = await fetch(`${API_BASE}/products?${query}`);
+    return handleResponse(res, '제품 목록 조회 실패');
+  },
+
+  async 제품_상세를_조회한다(productId: string): Promise<ServiceResponseWithData<Product>> {
+    const res = await fetch(`${API_BASE}/products/${productId}`);
+    return handleResponse(res, '제품 상세 조회 실패');
+  },
+
+  async 제품_다운로드_URL을_발급한다(productId: string): Promise<ServiceResponseWithData<{ url: string; expiresIn: number }>> {
+    const res = await fetch(`${API_BASE}/products/${productId}/download-url`);
+    return handleResponse(res, '다운로드 URL 발급 실패');
+  },
+
+  async 제품_재처리를_요청한다(productId: string, params: { targetLevel: string }): Promise<ServiceResponseWithData<{ jobId: string }>> {
+    const res = await fetch(`${API_BASE}/products/${productId}/reprocess`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    return handleResponse(res, '제품 재처리 요청 실패');
   },
 
   async 실행_로그를_조회한다(params?: {

@@ -40,7 +40,7 @@ function ChartTooltip({ active, payload }: { active?: boolean; payload?: { paylo
       <div className="text-muted-foreground mb-1">{d.time}</div>
       <div className="flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-accent" />
-        <span className="text-foreground">Depth: <span className="font-mono font-bold">{d.depth}</span></span>
+        <span className="text-foreground">Depth(적체량): <span className="font-mono font-bold">{d.depth}</span></span>
       </div>
     </div>
   );
@@ -94,75 +94,78 @@ export default function QueueDetailPanel({ queue: q, onClose }: QueueDetailPanel
       <div className="flex-1 min-h-0 overflow-y-auto">
         {/* Metrics row */}
         <div className="grid grid-cols-4 gap-px bg-border/30">
-          <MetricCell label="Depth" value={String(q.depth)} accent={q.depth > 10} />
+          <MetricCell label="Depth(적체량)" value={String(q.depth)} accent={q.depth > 10} />
           <MetricCell label="Consumers" value={String(q.consumers)} />
           <MetricCell label="Oldest" value={q.oldestMessageAge > 0 ? formatDuration(q.oldestMessageAge * 1000) : '—'} />
           <MetricCell label="Dead Letters" value={String(q.deadLetters.length)} destructive={q.deadLetters.length > 0} />
         </div>
 
-        {/* Depth Chart (recharts) */}
-        <div className="px-4 pt-4 pb-2">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-muted-foreground">Depth 추이 (최근 1시간)</span>
-            <TrendBadge data={q.depthHistory} />
+        {/* Chart + Throughput — 2:1 side-by-side */}
+        <div className="grid grid-cols-3 gap-3 px-4 pt-4 pb-3">
+          {/* Depth Chart (2/3 width) */}
+          <div className="col-span-2">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-muted-foreground">Depth(적체량) 추이 (최근 1시간)</span>
+              <TrendBadge data={q.depthHistory} />
+            </div>
+            <div className="bg-muted/15 rounded-lg p-2">
+              <ResponsiveContainer width="100%" height={180}>
+                <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="depthGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.3} />
+                  <XAxis
+                    dataKey="time"
+                    tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }}
+                    axisLine={false}
+                    tickLine={false}
+                    allowDecimals={false}
+                  />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Area
+                    type="monotone"
+                    dataKey="depth"
+                    stroke="var(--color-accent)"
+                    strokeWidth={2}
+                    fill="url(#depthGrad)"
+                    dot={{ r: 3, fill: 'var(--color-accent)', stroke: 'var(--color-card)', strokeWidth: 2 }}
+                    activeDot={{ r: 5, fill: 'var(--color-accent)', stroke: 'var(--color-card)', strokeWidth: 2 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-          <div className="bg-muted/15 rounded-lg p-2">
-            <ResponsiveContainer width="100%" height={120}>
-              <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="depthGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.3} />
-                <XAxis
-                  dataKey="time"
-                  tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }}
-                  axisLine={false}
-                  tickLine={false}
-                  allowDecimals={false}
-                />
-                <Tooltip content={<ChartTooltip />} />
-                <Area
-                  type="monotone"
-                  dataKey="depth"
-                  stroke="var(--color-accent)"
-                  strokeWidth={2}
-                  fill="url(#depthGrad)"
-                  dot={{ r: 3, fill: 'var(--color-accent)', stroke: 'var(--color-card)', strokeWidth: 2 }}
-                  activeDot={{ r: 5, fill: 'var(--color-accent)', stroke: 'var(--color-card)', strokeWidth: 2 }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
 
-        {/* Throughput */}
-        <div className="px-4 py-3 border-t border-border/40">
-          <div className="flex items-center gap-1.5 mb-2">
-            <TrendingUp className="w-3.5 h-3.5 text-muted-foreground" />
-            <span className="text-xs font-medium text-muted-foreground">처리량 통계</span>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <ThroughputCard value={String(q.throughput.processed1h)} label="최근 1h" />
-            <ThroughputCard value={String(q.throughput.processed24h)} label="최근 24h" />
-            <ThroughputCard value={formatDuration(q.throughput.avgProcessingMs)} label="평균 처리" />
+          {/* Throughput (1/3 width, vertical stack) */}
+          <div className="col-span-1 flex flex-col">
+            <div className="flex items-center gap-1.5 mb-2">
+              <TrendingUp className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground">처리량 통계</span>
+            </div>
+            <div className="flex-1 flex flex-col gap-2">
+              <ThroughputCard value={String(q.throughput.processed1h)} label="최근 1h" />
+              <ThroughputCard value={String(q.throughput.processed24h)} label="최근 24h" />
+              <ThroughputCard value={formatDuration(q.throughput.avgProcessingMs)} label="평균 처리" />
+            </div>
           </div>
         </div>
 
         {/* Segment Tabs */}
-        <div className="flex border-t border-b border-border/50">
+        <div className="flex border-t border-border/50">
           <button
             type="button"
             className={cn(
-              'flex-1 px-3 py-2 text-xs font-medium transition-colors',
-              section === 'messages' ? 'text-foreground border-b-2 border-accent' : 'text-muted-foreground hover:text-foreground',
+              'flex-1 px-3 py-2 text-xs font-medium border-b-2 transition-colors',
+              section === 'messages' ? 'text-foreground border-accent' : 'text-muted-foreground border-accent/20 hover:text-foreground',
             )}
             onClick={() => setSection('messages')}
           >
@@ -172,8 +175,8 @@ export default function QueueDetailPanel({ queue: q, onClose }: QueueDetailPanel
           <button
             type="button"
             className={cn(
-              'flex-1 px-3 py-2 text-xs font-medium transition-colors',
-              section === 'deadLetters' ? 'text-foreground border-b-2 border-accent' : 'text-muted-foreground hover:text-foreground',
+              'flex-1 px-3 py-2 text-xs font-medium border-b-2 transition-colors',
+              section === 'deadLetters' ? 'text-foreground border-accent' : 'text-muted-foreground border-accent/20 hover:text-foreground',
             )}
             onClick={() => setSection('deadLetters')}
           >
@@ -194,7 +197,7 @@ export default function QueueDetailPanel({ queue: q, onClose }: QueueDetailPanel
                     <th className="text-left px-4 py-1.5 font-medium">Job ID</th>
                     <th className="text-left px-2 py-1.5 font-medium">위성</th>
                     <th className="text-left px-2 py-1.5 font-medium">스테이지</th>
-                    <th className="text-center px-2 py-1.5 font-medium">P</th>
+                    <th className="text-center px-2 py-1.5 font-medium">P (우선순위)</th>
                     <th className="text-right px-4 py-1.5 font-medium">대기</th>
                   </tr>
                 </thead>
@@ -280,9 +283,9 @@ function MetricCell({ label, value, accent, destructive }: {
 
 function ThroughputCard({ value, label }: { value: string; label: string }) {
   return (
-    <div className="bg-muted/20 rounded-lg px-3 py-2 text-center">
-      <div className="text-lg font-mono font-bold text-foreground">{value}</div>
-      <div className="text-[10px] text-muted-foreground mt-0.5">{label}</div>
+    <div className="flex-1 bg-muted/20 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-sm font-mono font-bold text-foreground">{value}</div>
     </div>
   );
 }

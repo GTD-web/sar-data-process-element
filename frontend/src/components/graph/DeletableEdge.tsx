@@ -12,6 +12,7 @@ export type DeletableEdgeData = {
   editable: boolean;
   sourceOrder: number;
   targetOrder: number;
+  markerId?: string;
   onDelete?: (sourceOrder: number, targetOrder: number) => void;
   onInsert?: (sourceOrder: number, targetOrder: number) => void;
   onHoverStay?: () => void;
@@ -27,13 +28,13 @@ export function DeletableEdge({
   sourceY,
   targetX,
   targetY,
-  markerEnd,
   data,
 }: EdgeProps<DeletableEdgeType>) {
   const stroke = data?.stroke ?? t.edge;
   const strokeWidth = data?.strokeWidth ?? 2;
   const editable = data?.editable ?? false;
   const hovered = useEdgeHover(id as string | undefined);
+  const markerId = data?.markerId ?? `arrow-${id}`;
 
   // n8n-style horizontal-fixed bezier: control points extend only horizontally
   const dx = Math.abs(targetX - sourceX);
@@ -69,8 +70,28 @@ export function DeletableEdge({
     transition: 'transform 0.15s, opacity 0.15s',
   };
 
+  const currentStroke = showActions ? t.edgeActive : stroke;
+
   return (
     <>
+      {/* Custom fixed-size arrowhead marker */}
+      <defs>
+        <marker
+          id={markerId}
+          markerWidth="12"
+          markerHeight="12"
+          refX="10"
+          refY="6"
+          orient="auto"
+          markerUnits="userSpaceOnUse"
+        >
+          <path
+            d="M 0 0 L 12 6 L 0 12 Z"
+            fill={currentStroke}
+            style={{ transition: 'fill 0.3s ease' }}
+          />
+        </marker>
+      </defs>
       {/* Invisible wide path for hover hit area */}
       <path
         d={edgePath}
@@ -86,7 +107,7 @@ export function DeletableEdge({
         fill="none"
         className="react-flow__edge-path"
         strokeLinecap="round"
-        markerEnd={markerEnd}
+        markerEnd={`url(#${markerId})`}
         style={{
           stroke: showActions ? t.edgeActive : stroke,
           strokeWidth: showActions ? 3 : strokeWidth,

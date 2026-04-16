@@ -309,7 +309,7 @@ export default function HomePage() {
                         </span>
                       </div>
                       <div className="flex items-center gap-3 text-xs">
-                        <span className="text-muted-foreground">Depth <span className="font-mono font-bold text-foreground">{q.depth}</span></span>
+                        <span className="text-muted-foreground" title="큐 적체량 — 대기 중인 메시지 수">Depth(적체량) <span className="font-mono font-bold text-foreground">{q.depth}</span></span>
                         <span className="text-muted-foreground">Consumers <span className="font-mono font-bold text-foreground">{q.consumers}</span></span>
                       </div>
                     </div>
