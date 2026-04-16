@@ -12,7 +12,12 @@ CSC-02은 **원시 위성 데이터 수신과 무결성 검증**을 담당합니
 
 복수의 관제소(A/B/C)로부터 CCSDS 바이너리 패킷 스트림을 수신하고, SHA-256 체크섬으로 무결성을 검증한 후 NAS에 저장합니다. 저장 완료 후 CSC-08(Pipeline Orchestrator)에 수신 완료 이벤트(SI-01)를 발행하여 처리 파이프라인을 기동합니다.
 
-내부적으로 Multi-source Receiver(CSU-02.01), Integrity Validator(CSU-02.02), NAS Stager(CSU-02.03), Reception Event Publisher(CSU-02.04) 등의 기능을 포함합니다.
+내부적으로 다음 CSU들로 구성됩니다.
+
+- **CSU-02.01** Multi-source Receiver
+- **CSU-02.02** Integrity Validator
+- **CSU-02.03** NAS Stager
+- **CSU-02.04** Reception Event Publisher
 
 ---
 

@@ -12,7 +12,20 @@ CSC-04은 **Level-0 HDF5를 입력으로 SAR 영상 처리를 수행하여 Level
 
 CSC-08로부터 작업 할당(SI-04)을 수신하면, Range 압축(FI-02) → Azimuth 압축(FI-03/04) → SLC → Multi-look → GRD/GEC/MAP → DEM 지형보정 → Cloud Optimized GeoTIFF 출력 순서로 처리합니다.
 
-내부적으로 Range Compression(CSU-04.01), RDA Azimuth Compression(CSU-04.02), BPA Azimuth Compression(CSU-04.03), SLC Formation(CSU-04.04), Multi-look Processor(CSU-04.05), GRD Converter(CSU-04.06), GEC Processor(CSU-04.07), MAP Projector(CSU-04.08), DEM Integration(CSU-04.09) 등의 기능을 포함합니다.
+내부적으로 다음 CSU들로 구성됩니다.
+
+- **CSU-04.01** Range Compression
+- **CSU-04.02** RDA Azimuth Compression
+- **CSU-04.03** BPA Azimuth Compression
+- **CSU-04.04** SLC Formation
+- **CSU-04.05** Multi-look Processor
+- **CSU-04.06** GRD Converter
+- **CSU-04.07** GEC Processor
+- **CSU-04.08** MAP Projector
+- **CSU-04.09** DEM Integration
+- **CSU-04.10** Geometric Terrain Correction
+- **CSU-04.11** Map Projection
+- **CSU-04.12** Geocoded, Map Projected Product
 
 ---
 

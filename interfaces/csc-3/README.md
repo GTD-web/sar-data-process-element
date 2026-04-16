@@ -12,7 +12,14 @@ CSC-03은 **원시 위성 데이터를 Level-0 HDF5 파일로 변환**하는 역
 
 CSC-08로부터 작업 할당(SI-04)을 수신하면, CCSDS 패킷 파싱 → BAQ 압축 해제(FI-01) → 레이더 라인 재구성 → 보조 데이터 추출 → 캘리브레이션 → HDF5 변환 순서로 처리합니다.
 
-내부적으로 De-packetizer(CSU-03.01), BAQ De-compression(CSU-03.02), Range Line Reconstructor(CSU-03.03), Auxiliary Data Extractor(CSU-03.04), Calibration(CSU-03.05), HDF5 Converter(CSU-03.06) 등의 기능을 포함합니다.
+내부적으로 다음 CSU들로 구성됩니다.
+
+- **CSU-03.01** De-packetizer
+- **CSU-03.02** BAQ De-compression
+- **CSU-03.03** Range Line Reconstructor
+- **CSU-03.04** Auxiliary Data Extractor
+- **CSU-03.05** Calibration
+- **CSU-03.06** HDF5 Converter
 
 ---
 
