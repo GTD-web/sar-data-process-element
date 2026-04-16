@@ -6,7 +6,7 @@ import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-c
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import Toast, { type ToastMessage } from '@/components/ui/Toast';
 import { ArchiveRestore, Archive } from 'lucide-react';
-import type { PipelineDefinition, PipelineStep, JobSummary } from '@/types/pipeline';
+import type { PipelineDefinition, PipelineStep } from '@/types/pipeline';
 import { SAR_STAGE_TO_CSC, SAR_STAGE_TO_LEVEL } from '@/types/pipeline';
 
 const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
@@ -23,7 +23,6 @@ export default function ArchivePage() {
 
   const [pipelines, setPipelines] = useState<PipelineDefinition[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
-  const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
@@ -31,15 +30,11 @@ export default function ArchivePage() {
 
   useEffect(() => {
     (async () => {
-      const [plRes, jRes] = await Promise.all([
-        service.아카이브_파이프라인_목록을_조회한다(),
-        service.Job_목록을_조회한다({ limit: 20 }),
-      ]);
+      const plRes = await service.아카이브_파이프라인_목록을_조회한다();
       if (plRes.data) {
         setPipelines(plRes.data);
         if (plRes.data.length > 0) setSelectedPipelineId(plRes.data[0]!.id);
       }
-      if (jRes.data) setJobs(jRes.data.items);
     })();
   }, [service]);
 
@@ -80,7 +75,6 @@ export default function ArchivePage() {
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((v) => !v)}
         activePage="archive"
-        jobs={jobs}
         archivePipelines={pipelines}
         selectedArchiveId={selectedPipelineId}
         onSelectArchive={setSelectedPipelineId}

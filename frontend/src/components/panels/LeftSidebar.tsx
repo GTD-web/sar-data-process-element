@@ -20,7 +20,7 @@ interface LeftSidebarBaseProps {
   collapsed: boolean;
   onToggle: () => void;
   /** 현재 활성 페이지 (nav highlight용) */
-  activePage?: 'home' | 'console' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit';
+  activePage?: 'home' | 'console' | 'jobs' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit';
 }
 
 interface LeftSidebarConsoleProps extends LeftSidebarBaseProps {
@@ -30,6 +30,10 @@ interface LeftSidebarConsoleProps extends LeftSidebarBaseProps {
   onSelectPipeline: (id: string) => void;
   onCreatePipeline: () => void;
   onDeletePipeline: (id: string) => void;
+}
+
+interface LeftSidebarJobsProps extends LeftSidebarBaseProps {
+  mode: 'jobs';
   jobs: JobSummary[];
   selectedJobId: string | null;
   onSelectJob: (jobId: string) => void;
@@ -37,16 +41,13 @@ interface LeftSidebarConsoleProps extends LeftSidebarBaseProps {
 
 interface LeftSidebarNavProps extends LeftSidebarBaseProps {
   mode: 'nav';
-  /** 실행 작업 목록 (다른 페이지에서도 표시) */
-  jobs?: JobSummary[];
-  onSelectJob?: (jobId: string) => void;
   /** 아카이브 페이지용: 아카이브된 파이프라인 목록 */
   archivePipelines?: PipelineDefinition[];
   selectedArchiveId?: string | null;
   onSelectArchive?: (id: string) => void;
 }
 
-type LeftSidebarProps = LeftSidebarConsoleProps | LeftSidebarNavProps;
+type LeftSidebarProps = LeftSidebarConsoleProps | LeftSidebarJobsProps | LeftSidebarNavProps;
 
 // ---------------------------------------------------------------------------
 // Component
@@ -59,17 +60,20 @@ export default function LeftSidebar(props: LeftSidebarProps) {
 
   const [pipelinesOpen, setPipelinesOpen] = useState(true);
   const [jobsOpen, setJobsOpen] = useState(true);
-  const [navJobsOpen, setNavJobsOpen] = useState(true);
   const [navArchiveOpen, setNavArchiveOpen] = useState(true);
 
   const isConsole = mode === 'console';
+  const isJobs = mode === 'jobs';
+  const isNav = mode === 'nav';
   const consolePl = isConsole ? (props as LeftSidebarConsoleProps) : null;
-  const navProps = !isConsole ? (props as LeftSidebarNavProps) : null;
-  const activeJobCount = consolePl?.jobs.filter((j) => j.status === 'ASSIGNED' || j.status === 'CREATED').length ?? 0;
+  const jobsPl = isJobs ? (props as LeftSidebarJobsProps) : null;
+  const navProps = isNav ? (props as LeftSidebarNavProps) : null;
+  const activeJobCount = jobsPl?.jobs.filter((j) => j.status === 'ASSIGNED' || j.status === 'CREATED').length ?? 0;
 
-  const navItems: { id: 'home' | 'console' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit'; icon: React.ElementType; label: string; href: string }[] = [
+  const navItems: { id: NonNullable<LeftSidebarBaseProps['activePage']>; icon: React.ElementType; label: string; href: string }[] = [
     { id: 'home', icon: LayoutDashboard, label: '오버뷰', href: base },
     { id: 'console', icon: GitBranch, label: '파이프라인', href: `${base}/console` },
+    { id: 'jobs', icon: Briefcase, label: '실행 작업', href: `${base}/jobs` },
     { id: 'profiles', icon: SlidersHorizontal, label: '처리 프로파일', href: `${base}/profiles` },
     { id: 'products', icon: Package, label: '제품', href: `${base}/products` },
     { id: 'queues', icon: Layers, label: '큐 모니터링', href: `${base}/queues` },
@@ -148,111 +152,105 @@ export default function LeftSidebar(props: LeftSidebarProps) {
             ))}
           </div>
 
-          {/* ── Console-only content ── */}
+          {/* ── Console mode: 파이프라인 섹션만 ── */}
           {isConsole && consolePl && (
-            <>
-              {/* 파이프라인 섹션 */}
-              <div className="border-b border-border">
-                <button
-                  onClick={() => setPipelinesOpen((v) => !v)}
-                  className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:bg-muted/20 transition-colors"
-                >
-                  <ChevronDown className={cn('w-3 h-3 transition-transform', !pipelinesOpen && '-rotate-90')} />
-                  <GitBranch className="w-3 h-3" />
-                  <span className="flex-1 text-left">파이프라인</span>
-                  <span className="text-[9px] font-mono font-normal normal-case">{consolePl.pipelines.length}</span>
-                </button>
-                {pipelinesOpen && (
-                  <div className="px-1.5 pb-2">
-                    <div className="space-y-0.5">
-                      {consolePl.pipelines.map((pl) => (
-                        <div
-                          key={pl.id}
+            <div className="border-b border-border">
+              <button
+                onClick={() => setPipelinesOpen((v) => !v)}
+                className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:bg-muted/20 transition-colors"
+              >
+                <ChevronDown className={cn('w-3 h-3 transition-transform', !pipelinesOpen && '-rotate-90')} />
+                <GitBranch className="w-3 h-3" />
+                <span className="flex-1 text-left">파이프라인</span>
+                <span className="text-[9px] font-mono font-normal normal-case">{consolePl.pipelines.length}</span>
+              </button>
+              {pipelinesOpen && (
+                <div className="px-1.5 pb-2">
+                  <div className="space-y-0.5">
+                    {consolePl.pipelines.map((pl) => (
+                      <div
+                        key={pl.id}
+                        className={cn(
+                          'group flex items-center rounded-md text-[11px] transition-colors',
+                          consolePl.selectedPipelineId === pl.id
+                            ? 'bg-accent/10 text-accent'
+                            : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground',
+                        )}
+                      >
+                        <button
+                          onClick={() => consolePl.onSelectPipeline(pl.id)}
+                          className="flex-1 min-w-0 text-left px-2 py-1.5"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <GitBranch className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{pl.name}</span>
+                          </div>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); consolePl.onDeletePipeline(pl.id); }}
+                          className="flex-shrink-0 p-1 mr-1 rounded opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
+                          title="파이프라인 삭제"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Jobs mode: 실행 작업 섹션만 ── */}
+          {isJobs && jobsPl && (
+            <div>
+              <button
+                onClick={() => setJobsOpen((v) => !v)}
+                className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:bg-muted/20 transition-colors"
+              >
+                <ChevronDown className={cn('w-3 h-3 transition-transform', !jobsOpen && '-rotate-90')} />
+                <Briefcase className="w-3 h-3" />
+                <span className="flex-1 text-left">실행 작업</span>
+                {activeJobCount > 0 && (
+                  <span className="px-1 rounded-full text-[9px] bg-accent/15 text-accent font-normal normal-case">{activeJobCount}</span>
+                )}
+              </button>
+              {jobsOpen && (
+                <div className="pb-1">
+                  {jobsPl.jobs.length === 0 ? (
+                    <div className="px-3 py-3 text-[10px] text-muted-foreground/60 text-center">실행 기록 없음</div>
+                  ) : (
+                    <div className="space-y-0.5 px-1.5">
+                      {jobsPl.jobs.map((job) => (
+                        <button
+                          key={job.jobId}
+                          onClick={() => jobsPl.onSelectJob(job.jobId)}
                           className={cn(
-                            'group flex items-center rounded-md text-[11px] transition-colors',
-                            consolePl.selectedPipelineId === pl.id
+                            'w-full text-left px-2 py-1.5 rounded-md transition-colors',
+                            jobsPl.selectedJobId === job.jobId
                               ? 'bg-accent/10 text-accent'
                               : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground',
                           )}
                         >
-                          <button
-                            onClick={() => consolePl.onSelectPipeline(pl.id)}
-                            className="flex-1 min-w-0 text-left px-2 py-1.5"
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <GitBranch className="w-3 h-3 flex-shrink-0" />
-                              <span className="truncate">{pl.name}</span>
-                            </div>
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); consolePl.onDeletePipeline(pl.id); }}
-                            className="flex-shrink-0 p-1 mr-1 rounded opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
-                            title="파이프라인 삭제"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[10px] font-mono font-semibold truncate">{job.jobId}</span>
+                            <JobStatusBadge status={job.status} retryCount={job.retryCount} />
+                          </div>
+                          <div className="flex items-center justify-between text-[9px] text-muted-foreground mt-0.5">
+                            <span className="truncate">{job.sceneId}</span>
+                            <span className="shrink-0">{formatRelativeTime(job.updatedAt)}</span>
+                          </div>
+                        </button>
                       ))}
                     </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 실행 작업 섹션 */}
-              <div>
-                <button
-                  onClick={() => setJobsOpen((v) => !v)}
-                  className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:bg-muted/20 transition-colors"
-                >
-                  <ChevronDown className={cn('w-3 h-3 transition-transform', !jobsOpen && '-rotate-90')} />
-                  <Briefcase className="w-3 h-3" />
-                  <span className="flex-1 text-left">실행 작업</span>
-                  {activeJobCount > 0 && (
-                    <span className="px-1 rounded-full text-[9px] bg-accent/15 text-accent font-normal normal-case">{activeJobCount}</span>
                   )}
-                </button>
-                {jobsOpen && (
-                  <div className="pb-1">
-                    {consolePl.jobs.length === 0 ? (
-                      <div className="px-3 py-3 text-[10px] text-muted-foreground/60 text-center">실행 기록 없음</div>
-                    ) : (
-                      <div className="space-y-0.5 px-1.5">
-                        {consolePl.jobs.slice(0, 20).map((job) => (
-                          <button
-                            key={job.jobId}
-                            onClick={() => consolePl.onSelectJob(job.jobId)}
-                            className={cn(
-                              'w-full text-left px-2 py-1.5 rounded-md transition-colors',
-                              consolePl.selectedJobId === job.jobId
-                                ? 'bg-accent/10 text-accent'
-                                : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground',
-                            )}
-                          >
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="text-[10px] font-mono font-semibold truncate">{job.jobId}</span>
-                              <JobStatusBadge status={job.status} retryCount={job.retryCount} />
-                            </div>
-                            <div className="flex items-center justify-between text-[9px] text-muted-foreground mt-0.5">
-                              <span className="truncate">{job.sceneId}</span>
-                              <span className="shrink-0">{formatRelativeTime(job.updatedAt)}</span>
-                            </div>
-                          </button>
-                        ))}
-                        {consolePl.jobs.length > 20 && (
-                          <div className="text-[9px] text-muted-foreground/50 text-center py-1">
-                            +{consolePl.jobs.length - 20}건 더
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </>
+                </div>
+              )}
+            </div>
           )}
 
-          {/* ── Archive list (nav mode — above jobs) ── */}
-          {!isConsole && navProps?.archivePipelines && navProps.archivePipelines.length > 0 && (
+          {/* ── Archive list (nav mode only) ── */}
+          {isNav && navProps?.archivePipelines && navProps.archivePipelines.length > 0 && (
             <div className="border-t border-border">
               <button
                 onClick={() => setNavArchiveOpen((v) => !v)}
@@ -282,44 +280,6 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                       </div>
                       <div className="text-[9px] text-muted-foreground mt-0.5 ml-[18px]">
                         {pl.satelliteId} · {pl.mode}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Jobs list (nav mode — below page-specific content) ── */}
-          {!isConsole && navProps?.jobs && navProps.jobs.length > 0 && (
-            <div className="border-t border-border">
-              <button
-                onClick={() => setNavJobsOpen((v) => !v)}
-                className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:bg-muted/20 transition-colors"
-              >
-                <ChevronDown className={cn('w-3 h-3 transition-transform', !navJobsOpen && '-rotate-90')} />
-                <Briefcase className="w-3 h-3" />
-                <span className="flex-1 text-left">실행 작업</span>
-                {(() => {
-                  const active = navProps.jobs.filter((j) => j.status === 'ASSIGNED' || j.status === 'CREATED').length;
-                  return active > 0 ? <span className="px-1 rounded-full text-[9px] bg-accent/15 text-accent font-normal normal-case">{active}</span> : null;
-                })()}
-              </button>
-              {navJobsOpen && (
-                <div className="px-1.5 pb-2 space-y-0.5">
-                  {navProps.jobs.slice(0, 15).map((job) => (
-                    <button
-                      key={job.jobId}
-                      onClick={() => navProps.onSelectJob?.(job.jobId)}
-                      className="w-full text-left px-2 py-1.5 rounded-md text-muted-foreground hover:bg-muted/30 hover:text-foreground transition-colors"
-                    >
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-[10px] font-mono font-semibold truncate">{job.jobId}</span>
-                        <JobStatusBadge status={job.status} retryCount={job.retryCount} />
-                      </div>
-                      <div className="flex items-center justify-between text-[9px] text-muted-foreground mt-0.5">
-                        <span className="truncate">{job.sceneId}</span>
-                        <span className="shrink-0">{formatRelativeTime(job.updatedAt)}</span>
                       </div>
                     </button>
                   ))}

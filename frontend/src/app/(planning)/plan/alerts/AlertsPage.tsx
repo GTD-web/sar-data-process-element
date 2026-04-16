@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import Toast, { type ToastMessage } from '@/components/ui/Toast';
-import type { Alert, AlertKind, JobSummary } from '@/types/pipeline';
+import type { Alert, AlertKind } from '@/types/pipeline';
 import { cn, formatKST, formatRelativeTime } from '@/lib/utils';
 import {
   Bell, CheckCircle, AlertTriangle, AlertCircle, ShieldAlert,
@@ -92,7 +92,7 @@ function AlertRow({
 
         {/* Job ID */}
         <a
-          href={`${base}/console?jobId=${alert.jobId}`}
+          href={`${base}/jobs?jobId=${alert.jobId}`}
           onClick={(e) => e.stopPropagation()}
           className="text-[10px] font-mono text-accent hover:underline shrink-0"
         >
@@ -141,7 +141,7 @@ function AlertRow({
               </div>
               <div>
                 <span className="text-muted-foreground">Job ID: </span>
-                <a href={`${base}/console?jobId=${alert.jobId}`} className="font-mono text-accent hover:underline">{alert.jobId}</a>
+                <a href={`${base}/jobs?jobId=${alert.jobId}`} className="font-mono text-accent hover:underline">{alert.jobId}</a>
               </div>
               <div>
                 <span className="text-muted-foreground">발생 시각: </span>
@@ -182,7 +182,6 @@ export default function AlertsPage() {
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
   // Filters
@@ -194,15 +193,14 @@ export default function AlertsPage() {
 
   const loadData = useCallback(async () => {
     const acknowledged = filterStatus === 'unacked' ? false : filterStatus === 'acked' ? true : undefined;
-    const [aRes, jRes] = await Promise.all([
-      service.Alert_목록을_조회한다({ acknowledged }),
-      service.Job_목록을_조회한다({ limit: 20 }),
-    ]);
+    const aRes = await service.Alert_목록을_조회한다({ acknowledged });
     if (aRes.data) setAlerts(aRes.data);
-    if (jRes.data) setJobs(jRes.data.items);
   }, [service, filterStatus]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 의존성이 변경될 때 비동기 데이터를 fetch하여 상태를 갱신하는 정규 패턴
+    loadData();
+  }, [loadData]);
 
   const filtered = filterKind
     ? alerts.filter((a) => a.kind === filterKind)
@@ -255,7 +253,6 @@ export default function AlertsPage() {
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((v) => !v)}
         activePage="alerts"
-        jobs={jobs}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">

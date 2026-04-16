@@ -5,7 +5,6 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import PipelineProgressStepper from '@/components/graph/PipelineProgressStepper';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
-import TopBar from '@/components/panels/TopBar';
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import RightTabbedPanel from '@/components/panels/RightTabbedPanel';
 import ConsoleTab, { type ConsoleMode } from '@/components/panels/ConsoleTab';
@@ -26,9 +25,7 @@ import type {
   FileInputConfig,
   ProcessingProfile,
   ExecutionLog,
-  JobSummary,
   JobDetail,
-  QueueHealth,
   PipelineStep,
   SarStage,
   PipelineNodeKind,
@@ -57,7 +54,11 @@ function PipelineNameBadge({
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Sync draft when pipeline changes
-  useEffect(() => { setDraft(name); setEditing(false); }, [name]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 파이프라인 전환 시 편집 상태 리셋 (외부 prop 동기화)
+    setDraft(name);
+    setEditing(false);
+  }, [name]);
   useEffect(() => { if (editing) inputRef.current?.select(); }, [editing]);
 
   const handleSubmit = () => {
@@ -151,8 +152,6 @@ export default function ConsolePage() {
   // --- Data ---
   const [pipelines, setPipelines] = useState<PipelineDefinition[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
-  const [jobs, setJobs] = useState<JobSummary[]>([]);
-  const [queues, setQueues] = useState<QueueHealth[]>([]);
   const [selectedJob, setSelectedJob] = useState<JobDetail | null>(null);
   const [profiles, setProfiles] = useState<ProcessingProfile[]>([]);
   const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
@@ -179,10 +178,8 @@ export default function ConsolePage() {
   // --- Load ---
   useEffect(() => {
     (async () => {
-      const [plRes, jobsRes, queuesRes, profRes, logRes] = await Promise.all([
+      const [plRes, profRes, logRes] = await Promise.all([
         service.파이프라인_목록을_조회한다(),
-        service.Job_목록을_조회한다({ limit: 50 }),
-        service.큐_상태를_조회한다(),
         service.처리_프로파일_목록을_조회한다(),
         service.실행_로그를_조회한다({ limit: 300 }),
       ]);
@@ -193,8 +190,6 @@ export default function ConsolePage() {
         // create 모드가 아닐 때만 첫 파이프라인 자동 선택
         if (!isCreateMode && plRes.data.length > 0) setSelectedPipelineId(plRes.data[0].id);
       }
-      if (jobsRes.data) setJobs(jobsRes.data.items);
-      if (queuesRes.data) setQueues(queuesRes.data);
       if (profRes.data) setProfiles(profRes.data);
       if (logRes.data) setExecutionLogs(logRes.data);
 
@@ -224,10 +219,6 @@ export default function ConsolePage() {
         setSelectedJob(res.data);
         setConsoleMode({ type: 'job', job: res.data });
 
-        // Job 목록도 갱신
-        const jobsRes = await service.Job_목록을_조회한다({ limit: 50 });
-        if (jobsRes.data) setJobs(jobsRes.data.items);
-
         // 완료/실패 시 폴링 중지 (다음 체크에서 조건 불일치로 자동 정리)
         if (res.data.status === 'COMPLETED') {
           setToast({ message: `Job ${res.data.jobId} 처리가 완료되었습니다`, type: 'success' });
@@ -238,7 +229,7 @@ export default function ConsolePage() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [selectedJob?.jobId, selectedJob?.status, service]);
+  }, [selectedJob, service]);
 
   const handleToggleNodeActive = useCallback((order: number) => {
     setDisabledNodeOrders((prev) => {
@@ -371,11 +362,7 @@ export default function ConsolePage() {
       } else {
         setToast({ message: res.message, type: 'success' });
       }
-      const [jobsRes, logRes] = await Promise.all([
-        service.Job_목록을_조회한다(),
-        service.실행_로그를_조회한다({ limit: 300 }),
-      ]);
-      if (jobsRes.success && jobsRes.data) setJobs(jobsRes.data.items);
+      const logRes = await service.실행_로그를_조회한다({ limit: 300 });
       if (logRes.data) setExecutionLogs(logRes.data);
       setLogPanelOpen(true);
 
@@ -446,23 +433,6 @@ export default function ConsolePage() {
   );
 
   // --- Job handlers ---
-  const handleSelectJob = useCallback(async (jobId: string) => {
-    const res = await service.Job_상세를_조회한다(jobId);
-    if (res.data) {
-      setSelectedJob(res.data);
-      setActiveStepOrder(null);
-      setConsoleMode({ type: 'job', job: res.data });
-      
-      setRightCollapsed(false);
-      updateJobIdParam(jobId);
-      // Job의 파이프라인으로 자동 전환
-      if (res.data.pipelineId && res.data.pipelineId !== selectedPipelineId) {
-        setSelectedPipelineId(res.data.pipelineId);
-        setDisabledNodeOrders(new Set());
-      }
-    }
-  }, [service, updateJobIdParam, selectedPipelineId]);
-
   const handleReprocessJob = useCallback(() => {
     if (!selectedJob) return;
     setReprocessDialogOpen(true);
@@ -472,9 +442,8 @@ export default function ConsolePage() {
     if (!selectedJob) return;
     setReprocessDialogOpen(false);
     await service.Job을_재처리한다(selectedJob.jobId);
-    const [jRes, jsRes] = await Promise.all([service.Job_상세를_조회한다(selectedJob.jobId), service.Job_목록을_조회한다({ limit: 50 })]);
+    const jRes = await service.Job_상세를_조회한다(selectedJob.jobId);
     if (jRes.data) { setSelectedJob(jRes.data); setConsoleMode({ type: 'job', job: jRes.data }); }
-    if (jsRes.data) setJobs(jsRes.data.items);
   }, [service, selectedJob]);
 
   const handleCancelJob = useCallback(() => {
@@ -486,18 +455,16 @@ export default function ConsolePage() {
     if (!selectedJob) return;
     setCancelDialogOpen(false);
     await service.Job을_취소한다(selectedJob.jobId);
-    const [jRes, jsRes] = await Promise.all([service.Job_상세를_조회한다(selectedJob.jobId), service.Job_목록을_조회한다({ limit: 50 })]);
+    const jRes = await service.Job_상세를_조회한다(selectedJob.jobId);
     if (jRes.data) { setSelectedJob(jRes.data); setConsoleMode({ type: 'job', job: jRes.data }); }
-    if (jsRes.data) setJobs(jsRes.data.items);
   }, [service, selectedJob]);
 
   // D-02: 부분 재처리
   const handlePartialReprocess = useCallback(async (sarStage: SarStage) => {
     if (!selectedJob) return;
     await service.부분_재처리를_요청한다(selectedJob.jobId, { sarStage });
-    const [jRes, jsRes] = await Promise.all([service.Job_상세를_조회한다(selectedJob.jobId), service.Job_목록을_조회한다({ limit: 50 })]);
+    const jRes = await service.Job_상세를_조회한다(selectedJob.jobId);
     if (jRes.data) { setSelectedJob(jRes.data); setConsoleMode({ type: 'job', job: jRes.data }); }
-    if (jsRes.data) setJobs(jsRes.data.items);
   }, [service, selectedJob]);
 
   // D-02: 노드 order 기반 부분 재처리 (캔버스 노드 toolbar에서 호출)
@@ -646,9 +613,6 @@ export default function ConsolePage() {
         }}
         onCreatePipeline={handleCreatePipeline}
         onDeletePipeline={handleDeletePipeline}
-        jobs={jobs}
-        selectedJobId={selectedJob?.jobId ?? null}
-        onSelectJob={handleSelectJob}
         activePage="console"
       />
 

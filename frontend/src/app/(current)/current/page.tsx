@@ -1,13 +1,5 @@
-'use client';
+import HomePage from '@/app/(planning)/plan/HomePage';
 
-import { PipelineServiceProvider } from '@/app/(planning)/_context/pipeline-service-context';
-import { pipelineCurrentService } from '@/app/(current)/_services/pipeline.current.service';
-import HomePage from '@/app/(planning)/_ui/HomePage';
-
-export default function CurrentHomePage() {
-  return (
-    <PipelineServiceProvider service={pipelineCurrentService}>
-      <HomePage />
-    </PipelineServiceProvider>
-  );
+export default function Page() {
+  return <HomePage />;
 }

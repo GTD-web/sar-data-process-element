@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils';
 import type { JobStatus, StepStatus } from '@/types/pipeline';
 import { JOB_STATUS_DISPLAY } from '@/types/pipeline';
-import { AlertCircle, CheckCircle, Circle, Loader, RefreshCw, XCircle, Ban } from 'lucide-react';
+import { AlertCircle, CheckCircle, Circle, Loader, XCircle, Ban } from 'lucide-react';
 
 const JOB_STATUS_STYLES: Record<JobStatus, { bg: string; text: string; icon: React.ElementType }> = {
   CREATED: { bg: 'bg-muted/50', text: 'text-muted-foreground', icon: Circle },

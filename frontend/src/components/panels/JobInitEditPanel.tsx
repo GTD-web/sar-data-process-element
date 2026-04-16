@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import type { PipelineStepDefinition, ProcessingProfile, JobInitConfig, RetryInterval } from '@/types/pipeline';
 import {
   POLARIZATION_OPTIONS,
@@ -36,27 +36,22 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
   const [retryInterval, setRetryInterval] = useState<RetryInterval>(initial.retryInterval);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  useEffect(() => {
-    const cfg = step.jobInitConfig ?? DEFAULT_CONFIG;
-    setPolarization(cfg.polarization);
-    setProfileId(cfg.profileId ?? '');
-    setPriority(cfg.priority);
-    setDeadlineHours(cfg.deadlineHours);
-    setRetryInterval(cfg.retryInterval);
-  }, [step]);
-
   const matchingProfiles = useMemo(
     () => profiles.filter((p) => p.satelliteId === satelliteId && p.mode === mode && p.polarization === polarization),
     [profiles, satelliteId, mode, polarization],
   );
 
-  useEffect(() => {
-    if (matchingProfiles.length > 0 && !matchingProfiles.find((p) => p.id === profileId)) {
-      setProfileId(matchingProfiles[0].id);
-    } else if (matchingProfiles.length === 0) {
+  // 편파 변경 시 매칭 프로파일 목록이 바뀌므로 현재 선택을 자동 정합화.
+  // 부모가 key={step.order}로 remount를 보장하므로 profiles/satelliteId/mode 변경은 고려하지 않음.
+  const handlePolarizationChange = (newPol: string) => {
+    setPolarization(newPol);
+    const next = profiles.filter((p) => p.satelliteId === satelliteId && p.mode === mode && p.polarization === newPol);
+    if (next.length === 0) {
       setProfileId('');
+    } else if (!next.find((p) => p.id === profileId)) {
+      setProfileId(next[0].id);
     }
-  }, [matchingProfiles, profileId]);
+  };
 
   const selectedProfile = profiles.find((p) => p.id === profileId);
 
@@ -117,7 +112,7 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
             <label className="text-[10px] text-muted-foreground block mb-1">편파 구성</label>
             <select
               value={polarization}
-              onChange={(e) => setPolarization(e.target.value)}
+              onChange={(e) => handlePolarizationChange(e.target.value)}
               className="w-full bg-card border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent/50"
             >
               {POLARIZATION_OPTIONS.map((p) => (

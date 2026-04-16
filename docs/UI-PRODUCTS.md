@@ -1,138 +1,139 @@
-# UI Specification — Product Management
+# UI 스펙 — 제품(Product) 관리
 
-> Covers **UC27–UC32** from [USECASE.md](./USECASE.md).
+> [USECASE.md](./USECASE.md)의 **UC27–UC32**를 담당합니다.
 
-## Route
+## 라우트
 
 `/plan/products` · `/current/products`
 
-## Purpose
+## 목적
 
-Browse, inspect, and download processed SAR products registered in the STAC catalog (CSU-02).  
-Provides quality validation results, thumbnails, and reprocessing capabilities.
+STAC 카탈로그(CSU-02)에 등록된 처리 완료 SAR 제품을 탐색·조회·다운로드한다.
+품질 검증 결과와 Quick-look 미리보기를 제공하며, 제품 기반 재처리 요청을 지원한다.
 
 ---
 
-## Page Layout
+## 페이지 레이아웃
 
-### 1. Header Bar
+### 1. 헤더
 
-| Element | Description |
-|---------|-------------|
-| Page title | "Products" |
-| Filter controls | Level (L0–L3), Satellite, Mode, Status, Date range |
-| Search | scene_id or product_id keyword search |
+| 요소 | 설명 |
+| --- | --- |
+| 페이지 타이틀 | "제품" |
+| 필터 컨트롤 | 레벨(L0~L3), 위성, 모드, 상태, 기간 |
+| 검색 | Scene ID 또는 Product ID 부분 일치 검색 |
 
-### 2. Product List Table (UC27)
+### 2. 제품 목록 테이블 (UC27)
 
-| Column | Description |
-|--------|-------------|
-| Product ID | Unique identifier (link to detail panel) |
-| Scene ID | Source scene identifier |
-| Level | LEVEL_0 / LEVEL_1 / LEVEL_2 / LEVEL_3 |
-| Satellite | Lumir-X1 / X2 / X3 |
-| Mode | SM / SC / SL |
-| Status | COMPLETED / FAILED / PROCESSING |
-| Created | Timestamp |
-| Actions | View / Download / Reprocess |
+| 컬럼 | 설명 |
+| --- | --- |
+| Product ID | 고유 식별자 (클릭 시 상세 패널 오픈) |
+| Scene ID | 원본 씬 식별자 |
+| 레벨 | LEVEL_0 / LEVEL_1 / LEVEL_2 / LEVEL_3 |
+| 위성 | Lumir-X1 / X2 / X3 |
+| 모드 | SM / SC / SL |
+| 상태 | COMPLETED / FAILED / PROCESSING |
+| 생성일 | 타임스탬프 |
+| 작업 | 조회 / 다운로드 / 재처리 |
 
-- Default sort: Created (descending).
-- Pagination: server-side, 20 rows per page.
-- Empty state: "No products match the current filters."
+- 기본 정렬: 생성일 내림차순
+- 페이지네이션: 서버 측, 20행/페이지
+- 빈 상태: "조건에 맞는 제품이 없습니다"
 
-### 3. Product Detail Panel (UC28)
+### 3. 제품 상세 패널 (UC28)
 
-**Trigger**: Click product row or "View" action.  
-Opens as a **slide-over panel** on the right side.
+**트리거**: 제품 행 클릭 또는 "조회" 액션
+우측 **Slide-over 패널**로 표시된다.
 
-#### Metadata Section
+#### 메타데이터 섹션
 
-| Field | Description |
-|-------|-------------|
+| 필드 | 설명 |
+| --- | --- |
 | Product ID | — |
 | Scene ID | — |
-| Level | Processing level |
-| Satellite / Mode | — |
-| Polarization | HH, VV, etc. |
-| Spatial Extent | Bounding box (WGS84) — displayed on a mini-map |
-| Temporal Extent | Acquisition start / end |
-| Resolution | Ground range / azimuth (meters) |
-| Processing Time | Total elapsed time |
-| Job ID | Link to associated job |
+| 레벨 | 처리 레벨 |
+| 위성 / 모드 | — |
+| 편파 | HH, VV 등 |
+| 공간 범위 | 바운딩 박스(WGS84) — 미니 지도로 표시 |
+| 촬영 시간 | 시작 / 종료 |
+| 해상도 | Range / Azimuth (미터) |
+| 처리 소요 시간 | 총 처리 시간 |
+| Job ID | 연결된 Job 상세로 이동하는 링크 |
 
-#### Thumbnail Preview (UC31)
+#### 썸네일 미리보기 (UC31)
 
-- Quick-look thumbnail image (GET `/v1/products/{id}/thumbnail`).
-- Click to expand in a lightbox overlay.
-- Fallback: "No preview available" placeholder.
+- Quick-look 썸네일 이미지 (GET `/v1/products/{id}/thumbnail`)
+- 클릭 시 라이트박스 오버레이로 확대
+- 대체 상태: "미리보기 없음" 플레이스홀더
 
-#### Quality Validation (UC29)
+#### 품질 검증 (UC29)
 
-| Metric | Value | Status |
-|--------|-------|--------|
-| NESZ | dB value | Pass / Fail |
-| PSLR | dB value | Pass / Fail |
-| Geometric Accuracy | meters | Pass / Fail |
-| Radiometric Calibration | — | Pass / Fail |
+| 지표 | 값 | 상태 |
+| --- | --- | --- |
+| NESZ | dB 값 | Pass / Fail |
+| PSLR | dB 값 | Pass / Fail |
+| 기하 정확도 | m | Pass / Fail |
+| 방사 보정 | — | Pass / Fail |
 
-- Color-coded: green (Pass), red (Fail).
-- Source: CSU-07.02, REQ-FUNC-023.
+- 색상 코드: 녹색(Pass) / 빨강(Fail)
+- 출처: CSU-07.02, REQ-FUNC-023
 
-#### Actions
+#### 액션
 
-| Action | Description | Role |
-|--------|-------------|------|
-| Download (UC30) | Generate presigned URL with expiry, open in new tab | Admin, Operator |
-| Reprocess (UC32) | Open reprocess dialog | Admin, Operator |
+| 액션 | 설명 | 역할 |
+| --- | --- | --- |
+| 다운로드 (UC30) | 만료 시간 포함 Presigned URL 발급 후 새 탭에서 열기 | Admin, Operator |
+| 재처리 (UC32) | 재처리 다이얼로그 오픈 | Admin, Operator |
 
-### 4. Download Flow (UC30)
+### 4. 다운로드 플로우 (UC30)
 
-1. User clicks "Download".
-2. Frontend calls `GET /v1/products/{id}/download-url`.
-3. Receives presigned URL with expiration time.
-4. Show toast: "Download link generated (expires in N minutes)" and open URL in new tab.
+1. 사용자가 "다운로드" 클릭
+2. 프론트엔드가 `GET /v1/products/{id}/download-url` 호출
+3. 만료 시간이 포함된 Presigned URL 수신
+4. 토스트 표시: "다운로드 링크 생성 완료 (N분 후 만료)" 및 새 탭에서 URL 오픈
 
-### 5. Reprocess Dialog (UC32)
+### 5. 재처리 다이얼로그 (UC32)
 
-**Trigger**: "Reprocess" button on product detail or list action.
+**트리거**: 제품 상세 또는 목록의 "재처리" 액션
 
-| Field | Type | Description |
-|-------|------|-------------|
-| Scene ID | Read-only | Pre-filled from the product |
-| Target Level | Select | LEVEL_1, LEVEL_2, LEVEL_3 (must be >= current level) |
-| Confirmation | Checkbox | "I understand this will create a new Job" |
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| Scene ID | 읽기 전용 | 제품에서 자동 채움 |
+| 시작 레벨 | 드롭다운 | LEVEL_1, LEVEL_2, LEVEL_3 (현재 레벨 이상) |
+| 확인 | 체크박스 | "새 Job이 생성됩니다" |
 
-**On submit**:
-- Calls ICD OPS-06 / SI-07 to trigger reprocessing.
-- CSC-08 reconstructs the DAG from the specified level.
-- Show success toast with the new Job ID (link to Job detail).
+**제출 시**:
+
+- ICD OPS-06 / SI-07 을 호출하여 재처리 트리거
+- CSC-08이 지정된 레벨부터 DAG를 재구성
+- 성공 토스트에 새 Job ID(Job 상세 링크 포함) 표시
 
 ---
 
-## Role-Based Visibility
+## 역할별 가시성
 
-| Element | Admin | Operator |
-|---------|-------|----------|
-| Product list (read) | Yes | Yes |
-| Product detail (read) | Yes | Yes |
-| Download | Yes | Yes |
-| Reprocess | Yes | Yes |
+| 요소 | Admin | Operator |
+| --- | --- | --- |
+| 제품 목록 조회 | O | O |
+| 제품 상세 조회 | O | O |
+| 다운로드 | O | O |
+| 재처리 | O | O |
 
-## API Endpoints (Expected)
+## 예상 API 엔드포인트
 
-| Action | Method | Path |
-|--------|--------|------|
-| List products | GET | `/v1/products` |
-| Get product | GET | `/v1/products/{id}` |
-| Get thumbnail | GET | `/v1/products/{id}/thumbnail` |
-| Get download URL | GET | `/v1/products/{id}/download-url` |
-| Reprocess | POST | `/v1/products/{id}/reprocess` |
+| 동작 | 메서드 | 경로 |
+| --- | --- | --- |
+| 제품 목록 조회 | GET | `/v1/products` |
+| 제품 상세 조회 | GET | `/v1/products/{id}` |
+| 썸네일 조회 | GET | `/v1/products/{id}/thumbnail` |
+| 다운로드 URL 발급 | GET | `/v1/products/{id}/download-url` |
+| 재처리 요청 | POST | `/v1/products/{id}/reprocess` |
 
-## Related Use Cases
+## 관련 유즈케이스
 
-- UC27: Product list → Product List Table
-- UC28: Product detail → Product Detail Panel (metadata)
-- UC29: Quality validation → Quality Validation section
-- UC30: Download → Download Flow
-- UC31: Thumbnail → Thumbnail Preview
-- UC32: Reprocess → Reprocess Dialog
+- UC27: 제품 목록 조회 → 제품 목록 테이블
+- UC28: 제품 상세 조회 → 제품 상세 패널(메타데이터)
+- UC29: 품질 검증 → 품질 검증 섹션
+- UC30: 다운로드 → 다운로드 플로우
+- UC31: 썸네일 → 썸네일 미리보기
+- UC32: 재처리 → 재처리 다이얼로그

@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import Toast, { type ToastMessage } from '@/components/ui/Toast';
-import type { ProcessingProfile, JobSummary } from '@/types/pipeline';
+import type { ProcessingProfile } from '@/types/pipeline';
 import { POLARIZATION_OPTIONS } from '@/types/pipeline';
-import { cn, formatKST } from '@/lib/utils';
+import { formatKST } from '@/lib/utils';
 import {
   Plus, Pencil, Trash2, X, Search, SlidersHorizontal, GitBranch,
 } from 'lucide-react';
@@ -233,7 +233,6 @@ export default function ProcessingProfilesPage() {
   const service = usePipelineService();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [profiles, setProfiles] = useState<ProcessingProfile[]>([]);
-  const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
   // Filters
@@ -247,15 +246,14 @@ export default function ProcessingProfilesPage() {
   const [deleteTarget, setDeleteTarget] = useState<ProcessingProfile | null>(null);
 
   const loadData = useCallback(async () => {
-    const [pRes, jRes] = await Promise.all([
-      service.처리_프로파일_목록을_조회한다(),
-      service.Job_목록을_조회한다({ limit: 20 }),
-    ]);
+    const pRes = await service.처리_프로파일_목록을_조회한다();
     if (pRes.data) setProfiles(pRes.data);
-    if (jRes.data) setJobs(jRes.data.items);
   }, [service]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 의존성이 변경될 때 비동기 데이터를 fetch하여 상태를 갱신하는 정규 패턴
+    loadData();
+  }, [loadData]);
 
   const filtered = profiles.filter((p) => {
     if (filterSatellite && p.satelliteId !== filterSatellite) return false;
@@ -298,7 +296,6 @@ export default function ProcessingProfilesPage() {
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((v) => !v)}
         activePage="profiles"
-        jobs={jobs}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">

@@ -1,13 +1,5 @@
-'use client';
+import ProductsPage from '@/app/(planning)/plan/products/ProductsPage';
 
-import { PipelineServiceProvider } from '@/app/(planning)/_context/pipeline-service-context';
-import { pipelineCurrentService } from '@/app/(current)/_services/pipeline.current.service';
-import ProductsPage from '@/app/(planning)/_ui/ProductsPage';
-
-export default function CurrentProductsPage() {
-  return (
-    <PipelineServiceProvider service={pipelineCurrentService}>
-      <ProductsPage />
-    </PipelineServiceProvider>
-  );
+export default function Page() {
+  return <ProductsPage />;
 }

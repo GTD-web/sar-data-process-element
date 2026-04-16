@@ -1,16 +1,10 @@
-'use client';
-
 import { Suspense } from 'react';
-import { PipelineServiceProvider } from '@/app/(planning)/_context/pipeline-service-context';
-import { pipelineMockService } from '@/app/(planning)/_services/pipeline.mock.service';
-import ConsolePage from '@/app/(planning)/_ui/ConsolePage';
+import ConsolePage from './ConsolePage';
 
-export default function PlanConsolePage() {
+export default function Page() {
   return (
-    <PipelineServiceProvider service={pipelineMockService}>
-      <Suspense>
-        <ConsolePage />
-      </Suspense>
-    </PipelineServiceProvider>
+    <Suspense>
+      <ConsolePage />
+    </Suspense>
   );
 }

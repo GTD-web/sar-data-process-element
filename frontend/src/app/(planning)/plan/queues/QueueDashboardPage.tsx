@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import QueueDetailPanel from '@/components/panels/QueueDetailPanel';
-import type { QueueHealth, QueueDepthPoint, JobSummary } from '@/types/pipeline';
-import { cn, formatDuration } from '@/lib/utils';
+import type { QueueHealth, QueueDepthPoint } from '@/types/pipeline';
+import { cn } from '@/lib/utils';
 import { Activity, Skull, AlertTriangle } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -27,8 +27,15 @@ function Sparkline({ data }: { data: QueueDepthPoint[] }) {
     .join(' ');
 
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="flex-shrink-0">
-      <polyline points={points} fill="none" stroke="var(--color-accent)" strokeWidth={1.2} strokeLinejoin="round" strokeLinecap="round" />
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="shrink-0">
+      <polyline
+        points={points}
+        fill="none"
+        stroke="var(--color-accent)"
+        strokeWidth={1.2}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -46,9 +53,7 @@ function QueueListItem({ q, selected, onSelect }: { q: QueueHealth; selected: bo
       onClick={onSelect}
       className={cn(
         'w-full text-left rounded-lg px-3 py-2.5 transition-all',
-        selected
-          ? 'bg-accent/10 ring-1 ring-accent/40'
-          : 'hover:bg-muted/40',
+        selected ? 'bg-accent/10 ring-1 ring-accent/40' : 'hover:bg-muted/40',
       )}
     >
       <div className="flex items-center justify-between mb-1">
@@ -56,19 +61,21 @@ function QueueListItem({ q, selected, onSelect }: { q: QueueHealth; selected: bo
         <div className="flex items-center gap-1.5">
           {hasDead && (
             <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded-full text-[9px] font-medium bg-destructive/15 text-destructive">
-              <Skull className="w-2.5 h-2.5" />{q.deadLetters.length}
+              <Skull className="w-2.5 h-2.5" />
+              {q.deadLetters.length}
             </span>
           )}
-          <span className={cn(
-            'w-2 h-2 rounded-full',
-            q.healthy ? 'bg-success' : 'bg-destructive',
-          )} />
+          <span className={cn('w-2 h-2 rounded-full', q.healthy ? 'bg-success' : 'bg-destructive')} />
         </div>
       </div>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-          <span title="Depth — 큐 적체량 (대기 중인 메시지 수)">D:<span className="font-mono font-semibold text-foreground ml-0.5">{q.depth}</span></span>
-          <span title="Consumers — 처리 워커 수">C:<span className="font-mono font-semibold text-foreground ml-0.5">{q.consumers}</span></span>
+          <span title="Depth — 큐 적체량 (대기 중인 메시지 수)">
+            D:<span className="font-mono font-semibold text-foreground ml-0.5">{q.depth}</span>
+          </span>
+          <span title="Consumers — 처리 워커 수">
+            C:<span className="font-mono font-semibold text-foreground ml-0.5">{q.consumers}</span>
+          </span>
         </div>
         <Sparkline data={q.depthHistory} />
       </div>
@@ -83,20 +90,15 @@ export default function QueueDashboardPage() {
   const service = usePipelineService();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [queues, setQueues] = useState<QueueHealth[]>([]);
-  const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [selectedQueue, setSelectedQueue] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
-      const [qRes, jRes] = await Promise.all([
-        service.큐_상태를_조회한다(),
-        service.Job_목록을_조회한다({ limit: 20 }),
-      ]);
+      const qRes = await service.큐_상태를_조회한다();
       if (qRes.data) {
         setQueues(qRes.data);
         if (qRes.data.length > 0) setSelectedQueue(qRes.data[0]!.queue);
       }
-      if (jRes.data) setJobs(jRes.data.items);
     })();
   }, [service]);
 
@@ -112,12 +114,11 @@ export default function QueueDashboardPage() {
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((v) => !v)}
         activePage="queues"
-        jobs={jobs}
       />
 
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Queue list with summary */}
-        <div className="w-1/3 min-w-[240px] max-w-[360px] border-r border-border flex flex-col overflow-hidden">
+        <div className="w-1/3 min-w-60 max-w-90 border-r border-border flex flex-col overflow-hidden">
           {/* Summary stats */}
           <div className="flex items-center gap-3 px-3 py-2.5 border-b border-border shrink-0 text-[11px]">
             <div className="flex items-center gap-1">
@@ -151,21 +152,15 @@ export default function QueueDashboardPage() {
           </div>
         </div>
 
-          {/* Right: Detail */}
-          <div className="flex-1 overflow-hidden">
-            {selectedQ ? (
-              <QueueDetailPanel
-                queue={selectedQ}
-                onClose={() => setSelectedQueue(null)}
-              />
-            ) : (
-              <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-                큐를 선택하세요
-              </div>
-            )}
-          </div>
+        {/* Right: Detail */}
+        <div className="flex-1 overflow-hidden">
+          {selectedQ ? (
+            <QueueDetailPanel queue={selectedQ} onClose={() => setSelectedQueue(null)} />
+          ) : (
+            <div className="h-full flex items-center justify-center text-sm text-muted-foreground">큐를 선택하세요</div>
+          )}
         </div>
+      </div>
     </div>
   );
 }
-

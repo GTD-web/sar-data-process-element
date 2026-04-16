@@ -266,7 +266,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
     if (hoverLeaveTimerRef.current != null) window.clearTimeout(hoverLeaveTimerRef.current);
   }, []);
 
-  const { kind, sarStage, inputLevel, status, order, durationMs, errorMessage, editable, isLeaf, isHead: _isHead, enabledTasks, onDelete, onAddAfter, onTrigger, onExecuteStep, warningReason, enabled, onToggleActive, onReprocess, isJobMode } = nodeData;
+  const { kind, sarStage, inputLevel, status, order, durationMs, errorMessage, editable, isLeaf, enabledTasks, onDelete, onAddAfter, onTrigger, onExecuteStep, warningReason, enabled, onToggleActive, onReprocess, isJobMode } = nodeData;
 
   const isEnabled = enabled !== false;
   const isSelected = !!selected;

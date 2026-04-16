@@ -1,16 +1,10 @@
-'use client';
-
 import { Suspense } from 'react';
-import { PipelineServiceProvider } from '@/app/(planning)/_context/pipeline-service-context';
-import { pipelineCurrentService } from '@/app/(current)/_services/pipeline.current.service';
-import ArchivePage from '@/app/(planning)/_ui/ArchivePage';
+import ArchivePage from '@/app/(planning)/plan/archive/ArchivePage';
 
-export default function CurrentArchivePage() {
+export default function Page() {
   return (
-    <PipelineServiceProvider service={pipelineCurrentService}>
-      <Suspense>
-        <ArchivePage />
-      </Suspense>
-    </PipelineServiceProvider>
+    <Suspense>
+      <ArchivePage />
+    </Suspense>
   );
 }

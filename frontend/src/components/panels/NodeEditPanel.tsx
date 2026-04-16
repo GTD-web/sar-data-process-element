@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { SarStage, PipelineNodeKind, PipelineStepDefinition } from '@/types/pipeline';
 import { SAR_STAGE_LABELS, SAR_STAGE_TASKS, SAR_STAGE_TO_LEVEL, SAR_STAGE_DESCRIPTIONS, NODE_KIND_INFO, PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
 import { Save, Trash2, Check, ArrowRight } from 'lucide-react';
@@ -34,11 +34,6 @@ export default function NodeEditPanel({ step, onSave, onDelete }: NodeEditPanelP
   const [enabledTasks, setEnabledTasks] = useState<string[]>(
     step.enabledTasks ?? (step.sarStage ? SAR_STAGE_TASKS[step.sarStage] : []),
   );
-
-  useEffect(() => {
-    setPendingSelection(null);
-    setEnabledTasks(step.enabledTasks ?? (step.sarStage ? SAR_STAGE_TASKS[step.sarStage] : []));
-  }, [step]);
 
   // What the original node currently is (as a SelectableOption for exclusion)
   const originalSelection: SelectableOption | null =

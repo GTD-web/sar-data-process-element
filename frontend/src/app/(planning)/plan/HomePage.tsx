@@ -101,6 +101,7 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState<'pipelines' | 'jobs' | 'queues'>('pipelines');
 
   const consolePath = pathname.startsWith('/current') ? '/current/console' : '/plan/console';
+  const jobsPath = pathname.startsWith('/current') ? '/current/jobs' : '/plan/jobs';
   const queuesPath = pathname.startsWith('/current') ? '/current/queues' : '/plan/queues';
 
   const loadData = useCallback(async () => {
@@ -116,7 +117,10 @@ export default function HomePage() {
     if (queuesRes.data) setQueues(queuesRes.data);
   }, [service]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 의존성이 변경될 때 비동기 데이터를 fetch하여 상태를 갱신하는 정규 패턴
+    loadData();
+  }, [loadData]);
 
   const handleDuplicate = useCallback(async (id: string) => {
     const res = await service.파이프라인을_복제한다(id);
@@ -148,7 +152,6 @@ export default function HomePage() {
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((v) => !v)}
         activePage="home"
-        jobs={jobs}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -254,7 +257,7 @@ export default function HomePage() {
                     {jobs.map((job) => (
                       <a
                         key={job.jobId}
-                        href={`${consolePath}?jobId=${job.jobId}`}
+                        href={`${jobsPath}?jobId=${job.jobId}`}
                         className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors"
                       >
                         <div>

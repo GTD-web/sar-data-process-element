@@ -194,21 +194,24 @@ function buildEdges(
 function FlowEntryFocus({ trigger, nodes }: { trigger: number; nodes: Node[] }) {
   const { setCenter } = useReactFlow();
   const nodesRef = useRef(nodes);
-  nodesRef.current = nodes;
+
+  // ref를 렌더 중에 쓰지 않고 effect로 동기화 — 최신 nodes를 120ms 타이머 내부에서 참조하기 위함
+  useEffect(() => {
+    nodesRef.current = nodes;
+  });
 
   useEffect(() => {
     if (trigger === 0) return;
-    // trigger가 변경된 시점의 nodes를 사용 (nodes 자체를 deps에 넣으면 nodes 변경마다 재실행됨)
-    const entryNode = nodesRef.current.find((n) => (n.data as PipelineNodeData).isHead === true);
-    if (!entryNode) return;
-    const cx = entryNode.position.x + NODE_WIDTH / 2;
-    const cy = entryNode.position.y + NODE_HEIGHT / 2;
-    // 레이아웃이 확정된 직후에 실행
+    // 레이아웃이 확정된 직후에 실행 — 타이머 시점의 최신 nodes를 ref로 조회
     const id = window.setTimeout(() => {
+      const entryNode = nodesRef.current.find((n) => (n.data as PipelineNodeData).isHead === true);
+      if (!entryNode) return;
+      const cx = entryNode.position.x + NODE_WIDTH / 2;
+      const cy = entryNode.position.y + NODE_HEIGHT / 2;
       setCenter(cx, cy, { zoom: 1.5, duration: 600 });
     }, 120);
     return () => window.clearTimeout(id);
-  }, [trigger, setCenter]); // nodes 제거 — nodes가 deps에 있으면 폴링/업데이트마다 재실행됨
+  }, [trigger, setCenter]);
 
   return null;
 }
@@ -241,8 +244,13 @@ interface CanvasGraphProps {
 }
 
 export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable = false, onNodeClick, onDeleteNode, onAddNode, onConnect: onConnectProp, onDeleteEdge, onTrigger, jobInitWarningReason, focusEntryTrigger = 0, onNodeOpenDetail, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode }: CanvasGraphProps) {
-  const positionsRef = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const lastPipelineIdRef = useRef<string | null | undefined>(null);
+  // 노드 위치는 드래그로 누적되는 사용자 편집 상태이므로 state로 유지.
+  // 파이프라인 전환·스텝 추가/삭제 시에는 React 권장 "렌더 중 상태 조정" 패턴으로
+  // prop 변화를 감지해 한 번만 재동기화한다.
+  const [positions, setPositions] = useState<Map<number, { x: number; y: number }>>(() => new Map());
+  const [syncedPipelineId, setSyncedPipelineId] = useState<string | null | undefined>(null);
+  const stepsKey = useMemo(() => steps.map((s) => s.order).sort((a, b) => a - b).join(','), [steps]);
+  const [syncedStepsKey, setSyncedStepsKey] = useState<string>('');
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const edgeLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -252,38 +260,37 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
     return steps.filter((s) => s.status === 'COMPLETED').length / steps.length;
   }, [steps]);
 
-  const pipelineChanged = pipelineId !== lastPipelineIdRef.current;
-  if (pipelineChanged) {
-    lastPipelineIdRef.current = pipelineId;
-    positionsRef.current = computeInitialPositions(steps, pipelineEdges);
-  } else if (positionsRef.current.size === 0) {
-    positionsRef.current = computeInitialPositions(steps, pipelineEdges);
-  } else {
-    for (const step of steps) {
-      if (!positionsRef.current.has(step.order)) {
-        const inEdge = pipelineEdges.find((e) => e.target === step.order);
-        const outEdge = pipelineEdges.find((e) => e.source === step.order);
-        const srcPos = inEdge ? positionsRef.current.get(inEdge.source) : null;
-        const tgtPos = outEdge ? positionsRef.current.get(outEdge.target) : null;
+  if (pipelineId !== syncedPipelineId) {
+    setSyncedPipelineId(pipelineId);
+    setSyncedStepsKey(stepsKey);
+    setPositions(computeInitialPositions(steps, pipelineEdges));
+  } else if (stepsKey !== syncedStepsKey) {
+    setSyncedStepsKey(stepsKey);
+    setPositions((prev) => {
+      const next = prev.size === 0 ? computeInitialPositions(steps, pipelineEdges) : new Map(prev);
+      for (const step of steps) {
+        if (!next.has(step.order)) {
+          const inEdge = pipelineEdges.find((e) => e.target === step.order);
+          const outEdge = pipelineEdges.find((e) => e.source === step.order);
+          const srcPos = inEdge ? next.get(inEdge.source) : null;
+          const tgtPos = outEdge ? next.get(outEdge.target) : null;
 
-        if (srcPos && tgtPos) {
-          // Place at the midpoint between source and target — no shifting
-          positionsRef.current.set(step.order, {
-            x: (srcPos.x + tgtPos.x) / 2,
-            y: (srcPos.y + tgtPos.y) / 2,
-          });
-        } else if (srcPos) {
-          const siblings = pipelineEdges.filter((e) => e.source === inEdge!.source);
-          const branchIdx = siblings.findIndex((e) => e.target === step.order);
-          positionsRef.current.set(step.order, { x: srcPos.x + 200, y: srcPos.y + branchIdx * 130 });
-        } else {
-          positionsRef.current.set(step.order, { x: step.order * 200, y: 0 });
+          if (srcPos && tgtPos) {
+            next.set(step.order, { x: (srcPos.x + tgtPos.x) / 2, y: (srcPos.y + tgtPos.y) / 2 });
+          } else if (srcPos) {
+            const siblings = pipelineEdges.filter((e) => e.source === inEdge!.source);
+            const branchIdx = siblings.findIndex((e) => e.target === step.order);
+            next.set(step.order, { x: srcPos.x + 200, y: srcPos.y + branchIdx * 130 });
+          } else {
+            next.set(step.order, { x: step.order * 200, y: 0 });
+          }
         }
       }
-    }
-    for (const order of positionsRef.current.keys()) {
-      if (!steps.find((s) => s.order === order)) positionsRef.current.delete(order);
-    }
+      for (const order of next.keys()) {
+        if (!steps.find((s) => s.order === order)) next.delete(order);
+      }
+      return next;
+    });
   }
 
   const clearLeaveTimer = useCallback(() => {
@@ -302,16 +309,19 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
   }, [onNodeOpenDetail]);
 
   // Build nodes and edges WITHOUT hover dependency
-  const pipelineNodes = buildNodes(steps, pipelineEdges, positionsRef.current, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode);
+  const pipelineNodes = buildNodes(steps, pipelineEdges, positions, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode);
   const allEdges = buildEdges(steps, pipelineEdges, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave, isJobMode);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(pipelineNodes);
   const [edges, setEdges] = useEdgesState(allEdges);
 
   // Update nodes/edges only when pipeline data changes — NOT on hover
+  // positions는 deps에서 제외: 드래그로 positions만 바뀔 때는 ReactFlow가 내부적으로 위치를 관리하므로
+  // setNodes를 다시 호출할 필요 없음 (effect는 최신 positions를 closure로 캡처).
   useEffect(() => {
-    setNodes(buildNodes(steps, pipelineEdges, positionsRef.current, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode));
+    setNodes(buildNodes(steps, pipelineEdges, positions, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode));
     setEdges(buildEdges(steps, pipelineEdges, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave, isJobMode));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [steps, pipelineEdges, editable, onDeleteNode, onAddNode, onDeleteEdge, onTrigger, jobInitWarningReason, clearLeaveTimer, scheduleLeave, setNodes, setEdges, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode]);
 
   const onInit = useCallback((instance: { fitView: () => void }) => {
@@ -346,7 +356,12 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
 
   const handleNodeDragStop = useCallback((_event: React.MouseEvent, node: Node) => {
     if (!node.id.startsWith('step-')) return;
-    positionsRef.current.set(parseInt(node.id.replace('step-', ''), 10), { ...node.position });
+    const order = parseInt(node.id.replace('step-', ''), 10);
+    setPositions((prev) => {
+      const next = new Map(prev);
+      next.set(order, { ...node.position });
+      return next;
+    });
   }, []);
 
   return (

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { X, Play, Loader, CheckCircle, ChevronRight, Check, Save, Antenna, SlidersHorizontal, HardDrive, Cpu, Layers, Compass, Map, Crosshair, Package, Database, FileInput as FileInputIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { PipelineStepDefinition, SarStage, TargetCsc, ProcessingProfile } from '@/types/pipeline';
@@ -146,28 +146,6 @@ function DataView({ data }: { data: MockRecord }) {
   );
 }
 
-/** 태스크 목록 체크박스 표시 */
-function TaskList({ allTasks, enabledTasks }: { allTasks: string[]; enabledTasks?: string[] }) {
-  const active = enabledTasks ?? allTasks;
-  return (
-    <div className="space-y-1.5">
-      {allTasks.map((task) => {
-        const on = active.includes(task);
-        return (
-          <div key={task} className="flex items-center gap-2">
-            <div className={cn('w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0',
-              on ? 'bg-accent/20 border-accent/50' : 'border-border',
-            )}>
-              {on && <div className="w-1.5 h-1.5 rounded-sm bg-accent" />}
-            </div>
-            <span className={cn('text-[11px]', on ? 'text-foreground' : 'text-muted-foreground/50')}>{task}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 /** kind + sarStage로 아이콘 컴포넌트 반환 */
 function getNodeIcon(kind: PipelineNodeKind, sarStage?: SarStage): React.ElementType {
   if (kind === 'TRIGGER') return Antenna;
@@ -280,14 +258,18 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
   const [activeTab, setActiveTab] = useState<ModalTab>('info');
 
   // ── SAR 태스크 편집 상태 ──
-  const allTasks = step.kind === 'SAR' && step.sarStage ? SAR_STAGE_TASKS[step.sarStage] : [];
+  const allTasks = useMemo(
+    () => (step.kind === 'SAR' && step.sarStage ? SAR_STAGE_TASKS[step.sarStage] : []),
+    [step.kind, step.sarStage],
+  );
   const [editableTasks, setEditableTasks] = useState<string[]>(step.enabledTasks ?? allTasks);
   const [tasksDirty, setTasksDirty] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 모달이 열린 채로 step이 바뀔 때 편집 상태를 새 step에 재동기화
     setEditableTasks(step.enabledTasks ?? allTasks);
     setTasksDirty(false);
-  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step, allTasks]);
 
   const toggleTask = useCallback((task: string) => {
     setEditableTasks((prev) => {

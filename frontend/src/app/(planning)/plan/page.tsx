@@ -1,13 +1,5 @@
-'use client';
+import HomePage from './HomePage';
 
-import { PipelineServiceProvider } from '@/app/(planning)/_context/pipeline-service-context';
-import { pipelineMockService } from '@/app/(planning)/_services/pipeline.mock.service';
-import HomePage from '@/app/(planning)/_ui/HomePage';
-
-export default function PlanHomePage() {
-  return (
-    <PipelineServiceProvider service={pipelineMockService}>
-      <HomePage />
-    </PipelineServiceProvider>
-  );
+export default function Page() {
+  return <HomePage />;
 }
