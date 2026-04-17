@@ -19,7 +19,6 @@ function createTestJobParams(overrides?: Partial<CreateJobParams>): CreateJobPar
 describe('Job', () => {
   describe('create', () => {
     it('초기 상태는 CREATED, retryCount=0, 할당 정보 없음', () => {
-      const ciLintFailureProbe = 'intentional lint failure';
       const job = Job.create(createTestJobParams());
 
       expect(job.id).toBe('test-job-id');
