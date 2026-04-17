@@ -347,7 +347,7 @@ export default function ProcessingProfilesPage() {
         <div className="flex-1 overflow-auto">
           <table className="w-full">
             <thead className="sticky top-0 bg-card z-10">
-              <tr className="border-b border-border text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              <tr className="border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 <th className="text-left px-5 py-2.5">이름</th>
                 <th className="text-left px-3 py-2.5">위성</th>
                 <th className="text-left px-3 py-2.5">모드</th>
@@ -367,28 +367,28 @@ export default function ProcessingProfilesPage() {
                   <td className="px-5 py-2.5">
                     <div className="text-xs font-medium text-foreground">{p.name}</div>
                     {p.description && (
-                      <div className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{p.description}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{p.description}</div>
                     )}
                   </td>
                   <td className="px-3 py-2.5 text-xs text-foreground">{p.satelliteId}</td>
                   <td className="px-3 py-2.5 text-xs text-foreground">{p.mode}</td>
                   <td className="px-3 py-2.5">
-                    <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-mono bg-accent/10 text-accent">
+                    <span className="inline-block px-1.5 py-0.5 rounded text-xs font-mono bg-accent/10 text-accent">
                       {p.polarization}
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-center text-xs text-foreground font-mono">{p.priority}</td>
                   <td className="px-3 py-2.5 text-center">
                     {(p.referencedPipelineCount ?? 0) > 0 ? (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] text-accent">
+                      <span className="inline-flex items-center gap-0.5 text-xs text-accent">
                         <GitBranch className="w-3 h-3" />
                         {p.referencedPipelineCount}
                       </span>
                     ) : (
-                      <span className="text-[10px] text-muted-foreground/50">—</span>
+                      <span className="text-xs text-muted-foreground/50">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-[10px] text-muted-foreground">{formatKST(p.createdAt)}</td>
+                  <td className="px-3 py-2.5 text-xs text-muted-foreground">{formatKST(p.createdAt)}</td>
                   <td className="px-5 py-2.5">
                     <div className="flex items-center justify-end gap-1">
                       <button
