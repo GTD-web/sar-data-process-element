@@ -585,15 +585,20 @@ function generateDepthHistory(): QueueDepthPoint[] {
 }
 
 function generateQueueHealth(): QueueHealth[] {
+  const now = Date.now();
   return QUEUE_NAMES.map((queue) => {
     const depth = Math.floor(Math.random() * 20);
+    const messages = generateQueueMessages(queue, depth);
+    const oldestMessageAge = messages.length
+      ? Math.max(...messages.map((m) => Math.floor((now - new Date(m.enqueuedAt).getTime()) / 1000)))
+      : 0;
     return {
       queue,
       depth,
-      oldestMessageAge: depth > 0 ? Math.floor(Math.random() * 7200) : 0,
+      oldestMessageAge,
       consumers: 1 + Math.floor(Math.random() * 3),
       healthy: depth < 15 && Math.random() > 0.1,
-      messages: generateQueueMessages(queue, depth),
+      messages,
       throughput: {
         processed1h: Math.floor(Math.random() * 50),
         processed24h: Math.floor(Math.random() * 500) + 50,

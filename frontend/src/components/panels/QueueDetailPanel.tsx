@@ -90,18 +90,18 @@ export default function QueueDetailPanel({ queue: q, onClose }: QueueDetailPanel
         )}
       </div>
 
-      {/* Scrollable body */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      {/* Body — top sections fixed, only tables scroll */}
+      <div className="flex-1 min-h-0 flex flex-col">
         {/* Metrics row */}
-        <div className="grid grid-cols-4 gap-px bg-border/30">
+        <div className="grid grid-cols-4 gap-px bg-border/30 shrink-0">
           <MetricCell label="Depth(적체량)" value={String(q.depth)} accent={q.depth > 10} />
-          <MetricCell label="Consumers" value={String(q.consumers)} />
-          <MetricCell label="Oldest" value={q.oldestMessageAge > 0 ? formatDuration(q.oldestMessageAge * 1000) : '—'} />
-          <MetricCell label="Dead Letters" value={String(q.deadLetters.length)} destructive={q.deadLetters.length > 0} />
+          <MetricCell label="Consumers(소비자)" value={String(q.consumers)} />
+          <MetricCell label="Oldest(최장 대기)" value={q.oldestMessageAge > 0 ? formatDuration(q.oldestMessageAge * 1000) : '—'} />
+          <MetricCell label="Dead Letters(실패 메시지)" value={String(q.deadLetters.length)} destructive={q.deadLetters.length > 0} />
         </div>
 
         {/* Chart + Throughput — 2:1 side-by-side */}
-        <div className="grid grid-cols-3 gap-3 px-4 pt-4 pb-3">
+        <div className="grid grid-cols-3 gap-3 px-4 pt-4 pb-3 shrink-0">
           {/* Depth Chart (2/3 width) */}
           <div className="col-span-2">
             <div className="flex items-center justify-between mb-2">
@@ -160,7 +160,7 @@ export default function QueueDetailPanel({ queue: q, onClose }: QueueDetailPanel
         </div>
 
         {/* Segment Tabs */}
-        <div className="flex border-t border-border/50">
+        <div className="flex border-t border-border/50 shrink-0">
           <button
             type="button"
             className={cn(
@@ -187,7 +187,7 @@ export default function QueueDetailPanel({ queue: q, onClose }: QueueDetailPanel
 
         {/* Messages table */}
         {section === 'messages' && (
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             {sortedMessages.length === 0 ? (
               <div className="py-8 text-center text-xs text-muted-foreground">대기 중인 메시지가 없습니다</div>
             ) : (
@@ -228,7 +228,7 @@ export default function QueueDetailPanel({ queue: q, onClose }: QueueDetailPanel
 
         {/* Dead Letters */}
         {section === 'deadLetters' && (
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             {q.deadLetters.length === 0 ? (
               <div className="py-8 text-center text-xs text-muted-foreground">실패 메시지가 없습니다</div>
             ) : (

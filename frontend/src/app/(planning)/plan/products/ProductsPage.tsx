@@ -63,12 +63,12 @@ function ProductStatusBadge({ status }: { status: string }) {
 
 function QualityBadge({ pass }: { pass: boolean }) {
   return pass ? (
-    <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-success">
+    <span className="inline-flex items-center gap-0.5 text-xs font-medium text-success">
       <CheckCircle className="w-3 h-3" />
       Pass
     </span>
   ) : (
-    <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-destructive">
+    <span className="inline-flex items-center gap-0.5 text-xs font-medium text-destructive">
       <XCircle className="w-3 h-3" />
       Fail
     </span>
@@ -178,8 +178,8 @@ function ProductDetailPanel({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
         <div className="min-w-0">
-          <div className="text-xs font-semibold text-foreground truncate">{product.id}</div>
-          <div className="text-[10px] text-muted-foreground">{product.sceneId}</div>
+          <div className="text-sm font-semibold text-foreground truncate">{product.id}</div>
+          <div className="text-xs text-muted-foreground">{product.sceneId}</div>
         </div>
         <button onClick={onClose} className="p-1 rounded hover:bg-muted/50 transition-colors">
           <X className="w-4 h-4 text-muted-foreground" />
@@ -190,7 +190,7 @@ function ProductDetailPanel({
         {/* Status + Level */}
         <div className="flex items-center gap-2">
           <ProductStatusBadge status={product.status} />
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-accent/10 text-accent">
+          <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-accent/10 text-accent">
             {PRODUCT_LEVEL_LABELS[product.level]}
           </span>
         </div>
@@ -200,16 +200,16 @@ function ProductDetailPanel({
           {product.thumbnailUrl ? (
             <div className="flex flex-col items-center gap-1.5 text-muted-foreground">
               <ImageIcon className="w-8 h-8" />
-              <span className="text-[10px]">Quick-look Thumbnail</span>
+              <span className="text-xs">Quick-look Thumbnail</span>
             </div>
           ) : (
-            <span className="text-[10px] text-muted-foreground/50">미리보기 없음</span>
+            <span className="text-xs text-muted-foreground/50">미리보기 없음</span>
           )}
         </div>
 
         {/* Metadata */}
         <div className="space-y-2">
-          <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">메타데이터</h4>
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">메타데이터</h4>
           <div className="grid grid-cols-2 gap-2">
             <MetaItem label="위성" value={product.satelliteId} />
             <MetaItem label="모드" value={product.mode} />
@@ -220,11 +220,11 @@ function ProductDetailPanel({
 
         {/* Spatial */}
         <div className="space-y-2">
-          <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
             <MapPin className="w-3 h-3" />
             공간 범위
           </h4>
-          <div className="text-[10px] font-mono text-foreground bg-background rounded-md px-3 py-2 border border-border">
+          <div className="text-xs font-mono text-foreground bg-background rounded-md px-3 py-2 border border-border">
             W: {product.spatialExtent.west.toFixed(4)}° &nbsp; S: {product.spatialExtent.south.toFixed(4)}°<br />
             E: {product.spatialExtent.east.toFixed(4)}° &nbsp; N: {product.spatialExtent.north.toFixed(4)}°
           </div>
@@ -233,19 +233,19 @@ function ProductDetailPanel({
         {/* Time + Resolution */}
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
-            <h4 className="text-[10px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase flex items-center gap-1">
               <Clock className="w-3 h-3" />
               촬영 시간
             </h4>
-            <div className="text-[10px] text-foreground">{formatKST(product.acquisitionStart)}</div>
-            <div className="text-[10px] text-muted-foreground">~ {formatKST(product.acquisitionEnd)}</div>
+            <div className="text-xs text-foreground">{formatKST(product.acquisitionStart)}</div>
+            <div className="text-xs text-muted-foreground">~ {formatKST(product.acquisitionEnd)}</div>
           </div>
           <div className="space-y-1">
-            <h4 className="text-[10px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase flex items-center gap-1">
               <Ruler className="w-3 h-3" />
               해상도
             </h4>
-            <div className="text-[10px] text-foreground">
+            <div className="text-xs text-foreground">
               Range: {product.resolutionRange.toFixed(1)}m<br />
               Azimuth: {product.resolutionAzimuth.toFixed(1)}m
             </div>
@@ -258,12 +258,12 @@ function ProductDetailPanel({
         {/* Quality */}
         {product.quality && (
           <div className="space-y-2">
-            <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
               <Eye className="w-3 h-3" />
               품질 검증 (REQ-FUNC-023)
             </h4>
             <div className="border border-border rounded-lg overflow-hidden">
-              <table className="w-full text-[10px]">
+              <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-background text-muted-foreground">
                     <th className="text-left px-3 py-1.5 font-medium">지표</th>
@@ -319,7 +319,7 @@ function ProductDetailPanel({
           onClick={onDownload}
           disabled={product.status !== 'COMPLETED'}
           className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-medium transition-colors',
+            'flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors',
             product.status === 'COMPLETED'
               ? 'bg-accent text-background hover:bg-accent/90'
               : 'bg-muted text-muted-foreground cursor-not-allowed',
@@ -330,7 +330,7 @@ function ProductDetailPanel({
         </button>
         <button
           onClick={onReprocess}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-medium border border-border text-foreground hover:bg-muted/30 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium border border-border text-foreground hover:bg-muted/30 transition-colors"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           재처리
@@ -343,13 +343,13 @@ function ProductDetailPanel({
 function MetaItem({ label, value, href }: { label: string; value: string; href?: string }) {
   return (
     <div>
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
       {href ? (
-        <a href={href} className="text-xs font-medium text-accent hover:underline">
+        <a href={href} className="text-sm font-medium text-accent hover:underline">
           {value}
         </a>
       ) : (
-        <div className="text-xs font-medium text-foreground">{value}</div>
+        <div className="text-sm font-medium text-foreground">{value}</div>
       )}
     </div>
   );
@@ -420,12 +420,15 @@ export default function ProductsPage() {
     loadData();
   }, [loadData]);
 
-  const filtered = search
+  const filtered = (search
     ? products.filter(
         (p) =>
           p.id.toLowerCase().includes(search.toLowerCase()) || p.sceneId.toLowerCase().includes(search.toLowerCase()),
       )
-    : products;
+    : products
+  )
+    .slice()
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   async function handleDownload(product: Product) {
     const res = await service.제품_다운로드_URL을_발급한다(product.id);
@@ -567,7 +570,7 @@ export default function ProductsPage() {
                     <td className="px-3 py-2.5 text-center">
                       <ProductStatusBadge status={p.status} />
                     </td>
-                    <td className="px-3 py-2.5 text-[10px] text-muted-foreground">{formatKST(p.createdAt)}</td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">{formatKST(p.createdAt)}</td>
                     <td className="px-5 py-2.5">
                       <div className="flex items-center justify-end gap-1">
                         <button
