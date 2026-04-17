@@ -223,6 +223,7 @@ export default function JobsPage() {
     if (!selectedJob) return;
     setReprocessDialogOpen(false);
     await service.Job을_재처리한다(selectedJob.jobId);
+    toast.success('재처리 요청이 생성되었습니다.');
     const [jRes, jsRes] = await Promise.all([
       service.Job_상세를_조회한다(selectedJob.jobId),
       service.Job_목록을_조회한다({ limit: 100 }),
@@ -251,6 +252,7 @@ export default function JobsPage() {
   const handlePartialReprocess = useCallback(async (sarStage: SarStage) => {
     if (!selectedJob) return;
     await service.부분_재처리를_요청한다(selectedJob.jobId, { sarStage });
+    toast.success('재처리 요청이 생성되었습니다.');
     const [jRes, jsRes] = await Promise.all([
       service.Job_상세를_조회한다(selectedJob.jobId),
       service.Job_목록을_조회한다({ limit: 100 }),
