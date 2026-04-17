@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
+import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
 import { toast } from '@/components/ui/Toast';
 import type { Product, ProductLevel } from '@/types/pipeline';
 import { PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
@@ -31,6 +32,101 @@ const SATELLITES = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'];
 const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
 const LEVELS: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
 const STATUSES = ['COMPLETED', 'FAILED', 'PROCESSING'];
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+
+function getPageRange(current: number, total: number): (number | 'ellipsis')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | 'ellipsis')[] = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  if (start > 2) pages.push('ellipsis');
+  for (let i = start; i <= end; i++) pages.push(i);
+  if (end < total - 1) pages.push('ellipsis');
+  pages.push(total);
+  return pages;
+}
+
+function Pagination({
+  page,
+  totalPages,
+  pageSize,
+  total,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  page: number;
+  totalPages: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (p: number) => void;
+  onPageSizeChange: (s: number) => void;
+}) {
+  const range = getPageRange(page, totalPages);
+  const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = Math.min(page * pageSize, total);
+
+  return (
+    <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-border bg-card shrink-0">
+      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <span>페이지 당</span>
+        <select
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value))}
+          className="bg-background border border-border rounded-md px-1.5 py-1 text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+        >
+          {PAGE_SIZE_OPTIONS.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        <span className="font-mono tabular-nums">
+          {start}–{end} / {total}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+          className="px-2 py-1 text-[11px] rounded-md border border-border text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          이전
+        </button>
+        {range.map((p, i) =>
+          p === 'ellipsis' ? (
+            <span key={`e-${i}`} className="px-1.5 text-[11px] text-muted-foreground select-none">
+              …
+            </span>
+          ) : (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onPageChange(p)}
+              className={cn(
+                'min-w-6.5 px-2 py-1 text-[11px] rounded-md border transition-colors tabular-nums',
+                p === page
+                  ? 'border-accent bg-accent text-background font-semibold'
+                  : 'border-border text-muted-foreground hover:bg-muted/30 hover:text-foreground',
+              )}
+            >
+              {p}
+            </button>
+          ),
+        )}
+        <button
+          type="button"
+          disabled={page >= totalPages}
+          onClick={() => onPageChange(page + 1)}
+          className="px-2 py-1 text-[11px] rounded-md border border-border text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          다음
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Product Status Badge
@@ -362,6 +458,7 @@ function MetaItem({ label, value, href }: { label: string; value: string; href?:
 export default function ProductsPage() {
   const service = usePipelineService();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [previewRole, setPreviewRole] = useMockRole();
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [totalCount, setTotalCount] = useState(0);
@@ -397,6 +494,8 @@ export default function ProductsPage() {
   const [filterMode, setFilterMode] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   // Dialogs
   const [reprocessTarget, setReprocessTarget] = useState<Product | null>(null);
@@ -429,6 +528,15 @@ export default function ProductsPage() {
   )
     .slice()
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageItems = filtered.slice(pageStart, pageStart + pageSize);
+
+  const handlePageSizeChange = useCallback((size: number) => {
+    setPageSize(size);
+    setPage(1);
+  }, [setPage]);
 
   async function handleDownload(product: Product) {
     const res = await service.제품_다운로드_URL을_발급한다(product.id);
@@ -470,6 +578,7 @@ export default function ProductsPage() {
               <h1 className="text-sm font-semibold text-foreground">제품</h1>
               <span className="text-[10px] text-muted-foreground font-mono">{totalCount}건</span>
             </div>
+            <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
           </div>
 
           {/* Filters */}
@@ -478,14 +587,20 @@ export default function ProductsPage() {
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
               <input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
                 placeholder="ID / Scene ID 검색..."
                 className="pl-8 pr-3 py-1.5 bg-background border border-border rounded-md text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent w-52"
               />
             </div>
             <select
               value={filterLevel}
-              onChange={(e) => setFilterLevel(e.target.value)}
+              onChange={(e) => {
+                setFilterLevel(e.target.value);
+                setPage(1);
+              }}
               className="bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
             >
               <option value="">전체 레벨</option>
@@ -497,7 +612,10 @@ export default function ProductsPage() {
             </select>
             <select
               value={filterSatellite}
-              onChange={(e) => setFilterSatellite(e.target.value)}
+              onChange={(e) => {
+                setFilterSatellite(e.target.value);
+                setPage(1);
+              }}
               className="bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
             >
               <option value="">전체 위성</option>
@@ -509,7 +627,10 @@ export default function ProductsPage() {
             </select>
             <select
               value={filterMode}
-              onChange={(e) => setFilterMode(e.target.value)}
+              onChange={(e) => {
+                setFilterMode(e.target.value);
+                setPage(1);
+              }}
               className="bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
             >
               <option value="">전체 모드</option>
@@ -521,7 +642,10 @@ export default function ProductsPage() {
             </select>
             <select
               value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
+              onChange={(e) => {
+                setFilterStatus(e.target.value);
+                setPage(1);
+              }}
               className="bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
             >
               <option value="">전체 상태</option>
@@ -549,7 +673,7 @@ export default function ProductsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => (
+                {pageItems.map((p) => (
                   <tr
                     key={p.id}
                     onClick={() => openPanel(p)}
@@ -613,6 +737,15 @@ export default function ProductsPage() {
               </tbody>
             </table>
           </div>
+
+          <Pagination
+            page={currentPage}
+            totalPages={pageCount}
+            pageSize={pageSize}
+            total={filtered.length}
+            onPageChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+          />
         </div>
 
         {/* Detail Panel */}

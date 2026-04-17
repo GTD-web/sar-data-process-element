@@ -8,6 +8,7 @@ import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-c
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import RightTabbedPanel from '@/components/panels/RightTabbedPanel';
 import ConsoleTab, { type ConsoleMode } from '@/components/panels/ConsoleTab';
+import { RolePreviewSelect, useMockRole, type MockRole } from '@/components/auth/RolePreviewSelect';
 
 import ReprocessConfirmDialog from '@/components/panels/ReprocessConfirmDialog';
 import CancelConfirmDialog from '@/components/panels/CancelConfirmDialog';
@@ -159,6 +160,7 @@ export default function ConsolePage() {
   // --- UI State ---
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(true);
+  const [previewRole, setPreviewRole] = useMockRole();
   const [consoleMode, setConsoleMode] = useState<ConsoleMode>({ type: 'idle' });
   const [editSaving, setEditSaving] = useState(false);
   const [reprocessDialogOpen, setReprocessDialogOpen] = useState(false);
@@ -244,7 +246,8 @@ export default function ConsolePage() {
 
   // --- Derived ---
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId) ?? null;
-  const canvasEditable = !selectedJob;
+  const canManage = previewRole === 'Administrator';
+  const canvasEditable = !selectedJob && canManage;
 
   const graphSteps: PipelineStep[] = selectedPipeline
     ? selectedPipeline.steps.map((s) => {
@@ -495,6 +498,7 @@ export default function ConsolePage() {
   }, [selectedJob, selectedPipeline, handlePartialReprocess]);
 
   const handleDeletePipeline = useCallback(async (id: string) => {
+    if (!canManage) return;
     await service.파이프라인을_삭제한다(id);
     setPipelines((prev) => prev.filter((p) => p.id !== id));
     if (selectedPipelineId === id) {
@@ -505,7 +509,7 @@ export default function ConsolePage() {
       setDisabledNodeOrders(new Set());
       updateJobIdParam(null);
     }
-  }, [service, selectedPipelineId, updateJobIdParam]);
+  }, [service, selectedPipelineId, updateJobIdParam, canManage]);
 
   // --- Pipeline handlers ---
   const handleSavePipeline = useCallback(async (data: { name: string; satelliteId: string; mode: string; steps: { kind: PipelineNodeKind; sarStage?: SarStage }[] }) => {
@@ -518,13 +522,22 @@ export default function ConsolePage() {
   }, [service, selectedPipelineId]);
 
   const handleCreatePipeline = useCallback(() => {
+    if (!canManage) return;
     // 파이프라인 선택 해제 → 빈 캔버스로 이동 (거기서 모달 진입)
     setSelectedPipelineId(null);
     setSelectedJob(null);
     setActiveStepOrder(null);
     setConsoleMode({ type: 'idle' });
     setDisabledNodeOrders(new Set());
-  }, []);
+  }, [canManage]);
+
+  const handlePreviewRoleChange = useCallback((role: MockRole) => {
+    setPreviewRole(role);
+    if (role === 'Operator') {
+      setRightCollapsed(true);
+      setConsoleMode({ type: 'idle' });
+    }
+  }, [setPreviewRole]);
 
   const handleCreateStep1Next = useCallback((data: CreatePipelineBasicData) => {
     setCreateBasicData(data);
@@ -632,6 +645,7 @@ export default function ConsolePage() {
         }}
         onCreatePipeline={handleCreatePipeline}
         onDeletePipeline={handleDeletePipeline}
+        canManagePipelines={canManage}
         activePage="console"
       />
 
@@ -669,7 +683,8 @@ export default function ConsolePage() {
                 />
               )}
               {/* 캔버스 우측 상단 툴바 — 세로 정렬 */}
-              <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5">
+              <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-1.5">
+                <RolePreviewSelect role={previewRole} onChange={handlePreviewRoleChange} />
                 {canvasEditable && selectedPipeline && (
                   <button
                     type="button"
@@ -681,7 +696,7 @@ export default function ConsolePage() {
                     <Plus className="w-4 h-4" />
                   </button>
                 )}
-                {rightCollapsed && (
+                {canManage && rightCollapsed && (
                   <button
                     type="button"
                     onClick={() => setRightCollapsed(false)}
@@ -732,23 +747,30 @@ export default function ConsolePage() {
               })()}
             </div>
           ) : (
-            <div className="flex-1 flex items-center justify-center bg-background">
+            <div className="flex-1 relative flex items-center justify-center bg-background">
+              <div className="absolute top-3 right-3 z-10">
+                <RolePreviewSelect role={previewRole} onChange={handlePreviewRoleChange} />
+              </div>
               <div className="flex items-center gap-6">
-                {/* 새 파이프라인 만들기 */}
-                <button
-                  type="button"
-                  onClick={() => setCreateStep('step1')}
-                  className="group flex flex-col items-center justify-center w-40 h-40
-                             border-2 border-dashed border-border rounded-xl
-                             hover:border-accent/50 hover:bg-accent/5 transition-all"
-                >
-                  <Plus className="w-10 h-10 text-muted-foreground/50 group-hover:text-accent transition-colors" />
-                  <span className="text-sm text-muted-foreground group-hover:text-foreground mt-3 transition-colors">
-                    새 파이프라인 만들기
-                  </span>
-                </button>
+                {canManage && (
+                  <>
+                    {/* 새 파이프라인 만들기 */}
+                    <button
+                      type="button"
+                      onClick={() => setCreateStep('step1')}
+                      className="group flex flex-col items-center justify-center w-40 h-40
+                                 border-2 border-dashed border-border rounded-xl
+                                 hover:border-accent/50 hover:bg-accent/5 transition-all"
+                    >
+                      <Plus className="w-10 h-10 text-muted-foreground/50 group-hover:text-accent transition-colors" />
+                      <span className="text-sm text-muted-foreground group-hover:text-foreground mt-3 transition-colors">
+                        새 파이프라인 만들기
+                      </span>
+                    </button>
 
-                <span className="text-sm text-muted-foreground/40">or</span>
+                    <span className="text-sm text-muted-foreground/40">or</span>
+                  </>
+                )}
 
                 {/* 기존 파이프라인 선택 */}
                 <button
@@ -827,7 +849,7 @@ export default function ConsolePage() {
       )}
 
       {/* 파이프라인 생성 1단계 — 이름/위성/모드 */}
-      {createStep === 'step1' && (
+      {canManage && createStep === 'step1' && (
         <CreatePipelineDialog
           onNext={handleCreateStep1Next}
           onCancel={handleCreateCancel}
@@ -835,7 +857,7 @@ export default function ConsolePage() {
       )}
 
       {/* 파이프라인 생성 2단계 — 시작 노드 선택 */}
-      {createStep === 'step2' && createBasicData && (
+      {canManage && createStep === 'step2' && createBasicData && (
         <SelectStartNodeDialog
           pipelineName={createBasicData.name}
           satelliteId={createBasicData.satelliteId}

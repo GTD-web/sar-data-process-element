@@ -30,6 +30,7 @@ interface LeftSidebarConsoleProps extends LeftSidebarBaseProps {
   onSelectPipeline: (id: string) => void;
   onCreatePipeline: () => void;
   onDeletePipeline: (id: string) => void;
+  canManagePipelines?: boolean;
 }
 
 interface LeftSidebarJobsProps extends LeftSidebarBaseProps {
@@ -101,7 +102,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
               <Activity className="w-5 h-5 text-accent flex-shrink-0" />
               <span className="text-xs font-bold text-foreground tracking-tight truncate">SDPE DAG</span>
             </a>
-            {isConsole && consolePl && (
+            {isConsole && consolePl && consolePl.canManagePipelines !== false && (
               <button onClick={consolePl.onCreatePipeline} className="p-1.5 rounded-md hover:bg-muted/50 transition-colors" title="새 파이프라인">
                 <Plus className="w-3.5 h-3.5 text-muted-foreground" />
               </button>
@@ -186,13 +187,15 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                             <span className="truncate">{pl.name}</span>
                           </div>
                         </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); consolePl.onDeletePipeline(pl.id); }}
-                          className="flex-shrink-0 p-1 mr-1 rounded opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
-                          title="파이프라인 삭제"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
+                        {consolePl.canManagePipelines !== false && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); consolePl.onDeletePipeline(pl.id); }}
+                            className="flex-shrink-0 p-1 mr-1 rounded opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
+                            title="파이프라인 삭제"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>

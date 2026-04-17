@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
+import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
 import { toast } from '@/components/ui/Toast';
 import { ArchiveRestore, Archive } from 'lucide-react';
 import type { PipelineDefinition, PipelineStep } from '@/types/pipeline';
@@ -24,8 +25,10 @@ export default function ArchivePage() {
   const [pipelines, setPipelines] = useState<PipelineDefinition[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [previewRole, setPreviewRole] = useMockRole();
 
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId) ?? null;
+  const canManage = previewRole === 'Administrator';
 
   useEffect(() => {
     (async () => {
@@ -54,6 +57,7 @@ export default function ArchivePage() {
   const graphEdges = selectedPipeline?.edges ?? [];
 
   const handleRestore = useCallback(async () => {
+    if (!canManage) return;
     if (!selectedPipelineId) return;
     const res = await service.파이프라인을_아카이브한다(selectedPipelineId, false);
     if (res.success) {
@@ -65,7 +69,7 @@ export default function ArchivePage() {
       });
       toast.success('파이프라인이 복원되었습니다');
     }
-  }, [selectedPipelineId, service]);
+  }, [selectedPipelineId, service, canManage]);
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -97,23 +101,31 @@ export default function ArchivePage() {
                 <span className="font-semibold text-foreground">{selectedPipeline.name}</span>
               </div>
             </div>
-            {/* Restore button */}
-            <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-              <button
-                type="button"
-                onClick={handleRestore}
-                className="pointer-events-auto flex items-center gap-2 pl-2.5 pr-3.5 py-2 rounded-lg
-                           text-[11px] font-semibold shadow-lg whitespace-nowrap
-                           bg-accent text-accent-foreground
-                           hover:brightness-110 active:brightness-95 transition-all"
-              >
-                <ArchiveRestore className="w-3.5 h-3.5" />
-                파이프라인 복원
-              </button>
+            <div className="absolute top-3 right-3 z-10">
+              <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
             </div>
+            {/* Restore button */}
+            {canManage && (
+              <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+                <button
+                  type="button"
+                  onClick={handleRestore}
+                  className="pointer-events-auto flex items-center gap-2 pl-2.5 pr-3.5 py-2 rounded-lg
+                             text-[11px] font-semibold shadow-lg whitespace-nowrap
+                             bg-accent text-accent-foreground
+                             hover:brightness-110 active:brightness-95 transition-all"
+                >
+                  <ArchiveRestore className="w-3.5 h-3.5" />
+                  파이프라인 복원
+                </button>
+              </div>
+            )}
           </div>
         ) : (
-          <div className="flex-1 flex items-center justify-center bg-background">
+          <div className="flex-1 relative flex items-center justify-center bg-background">
+            <div className="absolute top-3 right-3 z-10">
+              <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
+            </div>
             <div className="text-center text-muted-foreground">
               <Archive className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
               <p className="text-sm">아카이브된 파이프라인이 없습니다</p>

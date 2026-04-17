@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
+import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
 import { cn, formatDuration, formatRelativeTime } from '@/lib/utils';
 import type {
   PipelineDefinition,
@@ -99,10 +100,12 @@ export default function HomePage() {
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [queues, setQueues] = useState<QueueHealth[]>([]);
   const [activeTab, setActiveTab] = useState<'pipelines' | 'jobs' | 'queues'>('pipelines');
+  const [previewRole, setPreviewRole] = useMockRole();
 
   const consolePath = pathname.startsWith('/current') ? '/current/console' : '/plan/console';
   const jobsPath = pathname.startsWith('/current') ? '/current/jobs' : '/plan/jobs';
   const queuesPath = pathname.startsWith('/current') ? '/current/queues' : '/plan/queues';
+  const canManage = previewRole === 'Administrator';
 
   const loadData = useCallback(async () => {
     const [statsRes, plRes, jobsRes, queuesRes] = await Promise.all([
@@ -161,13 +164,18 @@ export default function HomePage() {
             <h1 className="text-lg font-bold text-foreground">오버뷰</h1>
             <p className="text-xs text-muted-foreground mt-0.5">파이프라인과 작업 실행 현황을 확인합니다</p>
           </div>
-          <a
-            href={`${consolePath}?create=true`}
-            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-accent text-accent-foreground text-xs font-medium hover:brightness-110 transition-all"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            새 파이프라인
-          </a>
+          <div className="flex items-center gap-2">
+            <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
+            {canManage && (
+              <a
+                href={`${consolePath}?create=true`}
+                className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-accent text-accent-foreground text-xs font-medium hover:brightness-110 transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                새 파이프라인
+              </a>
+            )}
+          </div>
         </div>
 
         {/* Content */}
@@ -230,13 +238,15 @@ export default function HomePage() {
                             </span>
                           </div>
                         </a>
-                        <div className="pr-3 flex-shrink-0">
-                          <PipelineDropdown
-                            pipelineId={pl.id}
-                            onDuplicate={handleDuplicate}
-                            onArchive={handleArchive}
-                          />
-                        </div>
+                        {canManage && (
+                          <div className="pr-3 flex-shrink-0">
+                            <PipelineDropdown
+                              pipelineId={pl.id}
+                              onDuplicate={handleDuplicate}
+                              onArchive={handleArchive}
+                            />
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

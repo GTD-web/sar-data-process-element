@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
+import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
 import type { AuditEvent, AuditEventType } from '@/types/pipeline';
 import { cn, formatKST } from '@/lib/utils';
 import {
@@ -402,6 +403,7 @@ export default function AuditPage() {
   const base = pathname.startsWith('/current') ? '/current' : '/plan';
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [previewRole, setPreviewRole] = useMockRole();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [total, setTotal] = useState(0);
 
@@ -428,9 +430,11 @@ export default function AuditPage() {
   const [relatedEvents, setRelatedEvents] = useState<AuditEvent[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+  const canViewAudit = previewRole === 'Administrator';
 
   // Initial load: global stats (unfiltered)
   useEffect(() => {
+    if (!canViewAudit) return;
     (async () => {
       const allRes = await service.감사로그를_조회한다({ size: 500 });
       if (allRes.data) {
@@ -440,10 +444,16 @@ export default function AuditPage() {
         setGlobalCounts(counts);
       }
     })();
-  }, [service]);
+  }, [service, canViewAudit]);
 
   // Filtered data load
   const loadData = useCallback(async () => {
+    if (!canViewAudit) {
+      setEvents([]);
+      setTotal(0);
+      setSelectedEvent(null);
+      return;
+    }
     const auditRes = await service.감사로그를_조회한다({
       jobId: filterJobId || undefined,
       eventType: filterEventType || undefined,
@@ -458,7 +468,7 @@ export default function AuditPage() {
       setEvents(auditRes.data.items);
       setTotal(auditRes.data.total);
     }
-  }, [service, filterJobId, filterEventType, filterFrom, filterTo, page, pageSize, sortBy, sortOrder]);
+  }, [service, filterJobId, filterEventType, filterFrom, filterTo, page, pageSize, sortBy, sortOrder, canViewAudit]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 의존성이 변경될 때 비동기 데이터를 fetch하여 상태를 갱신하는 정규 패턴
@@ -528,16 +538,32 @@ export default function AuditPage() {
             <h1 className="text-sm font-semibold text-foreground">감사 로그</h1>
             <span className="text-[10px] text-muted-foreground font-mono">{total}건</span>
           </div>
-          {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
-            >
-              <X className="w-3 h-3" />
-              필터 초기화
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
+            {hasActiveFilters && canViewAudit && (
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+              >
+                <X className="w-3 h-3" />
+                필터 초기화
+              </button>
+            )}
+          </div>
         </div>
+
+        {!canViewAudit ? (
+          <div className="flex-1 flex items-center justify-center bg-background">
+            <div className="max-w-sm text-center">
+              <FileText className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
+              <h2 className="text-sm font-semibold text-foreground">감사 로그는 Administrator 전용입니다</h2>
+              <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+                Operator 역할은 파이프라인 실행, Job, 모니터링 화면을 사용할 수 있지만 감사 이벤트 조회 권한은 없습니다.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
 
         {/* Stats Cards */}
         <div className="px-5 py-3 border-b border-border shrink-0">
@@ -716,6 +742,8 @@ export default function AuditPage() {
             )}
           </div>
         </div>
+          </>
+        )}
       </div>
 
     </div>

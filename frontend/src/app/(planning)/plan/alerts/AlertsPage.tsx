@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
+import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
 import { toast } from '@/components/ui/Toast';
 import type { Alert, AlertKind } from '@/types/pipeline';
 import { cn, formatKST, formatRelativeTime } from '@/lib/utils';
@@ -181,6 +182,7 @@ export default function AlertsPage() {
   const base = pathname.startsWith('/current') ? '/current' : '/plan';
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [previewRole, setPreviewRole] = useMockRole();
   const [alerts, setAlerts] = useState<Alert[]>([]);
 
   // Filters
@@ -265,15 +267,18 @@ export default function AlertsPage() {
               </span>
             )}
           </div>
-          {unackedCount > 0 && filterStatus !== 'acked' && (
-            <button
-              onClick={handleBulkAcknowledge}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-accent text-background hover:bg-accent/90 transition-colors"
-            >
-              <CheckCheck className="w-3.5 h-3.5" />
-              전체 확인 ({unackedCount})
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
+            {unackedCount > 0 && filterStatus !== 'acked' && (
+              <button
+                onClick={handleBulkAcknowledge}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-accent text-background hover:bg-accent/90 transition-colors"
+              >
+                <CheckCheck className="w-3.5 h-3.5" />
+                전체 확인 ({unackedCount})
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Filters */}

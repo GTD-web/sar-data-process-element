@@ -4,9 +4,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import { toast } from '@/components/ui/Toast';
+import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
 import type { ProcessingProfile } from '@/types/pipeline';
 import { POLARIZATION_OPTIONS } from '@/types/pipeline';
-import { formatKST } from '@/lib/utils';
+import { cn, formatKST } from '@/lib/utils';
 import {
   Plus, Pencil, Trash2, X, Search, SlidersHorizontal, GitBranch,
 } from 'lucide-react';
@@ -17,6 +18,101 @@ import {
 
 const SATELLITES = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'];
 const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+
+function getPageRange(current: number, total: number): (number | 'ellipsis')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | 'ellipsis')[] = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  if (start > 2) pages.push('ellipsis');
+  for (let i = start; i <= end; i++) pages.push(i);
+  if (end < total - 1) pages.push('ellipsis');
+  pages.push(total);
+  return pages;
+}
+
+function Pagination({
+  page,
+  totalPages,
+  pageSize,
+  total,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  page: number;
+  totalPages: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (p: number) => void;
+  onPageSizeChange: (s: number) => void;
+}) {
+  const range = getPageRange(page, totalPages);
+  const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = Math.min(page * pageSize, total);
+
+  return (
+    <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-border bg-card shrink-0">
+      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <span>페이지 당</span>
+        <select
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value))}
+          className="bg-background border border-border rounded-md px-1.5 py-1 text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+        >
+          {PAGE_SIZE_OPTIONS.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        <span className="font-mono tabular-nums">
+          {start}–{end} / {total}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+          className="px-2 py-1 text-[11px] rounded-md border border-border text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          이전
+        </button>
+        {range.map((p, i) =>
+          p === 'ellipsis' ? (
+            <span key={`e-${i}`} className="px-1.5 text-[11px] text-muted-foreground select-none">
+              …
+            </span>
+          ) : (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onPageChange(p)}
+              className={cn(
+                'min-w-6.5 px-2 py-1 text-[11px] rounded-md border transition-colors tabular-nums',
+                p === page
+                  ? 'border-accent bg-accent text-background font-semibold'
+                  : 'border-border text-muted-foreground hover:bg-muted/30 hover:text-foreground',
+              )}
+            >
+              {p}
+            </button>
+          ),
+        )}
+        <button
+          type="button"
+          disabled={page >= totalPages}
+          onClick={() => onPageChange(page + 1)}
+          className="px-2 py-1 text-[11px] rounded-md border border-border text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          다음
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Profile Form Dialog
@@ -38,6 +134,7 @@ function ProfileFormDialog({ profile, onSave, onCancel }: ProfileFormProps) {
   const [parametersJson, setParametersJson] = useState(
     profile?.parameters ? JSON.stringify(profile.parameters, null, 2) : '{}',
   );
+  const [parametersError, setParametersError] = useState('');
 
   const isEdit = !!profile;
 
@@ -46,7 +143,9 @@ function ProfileFormDialog({ profile, onSave, onCancel }: ProfileFormProps) {
     let parameters: Record<string, unknown> = {};
     try {
       parameters = JSON.parse(parametersJson);
+      setParametersError('');
     } catch {
+      setParametersError('JSON 형식이 올바르지 않습니다. 처리 파라미터를 다시 확인하세요.');
       return;
     }
     onSave({ name, satelliteId, mode, polarization, priority, description, parameters });
@@ -148,10 +247,21 @@ function ProfileFormDialog({ profile, onSave, onCancel }: ProfileFormProps) {
             <span className="text-[11px] font-medium text-muted-foreground">처리 파라미터 (JSON)</span>
             <textarea
               value={parametersJson}
-              onChange={(e) => setParametersJson(e.target.value)}
+              onChange={(e) => {
+                setParametersJson(e.target.value);
+                if (parametersError) setParametersError('');
+              }}
               rows={4}
-              className="mt-1 w-full bg-background border border-border rounded-md px-3 py-2 text-xs text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-accent resize-none"
+              aria-invalid={parametersError ? 'true' : 'false'}
+              className={`mt-1 w-full bg-background border rounded-md px-3 py-2 text-xs text-foreground font-mono focus:outline-none focus:ring-1 resize-none ${
+                parametersError
+                  ? 'border-destructive focus:ring-destructive'
+                  : 'border-border focus:ring-accent'
+              }`}
             />
+            {parametersError && (
+              <span className="mt-1 block text-[11px] text-destructive">{parametersError}</span>
+            )}
           </label>
         </div>
 
@@ -226,6 +336,83 @@ function DeleteConfirmDialog({
 }
 
 // ---------------------------------------------------------------------------
+// Detail Dialog
+// ---------------------------------------------------------------------------
+
+function ProfileDetailDialog({
+  profile,
+  onClose,
+}: {
+  profile: ProcessingProfile;
+  onClose: () => void;
+}) {
+  const parameters = JSON.stringify(profile.parameters ?? {}, null, 2);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-2xl mx-4">
+        <div className="flex items-start justify-between px-5 py-4 border-b border-border">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">{profile.name}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {profile.satelliteId} / {profile.mode} / {profile.polarization}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-muted/50 transition-colors">
+            <X className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <DetailItem label="위성" value={profile.satelliteId} />
+            <DetailItem label="모드" value={profile.mode} />
+            <DetailItem label="편파" value={profile.polarization} />
+            <DetailItem label="우선순위" value={String(profile.priority)} mono />
+            <DetailItem label="참조 파이프라인" value={`${profile.referencedPipelineCount ?? 0}개`} mono />
+            <DetailItem label="생성일" value={formatKST(profile.createdAt)} />
+            <DetailItem label="수정일" value={formatKST(profile.updatedAt)} />
+          </div>
+
+          {profile.description && (
+            <div>
+              <div className="text-[11px] font-medium text-muted-foreground mb-1">설명</div>
+              <p className="text-xs text-foreground leading-relaxed">{profile.description}</p>
+            </div>
+          )}
+
+          <div>
+            <div className="text-[11px] font-medium text-muted-foreground mb-1">처리 파라미터</div>
+            <pre className="rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground font-mono overflow-auto max-h-56">
+              {parameters}
+            </pre>
+          </div>
+        </div>
+
+        <div className="flex justify-end px-5 py-3 border-t border-border">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-1.5 rounded-md text-xs font-medium bg-accent text-background hover:bg-accent/90 transition-colors"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailItem({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="rounded-md border border-border bg-background px-3 py-2">
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className={`mt-1 text-xs text-foreground ${mono ? 'font-mono' : ''}`}>{value}</div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
 
@@ -238,11 +425,15 @@ export default function ProcessingProfilesPage() {
   const [filterSatellite, setFilterSatellite] = useState('');
   const [filterMode, setFilterMode] = useState('');
   const [search, setSearch] = useState('');
+  const [previewRole, setPreviewRole] = useMockRole();
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   // Dialogs
   const [formOpen, setFormOpen] = useState(false);
   const [editProfile, setEditProfile] = useState<ProcessingProfile | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProcessingProfile | null>(null);
+  const [detailProfile, setDetailProfile] = useState<ProcessingProfile | null>(null);
 
   const loadData = useCallback(async () => {
     const pRes = await service.처리_프로파일_목록을_조회한다();
@@ -266,6 +457,16 @@ export default function ProcessingProfilesPage() {
     if (modeCmp !== 0) return modeCmp;
     return a.priority - b.priority;
   });
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageItems = filtered.slice(pageStart, pageStart + pageSize);
+  const canManage = previewRole === 'Administrator';
+
+  const handlePageSizeChange = useCallback((size: number) => {
+    setPageSize(size);
+    setPage(1);
+  }, []);
 
   async function handleSave(data: Omit<ProcessingProfile, 'id' | 'createdAt' | 'updatedAt' | 'referencedPipelineCount'>) {
     if (editProfile) {
@@ -305,13 +506,18 @@ export default function ProcessingProfilesPage() {
             <h1 className="text-sm font-semibold text-foreground">처리 프로파일</h1>
             <span className="text-[10px] text-muted-foreground font-mono">{filtered.length}건</span>
           </div>
-          <button
-            onClick={() => { setEditProfile(null); setFormOpen(true); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-accent text-background hover:bg-accent/90 transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>새 프로파일</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
+            {canManage && (
+              <button
+                onClick={() => { setEditProfile(null); setFormOpen(true); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-accent text-background hover:bg-accent/90 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>새 프로파일</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Filters */}
@@ -320,14 +526,20 @@ export default function ProcessingProfilesPage() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
               placeholder="이름 검색..."
               className="pl-8 pr-3 py-1.5 bg-background border border-border rounded-md text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent w-48"
             />
           </div>
           <select
             value={filterSatellite}
-            onChange={(e) => setFilterSatellite(e.target.value)}
+            onChange={(e) => {
+              setFilterSatellite(e.target.value);
+              setPage(1);
+            }}
             className="bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
           >
             <option value="">전체 위성</option>
@@ -335,7 +547,10 @@ export default function ProcessingProfilesPage() {
           </select>
           <select
             value={filterMode}
-            onChange={(e) => setFilterMode(e.target.value)}
+            onChange={(e) => {
+              setFilterMode(e.target.value);
+              setPage(1);
+            }}
             className="bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
           >
             <option value="">전체 모드</option>
@@ -359,10 +574,11 @@ export default function ProcessingProfilesPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((p) => (
+              {pageItems.map((p) => (
                 <tr
                   key={p.id}
-                  className="border-b border-border/50 hover:bg-muted/20 transition-colors"
+                  onClick={() => setDetailProfile(p)}
+                  className="border-b border-border/50 hover:bg-muted/20 transition-colors cursor-pointer"
                 >
                   <td className="px-5 py-2.5">
                     <div className="text-xs font-medium text-foreground">{p.name}</div>
@@ -391,20 +607,31 @@ export default function ProcessingProfilesPage() {
                   <td className="px-3 py-2.5 text-xs text-muted-foreground">{formatKST(p.createdAt)}</td>
                   <td className="px-5 py-2.5">
                     <div className="flex items-center justify-end gap-1">
-                      <button
-                        onClick={() => { setEditProfile(p); setFormOpen(true); }}
-                        className="p-1.5 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
-                        title="수정"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setDeleteTarget(p)}
-                        className="p-1.5 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-destructive transition-colors"
-                        title="삭제"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canManage && (
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditProfile(p);
+                              setFormOpen(true);
+                            }}
+                            className="p-1.5 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+                            title="수정"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteTarget(p);
+                            }}
+                            className="p-1.5 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-destructive transition-colors"
+                            title="삭제"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -419,6 +646,15 @@ export default function ProcessingProfilesPage() {
             </tbody>
           </table>
         </div>
+
+        <Pagination
+          page={currentPage}
+          totalPages={pageCount}
+          pageSize={pageSize}
+          total={filtered.length}
+          onPageChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
+        />
       </div>
 
       {/* Dialogs */}
@@ -434,6 +670,12 @@ export default function ProcessingProfilesPage() {
           profile={deleteTarget}
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+      {detailProfile && (
+        <ProfileDetailDialog
+          profile={detailProfile}
+          onClose={() => setDetailProfile(null)}
         />
       )}
     </div>

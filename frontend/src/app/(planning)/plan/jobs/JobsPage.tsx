@@ -8,6 +8,7 @@ import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-c
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import RightTabbedPanel from '@/components/panels/RightTabbedPanel';
 import ConsoleTab, { type ConsoleMode } from '@/components/panels/ConsoleTab';
+import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
 import ReprocessConfirmDialog from '@/components/panels/ReprocessConfirmDialog';
 import CancelConfirmDialog from '@/components/panels/CancelConfirmDialog';
 import ExecutionLogPanel from '@/components/panels/ExecutionLogPanel';
@@ -93,6 +94,7 @@ export default function JobsPage() {
 
   // --- UI ---
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [previewRole, setPreviewRole] = useMockRole();
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [consoleMode, setConsoleMode] = useState<ConsoleMode>({ type: 'idle' });
   const [reprocessDialogOpen, setReprocessDialogOpen] = useState(false);
@@ -307,8 +309,9 @@ export default function JobsPage() {
             />
 
             {/* 우측 패널 열기 */}
-            {rightCollapsed && (
-              <div className="absolute top-3 right-3 z-10">
+            <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5">
+              <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
+              {rightCollapsed && (
                 <button
                   type="button"
                   onClick={() => setRightCollapsed(false)}
@@ -318,8 +321,8 @@ export default function JobsPage() {
                 >
                   <PanelRightOpen className="w-4 h-4" />
                 </button>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* 단계 상세 팝오버 — 우측 패널의 단계 카드 클릭 시 캔버스 우측에 */}
             {activeStepOrder != null && activeStepOrder > 0 && (() => {
@@ -342,7 +345,10 @@ export default function JobsPage() {
             })()}
           </div>
         ) : (
-          <div className="flex-1 flex items-center justify-center bg-background text-muted-foreground text-sm">
+          <div className="flex-1 relative flex items-center justify-center bg-background text-muted-foreground text-sm">
+            <div className="absolute top-3 right-3 z-10">
+              <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
+            </div>
             {jobs.length === 0
               ? '실행 기록이 없습니다'
               : selectedJob && !selectedPipeline
