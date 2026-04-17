@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
-import Toast, { type ToastMessage } from '@/components/ui/Toast';
+import { toast } from '@/components/ui/Toast';
 import type { Product, ProductLevel } from '@/types/pipeline';
 import { PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
 import { cn, formatKST, formatDuration } from '@/lib/utils';
@@ -364,7 +364,6 @@ export default function ProductsPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
   const [totalCount, setTotalCount] = useState(0);
 
   // Panel animation
@@ -431,13 +430,10 @@ export default function ProductsPage() {
   async function handleDownload(product: Product) {
     const res = await service.제품_다운로드_URL을_발급한다(product.id);
     if (res.success && res.data) {
-      setToast({
-        message: `다운로드 링크 생성 완료 (${Math.floor(res.data.expiresIn / 60)}분 후 만료)`,
-        type: 'success',
-      });
+      toast.success(`다운로드 링크 생성 완료 (${Math.floor(res.data.expiresIn / 60)}분 후 만료)`);
       window.open(res.data.url, '_blank');
     } else {
-      setToast({ message: res.message, type: 'error' });
+      toast.error(res.message);
     }
   }
 
@@ -445,9 +441,9 @@ export default function ProductsPage() {
     if (!reprocessTarget) return;
     const res = await service.제품_재처리를_요청한다(reprocessTarget.id, { targetLevel });
     if (res.success && res.data) {
-      setToast({ message: `재처리 요청 완료 — Job: ${res.data.jobId}`, type: 'success' });
+      toast.success(`재처리 요청 완료 — Job: ${res.data.jobId}`);
     } else {
-      setToast({ message: res.message, type: 'error' });
+      toast.error(res.message);
     }
     setReprocessTarget(null);
   }
@@ -642,7 +638,6 @@ export default function ProductsPage() {
           onCancel={() => setReprocessTarget(null)}
         />
       )}
-      {toast && <Toast {...toast} onDismiss={() => setToast(null)} />}
     </div>
   );
 }

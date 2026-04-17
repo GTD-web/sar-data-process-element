@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
-import Toast, { type ToastMessage } from '@/components/ui/Toast';
+import { toast } from '@/components/ui/Toast';
 import type { ProcessingProfile } from '@/types/pipeline';
 import { POLARIZATION_OPTIONS } from '@/types/pipeline';
 import { formatKST } from '@/lib/utils';
@@ -233,7 +233,6 @@ export default function ProcessingProfilesPage() {
   const service = usePipelineService();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [profiles, setProfiles] = useState<ProcessingProfile[]>([]);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
 
   // Filters
   const [filterSatellite, setFilterSatellite] = useState('');
@@ -271,10 +270,10 @@ export default function ProcessingProfilesPage() {
   async function handleSave(data: Omit<ProcessingProfile, 'id' | 'createdAt' | 'updatedAt' | 'referencedPipelineCount'>) {
     if (editProfile) {
       const res = await service.처리_프로파일을_수정한다(editProfile.id, data);
-      setToast({ message: res.message, type: res.success ? 'success' : 'error' });
+      (res.success ? toast.success : toast.error)(res.message);
     } else {
       const res = await service.처리_프로파일을_생성한다(data);
-      setToast({ message: res.message, type: res.success ? 'success' : 'error' });
+      (res.success ? toast.success : toast.error)(res.message);
     }
     setFormOpen(false);
     setEditProfile(null);
@@ -284,7 +283,7 @@ export default function ProcessingProfilesPage() {
   async function handleDelete() {
     if (!deleteTarget) return;
     const res = await service.처리_프로파일을_삭제한다(deleteTarget.id);
-    setToast({ message: res.message, type: res.success ? 'success' : 'error' });
+    (res.success ? toast.success : toast.error)(res.message);
     setDeleteTarget(null);
     if (res.success) await loadData();
   }
@@ -437,7 +436,6 @@ export default function ProcessingProfilesPage() {
           onCancel={() => setDeleteTarget(null)}
         />
       )}
-      {toast && <Toast {...toast} onDismiss={() => setToast(null)} />}
     </div>
   );
 }

@@ -1,52 +1,37 @@
 'use client';
 
-import { useEffect } from 'react';
-import { cn } from '@/lib/utils';
-import { AlertCircle, AlertTriangle, CheckCircle, Info, X } from 'lucide-react';
+import { Toaster as SonnerToaster, toast } from 'sonner';
 
-export interface ToastMessage {
-  message: string;
-  type: 'error' | 'success' | 'info' | 'warning';
-}
+export { toast };
 
-interface ToastProps extends ToastMessage {
-  onDismiss: () => void;
-}
-
-const ICON_MAP = {
-  error: AlertCircle,
-  success: CheckCircle,
-  info: Info,
-  warning: AlertTriangle,
-};
-
-const STYLE_MAP = {
-  error: 'bg-card border-destructive/40 text-destructive',
-  success: 'bg-card border-success/40 text-success',
-  info: 'bg-card border-accent/40 text-accent',
-  warning: 'bg-card border-amber-500/40 text-amber-500',
-};
-
-export default function Toast({ message, type, onDismiss }: ToastProps) {
-  useEffect(() => {
-    const timer = setTimeout(onDismiss, 4000);
-    return () => clearTimeout(timer);
-  }, [onDismiss]);
-
-  const Icon = ICON_MAP[type];
-
+/**
+ * 프로젝트 테마에 맞춰 sonner Toaster를 커스텀한다.
+ * - 다크 배경(card) + 보더(border) 기본 스타일
+ * - success/error/warning/info 타입별 컬러 강조
+ */
+export default function Toaster() {
   return (
-    <div
-      className={cn(
-        'fixed bottom-5 right-5 z-[100] flex items-center gap-2.5 px-4 py-3 rounded-lg border shadow-xl max-w-sm animate-in fade-in slide-in-from-bottom-2',
-        STYLE_MAP[type],
-      )}
-    >
-      <Icon className="w-4 h-4 flex-shrink-0" />
-      <p className="text-xs flex-1 text-foreground">{message}</p>
-      <button onClick={onDismiss} className="p-0.5 rounded hover:opacity-60 transition-opacity ml-1">
-        <X className="w-3.5 h-3.5 text-muted-foreground" />
-      </button>
-    </div>
+    <SonnerToaster
+      position="bottom-right"
+      duration={4000}
+      closeButton
+      toastOptions={{
+        classNames: {
+          toast:
+            'group !bg-card !text-foreground !border !border-border !rounded-lg !shadow-xl !text-xs !px-3 !py-2.5',
+          title: '!text-xs !text-foreground',
+          description: '!text-[11px] !text-muted-foreground',
+          actionButton: '!bg-accent !text-accent-foreground',
+          cancelButton: '!bg-muted !text-muted-foreground',
+          closeButton:
+            '!bg-card !border-border !text-muted-foreground hover:!text-foreground',
+          success: '!border-success/40',
+          error: '!border-destructive/40',
+          warning: '!border-amber-500/40',
+          info: '!border-accent/40',
+          icon: 'flex-shrink-0',
+        },
+      }}
+    />
   );
 }

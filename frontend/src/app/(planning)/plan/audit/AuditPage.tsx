@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
-import Toast, { type ToastMessage } from '@/components/ui/Toast';
 import type { AuditEvent, AuditEventType } from '@/types/pipeline';
 import { cn, formatKST } from '@/lib/utils';
 import {
@@ -405,7 +404,6 @@ export default function AuditPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [total, setTotal] = useState(0);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
 
   // Stats: loaded once, never changes with filters
   const [globalCounts, setGlobalCounts] = useState<Record<string, number>>({});
@@ -720,7 +718,6 @@ export default function AuditPage() {
         </div>
       </div>
 
-      {toast && <Toast {...toast} onDismiss={() => setToast(null)} />}
     </div>
   );
 }

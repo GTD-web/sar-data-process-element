@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
-import Toast, { type ToastMessage } from '@/components/ui/Toast';
+import { toast } from '@/components/ui/Toast';
 import type { Alert, AlertKind } from '@/types/pipeline';
 import { cn, formatKST, formatRelativeTime } from '@/lib/utils';
 import {
@@ -182,7 +182,6 @@ export default function AlertsPage() {
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
 
   // Filters
   const [filterStatus, setFilterStatus] = useState<'unacked' | 'acked' | 'all'>('unacked');
@@ -219,13 +218,13 @@ export default function AlertsPage() {
   async function handleAcknowledge(alert: Alert) {
     const res = await service.Alert을_확인한다(alert.id, { ifMatchVersion: alert.version });
     if (res.success) {
-      setToast({ message: `Alert ${alert.id} 확인 완료`, type: 'success' });
+      toast.success(`Alert ${alert.id} 확인 완료`);
       await loadData();
     } else if (res.code === 409) {
-      setToast({ message: '이미 다른 운영자가 확인했습니다. 새로고침합니다.', type: 'warning' });
+      toast.warning('이미 다른 운영자가 확인했습니다. 새로고침합니다.');
       await loadData();
     } else {
-      setToast({ message: res.message, type: 'error' });
+      toast.error(res.message);
     }
   }
 
@@ -239,10 +238,9 @@ export default function AlertsPage() {
       if (res.success) successCount++;
     }
 
-    setToast({
-      message: `${successCount}/${unacked.length}건 확인 완료`,
-      type: successCount === unacked.length ? 'success' : 'warning',
-    });
+    const msg = `${successCount}/${unacked.length}건 확인 완료`;
+    if (successCount === unacked.length) toast.success(msg);
+    else toast.warning(msg);
     await loadData();
   }
 
@@ -335,7 +333,6 @@ export default function AlertsPage() {
         </div>
       </div>
 
-      {toast && <Toast {...toast} onDismiss={() => setToast(null)} />}
     </div>
   );
 }

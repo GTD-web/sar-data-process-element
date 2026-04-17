@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
-import Toast, { type ToastMessage } from '@/components/ui/Toast';
+import { toast } from '@/components/ui/Toast';
 import { ArchiveRestore, Archive } from 'lucide-react';
 import type { PipelineDefinition, PipelineStep } from '@/types/pipeline';
 import { SAR_STAGE_TO_CSC, SAR_STAGE_TO_LEVEL } from '@/types/pipeline';
@@ -24,7 +24,6 @@ export default function ArchivePage() {
   const [pipelines, setPipelines] = useState<PipelineDefinition[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
 
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId) ?? null;
 
@@ -64,7 +63,7 @@ export default function ArchivePage() {
         else setSelectedPipelineId(null);
         return next;
       });
-      setToast({ type: 'success', message: '파이프라인이 복원되었습니다' });
+      toast.success('파이프라인이 복원되었습니다');
     }
   }, [selectedPipelineId, service]);
 
@@ -123,7 +122,6 @@ export default function ArchivePage() {
         )}
       </div>
 
-      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
     </div>
   );
 }

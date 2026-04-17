@@ -47,6 +47,13 @@ export default function JobDetailPanel({ job, onReprocess, onPartialReprocess, o
     .filter((s) => s.kind === 'SAR' && s.sarStage !== undefined)
     .map((s) => s.sarStage!);
 
+  // 전체 재처리 설명 문구: 파이프라인이 FILE_INPUT으로 시작하면 해당 레벨 이후만 재실행,
+  // TRIGGER로 시작하면 L0부터 재실행
+  const fileInputStep = job.steps.find((s) => s.kind === 'FILE_INPUT');
+  const fullReprocessDesc = fileInputStep?.inputLevel
+    ? `${PRODUCT_LEVEL_LABELS[fileInputStep.inputLevel] ?? fileInputStep.inputLevel} 입력 이후 전체 재실행`
+    : 'L0부터 전체 재실행';
+
   return (
     <div className="p-4 space-y-4">
       {/* Header */}
@@ -85,7 +92,7 @@ export default function JobDetailPanel({ job, onReprocess, onPartialReprocess, o
                   className="w-full px-3 py-2 text-left text-xs text-foreground hover:bg-muted/50 transition-colors"
                 >
                   <div className="font-medium">전체 재처리</div>
-                  <div className="text-muted-foreground text-[10px]">L0부터 전체 재실행</div>
+                  <div className="text-muted-foreground text-[10px]">{fullReprocessDesc}</div>
                 </button>
                 <div className="h-px bg-border" />
                 <button
@@ -152,7 +159,7 @@ export default function JobDetailPanel({ job, onReprocess, onPartialReprocess, o
                 : isTrigger
                   ? '원시 데이터 수신 트리거'
                   : isFileInput
-                    ? `${PRODUCT_LEVEL_LABELS[step.productLevel] ?? 'L?'} 결과 입력`
+                    ? `${PRODUCT_LEVEL_LABELS[step.inputLevel ?? step.productLevel] ?? 'L?'} 결과 입력`
                     : isJobInit
                       ? '작업 초기화'
                       : isCatalog

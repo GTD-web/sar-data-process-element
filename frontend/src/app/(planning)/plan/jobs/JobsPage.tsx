@@ -12,7 +12,7 @@ import ReprocessConfirmDialog from '@/components/panels/ReprocessConfirmDialog';
 import CancelConfirmDialog from '@/components/panels/CancelConfirmDialog';
 import ExecutionLogPanel from '@/components/panels/ExecutionLogPanel';
 import StepDetailPopover from '@/components/panels/StepDetailPopover';
-import Toast, { type ToastMessage } from '@/components/ui/Toast';
+import { toast } from '@/components/ui/Toast';
 import { GitBranch, PanelRightOpen, Archive } from 'lucide-react';
 import type {
   PipelineDefinition,
@@ -100,7 +100,6 @@ export default function JobsPage() {
   const [logPanelOpen, setLogPanelOpen] = useState(false);
   const [activeStepOrder, setActiveStepOrder] = useState<number | null>(null);
   const [popoverClickY, setPopoverClickY] = useState(0);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   // --- Initial load ---
@@ -138,23 +137,33 @@ export default function JobsPage() {
     if (!selectedJob) return;
     if (selectedJob.status !== 'ASSIGNED' && selectedJob.status !== 'CREATED') return;
 
-    const interval = setInterval(async () => {
-      const res = await service.Job_상세를_조회한다(selectedJob.jobId);
-      if (res.data) {
-        setSelectedJob(res.data);
-        setConsoleMode({ type: 'job', job: res.data });
-        const jobsRes = await service.Job_목록을_조회한다({ limit: 100 });
-        if (jobsRes.data) setJobs(jobsRes.data.items);
+    const jobId = selectedJob.jobId;
+    let stopped = false;
 
+    const interval = setInterval(async () => {
+      if (stopped) return;
+      const res = await service.Job_상세를_조회한다(jobId);
+      if (!res.data) return;
+      setSelectedJob(res.data);
+      setConsoleMode({ type: 'job', job: res.data });
+      const jobsRes = await service.Job_목록을_조회한다({ limit: 100 });
+      if (jobsRes.data) setJobs(jobsRes.data.items);
+
+      if (res.data.status === 'COMPLETED' || res.data.status === 'FAILED') {
+        stopped = true;
+        clearInterval(interval);
         if (res.data.status === 'COMPLETED') {
-          setToast({ message: `Job ${res.data.jobId} 처리가 완료되었습니다`, type: 'success' });
-        } else if (res.data.status === 'FAILED') {
-          setToast({ message: `Job ${res.data.jobId} 처리 중 오류가 발생했습니다`, type: 'error' });
+          toast.success(`Job ${res.data.jobId} 처리가 완료되었습니다`);
+        } else {
+          toast.error(`Job ${res.data.jobId} 처리 중 오류가 발생했습니다`);
         }
       }
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+    };
   }, [selectedJob, service]);
 
   // --- Selection ---
@@ -167,7 +176,7 @@ export default function JobsPage() {
       setRightCollapsed(false);
       updateJobIdParam(jobId);
     } else {
-      setToast({ message: res.message, type: 'error' });
+      toast.error(res.message);
     }
   }, [service, updateJobIdParam]);
 
@@ -393,7 +402,6 @@ export default function JobsPage() {
           onCancel={() => setCancelDialogOpen(false)}
         />
       )}
-      {toast && <Toast {...toast} onDismiss={() => setToast(null)} />}
     </div>
   );
 }

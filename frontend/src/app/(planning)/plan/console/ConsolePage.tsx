@@ -17,7 +17,7 @@ import ExecutionLogPanel from '@/components/panels/ExecutionLogPanel';
 import StepDetailPopover from '@/components/panels/StepDetailPopover';
 import NodeDetailModal, { type PrevNodeInfo } from '@/components/panels/NodeDetailModal';
 import FileInputConfigDialog from '@/components/panels/FileInputConfigDialog';
-import Toast, { type ToastMessage } from '@/components/ui/Toast';
+import { toast } from '@/components/ui/Toast';
 import { FlaskConical, Plus, PanelRightOpen, GitBranch, Pencil, Check, X } from 'lucide-react';
 import type {
   PipelineDefinition,
@@ -165,7 +165,6 @@ export default function ConsolePage() {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [createStep, setCreateStep] = useState<'step1' | 'step2' | null>(null);
   const [createBasicData, setCreateBasicData] = useState<CreatePipelineBasicData | null>(null);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
   const [logPanelOpen, setLogPanelOpen] = useState(false);
   const [focusEntryTrigger, setFocusEntryTrigger] = useState(0);
   const [nodeDetailStep, setNodeDetailStep] = useState<PipelineStepDefinition | null>(null);
@@ -221,9 +220,9 @@ export default function ConsolePage() {
 
         // 완료/실패 시 폴링 중지 (다음 체크에서 조건 불일치로 자동 정리)
         if (res.data.status === 'COMPLETED') {
-          setToast({ message: `Job ${res.data.jobId} 처리가 완료되었습니다`, type: 'success' });
+          toast.success(`Job ${res.data.jobId} 처리가 완료되었습니다`);
         } else if (res.data.status === 'FAILED') {
-          setToast({ message: `Job ${res.data.jobId} 처리 중 오류가 발생했습니다`, type: 'error' });
+          toast.error(`Job ${res.data.jobId} 처리 중 오류가 발생했습니다`);
         }
       }
     }, 1000);
@@ -355,12 +354,9 @@ export default function ConsolePage() {
     const res = await service.파이프라인을_실행한다(selectedPipelineId);
     if (res.success) {
       if (profileMissing) {
-        setToast({
-          message: `${res.message} — 처리 프로파일이 파이프라인에 없습니다. 캔버스의 「작업 초기화」노드 안내를 확인하세요.`,
-          type: 'warning',
-        });
+        toast.warning(`${res.message} — 처리 프로파일이 파이프라인에 없습니다. 캔버스의 「작업 초기화」노드 안내를 확인하세요.`);
       } else {
-        setToast({ message: res.message, type: 'success' });
+        toast.success(res.message);
       }
       const logRes = await service.실행_로그를_조회한다({ limit: 300 });
       if (logRes.data) setExecutionLogs(logRes.data);
@@ -377,7 +373,7 @@ export default function ConsolePage() {
         }
       }
     } else {
-      setToast({ message: res.message, type: 'error' });
+      toast.error(res.message);
     }
   }, [selectedPipelineId, service, profileMissing]);
 
@@ -441,9 +437,22 @@ export default function ConsolePage() {
   const handleReprocessConfirm = useCallback(async () => {
     if (!selectedJob) return;
     setReprocessDialogOpen(false);
-    await service.Job을_재처리한다(selectedJob.jobId);
-    const jRes = await service.Job_상세를_조회한다(selectedJob.jobId);
-    if (jRes.data) { setSelectedJob(jRes.data); setConsoleMode({ type: 'job', job: jRes.data }); }
+    const jobId = selectedJob.jobId;
+    const fileInput = selectedJob.steps.find((s) => s.kind === 'FILE_INPUT');
+    const startLabel = fileInput?.inputLevel
+      ? `${fileInput.inputLevel.replace('LEVEL_', 'L')} 입력 이후`
+      : '처음부터';
+    const res = await service.Job을_재처리한다(jobId);
+    if (res.success) {
+      toast.success(`Job ${jobId} 전체 재처리를 ${startLabel} 시작했습니다`);
+    } else {
+      toast.error(res.message);
+    }
+    const jRes = await service.Job_상세를_조회한다(jobId);
+    if (jRes.data) {
+      setSelectedJob(jRes.data);
+      setConsoleMode({ type: 'job', job: jRes.data });
+    }
   }, [service, selectedJob]);
 
   const handleCancelJob = useCallback(() => {
@@ -462,9 +471,19 @@ export default function ConsolePage() {
   // D-02: 부분 재처리
   const handlePartialReprocess = useCallback(async (sarStage: SarStage) => {
     if (!selectedJob) return;
-    await service.부분_재처리를_요청한다(selectedJob.jobId, { sarStage });
-    const jRes = await service.Job_상세를_조회한다(selectedJob.jobId);
-    if (jRes.data) { setSelectedJob(jRes.data); setConsoleMode({ type: 'job', job: jRes.data }); }
+    const jobId = selectedJob.jobId;
+    const stageLabel = SAR_STAGE_LABELS[sarStage];
+    const res = await service.부분_재처리를_요청한다(jobId, { sarStage });
+    if (res.success) {
+      toast.success(`Job ${jobId} ${sarStage} · ${stageLabel} 노드부터 재처리를 시작했습니다`);
+    } else {
+      toast.error(res.message);
+    }
+    const jRes = await service.Job_상세를_조회한다(jobId);
+    if (jRes.data) {
+      setSelectedJob(jRes.data);
+      setConsoleMode({ type: 'job', job: jRes.data });
+    }
   }, [service, selectedJob]);
 
   // D-02: 노드 order 기반 부분 재처리 (캔버스 노드 toolbar에서 호출)
@@ -570,9 +589,9 @@ export default function ConsolePage() {
     const res = await service.파이프라인을_수정한다(selectedPipelineId, { name: newName });
     if (res.success && res.data) {
       setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? { ...p, name: res.data!.name } : p)));
-      setToast({ message: '파이프라인 이름이 변경되었습니다', type: 'success' });
+      toast.success('파이프라인 이름이 변경되었습니다');
     } else {
-      setToast({ message: res.message, type: 'error' });
+      toast.error(res.message);
     }
   }, [service, selectedPipelineId]);
 
@@ -850,8 +869,6 @@ export default function ConsolePage() {
         />
       )}
 
-      {/* S-03: 동시성 충돌 토스트 */}
-      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
     </div>
   );
 }

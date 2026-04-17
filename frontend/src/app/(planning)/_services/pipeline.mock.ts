@@ -172,7 +172,7 @@ function buildSteps(pipelineSteps: StepDef[], status: JobStatus, retryCount: num
       : def.kind === 'CATALOG' ? 'CSC-07'
       : SAR_STAGE_TO_CSC[def.sarStage!];
     const productLevel: ProductLevel = def.kind === 'TRIGGER' ? 'LEVEL_0'
-      : def.kind === 'FILE_INPUT' ? 'LEVEL_0'
+      : def.kind === 'FILE_INPUT' ? (def.inputLevel ?? 'LEVEL_0')
       : def.kind === 'JOB_INIT' ? 'LEVEL_0'
       : def.kind === 'CATALOG' ? 'LEVEL_3'
       : SAR_STAGE_TO_LEVEL[def.sarStage!];
@@ -186,6 +186,7 @@ function buildSteps(pipelineSteps: StepDef[], status: JobStatus, retryCount: num
       order: i + 1,
       kind: def.kind,
       sarStage: def.sarStage,
+      inputLevel: def.kind === 'FILE_INPUT' ? def.inputLevel : undefined,
       targetCsc,
       productLevel,
       status: stepStatus,
@@ -758,6 +759,16 @@ function stepDurationMs(kind: PipelineNodeKind): number {
   return 2000 + Math.floor(Math.random() * 2000); // SAR: 2~4초
 }
 
+/** 스텝을 PENDING으로 되돌릴 때 이전 실행 흔적(에러·소요시간·산출물)을 함께 지운다. */
+function resetStepRuntimeFields(step: PipelineStep) {
+  step.errorCode = undefined;
+  step.errorMessage = undefined;
+  step.startedAt = undefined;
+  step.finishedAt = undefined;
+  step.durationMs = undefined;
+  step.outputPath = undefined;
+}
+
 /**
  * Job의 스텝을 순차적으로 RUNNING → COMPLETED로 진행시킨다.
  * 각 스텝이 일정 시간 후 COMPLETED로 전환되고 다음 스텝이 RUNNING으로 변경된다.
@@ -767,7 +778,9 @@ function simulateJobExecution(job: JobDetail) {
   job.updatedAt = new Date().toISOString();
 
   const steps = job.steps;
-  let currentIdx = 0;
+  // 재처리 시 이미 COMPLETED인 앞쪽 스텝은 건너뛰고, 첫 PENDING 스텝부터 실행한다.
+  let currentIdx = steps.findIndex((s) => s.status !== 'COMPLETED');
+  if (currentIdx === -1) currentIdx = steps.length;
 
   function advanceStep() {
     if (currentIdx >= steps.length) {
@@ -907,7 +920,11 @@ class MockPipelineUIService implements IPipelineUIService {
     job.status = 'CREATED';
     job.retryCount = 0;
     job.updatedAt = new Date().toISOString();
-    job.steps.forEach((s) => { s.status = (s.kind === 'TRIGGER' || s.kind === 'FILE_INPUT' || s.kind === 'JOB_INIT') ? 'COMPLETED' : 'PENDING'; });
+    job.steps.forEach((s) => {
+      s.status = (s.kind === 'TRIGGER' || s.kind === 'FILE_INPUT' || s.kind === 'JOB_INIT') ? 'COMPLETED' : 'PENDING';
+      if (s.status === 'PENDING') resetStepRuntimeFields(s);
+    });
+    simulateJobExecution(job);
     return { success: true, message: `Job ${jobId} 재처리가 요청되었습니다` };
   }
 
@@ -919,10 +936,14 @@ class MockPipelineUIService implements IPipelineUIService {
     job.steps.forEach((s) => {
       if (s.kind === 'TRIGGER' || s.kind === 'JOB_INIT') return;
       if (s.sarStage === params.sarStage) resetActive = true;
-      if (resetActive) s.status = 'PENDING';
+      if (resetActive) {
+        s.status = 'PENDING';
+        resetStepRuntimeFields(s);
+      }
     });
     job.status = 'CREATED';
     job.updatedAt = new Date().toISOString();
+    simulateJobExecution(job);
     return { success: true, message: `Job ${jobId} 부분 재처리(${params.sarStage}부터)가 요청되었습니다` };
   }
 
