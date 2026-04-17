@@ -90,13 +90,34 @@ function parseCoverage(json) {
   if (!json?.total) return null;
   const { lines, statements, functions, branches } = json.total;
   return {
-    lines: lines?.pct ?? null,
-    statements: statements?.pct ?? null,
-    functions: functions?.pct ?? null,
-    branches: branches?.pct ?? null,
+    lines: {
+      pct: lines?.pct ?? null,
+      covered: lines?.covered ?? null,
+      total: lines?.total ?? null,
+    },
+    statements: {
+      pct: statements?.pct ?? null,
+      covered: statements?.covered ?? null,
+      total: statements?.total ?? null,
+    },
+    functions: {
+      pct: functions?.pct ?? null,
+      covered: functions?.covered ?? null,
+      total: functions?.total ?? null,
+    },
+    branches: {
+      pct: branches?.pct ?? null,
+      covered: branches?.covered ?? null,
+      total: branches?.total ?? null,
+    },
   };
 }
 const coverage = parseCoverage(coverageJson);
+
+function coverageDetail(metric) {
+  if (!metric || metric.covered == null || metric.total == null) return '-';
+  return `${metric.covered} / ${metric.total}`;
+}
 
 function coverageColor(pct) {
   if (pct == null) return '#f9fafb';
@@ -403,24 +424,28 @@ const html = `<!DOCTYPE html>
     <div style="font-size:13px;font-weight:700;color:#111827;margin-bottom:10px">테스트 커버리지</div>
     <table style="width:100%;border-collapse:collapse;text-align:center">
       <tr>
-        <td style="background:${coverageColor(coverage.lines)};padding:10px;border-radius:8px;width:25%">
+        <td style="background:${coverageColor(coverage.lines.pct)};padding:10px;border-radius:8px;width:25%">
           <div style="color:#9ca3af;font-size:10px;letter-spacing:1px">LINES</div>
-          <div style="font-size:18px;font-weight:700;color:${coverageTextColor(coverage.lines)}">${coverage.lines ?? '-'}%</div>
+          <div style="font-size:18px;font-weight:700;color:${coverageTextColor(coverage.lines.pct)}">${coverage.lines.pct ?? '-'}%</div>
+          <div style="color:#6b7280;font-size:11px;margin-top:4px">${coverageDetail(coverage.lines)}</div>
         </td>
         <td style="width:8px"></td>
-        <td style="background:${coverageColor(coverage.statements)};padding:10px;border-radius:8px;width:25%">
+        <td style="background:${coverageColor(coverage.statements.pct)};padding:10px;border-radius:8px;width:25%">
           <div style="color:#9ca3af;font-size:10px;letter-spacing:1px">STATEMENTS</div>
-          <div style="font-size:18px;font-weight:700;color:${coverageTextColor(coverage.statements)}">${coverage.statements ?? '-'}%</div>
+          <div style="font-size:18px;font-weight:700;color:${coverageTextColor(coverage.statements.pct)}">${coverage.statements.pct ?? '-'}%</div>
+          <div style="color:#6b7280;font-size:11px;margin-top:4px">${coverageDetail(coverage.statements)}</div>
         </td>
         <td style="width:8px"></td>
-        <td style="background:${coverageColor(coverage.functions)};padding:10px;border-radius:8px;width:25%">
+        <td style="background:${coverageColor(coverage.functions.pct)};padding:10px;border-radius:8px;width:25%">
           <div style="color:#9ca3af;font-size:10px;letter-spacing:1px">FUNCTIONS</div>
-          <div style="font-size:18px;font-weight:700;color:${coverageTextColor(coverage.functions)}">${coverage.functions ?? '-'}%</div>
+          <div style="font-size:18px;font-weight:700;color:${coverageTextColor(coverage.functions.pct)}">${coverage.functions.pct ?? '-'}%</div>
+          <div style="color:#6b7280;font-size:11px;margin-top:4px">${coverageDetail(coverage.functions)}</div>
         </td>
         <td style="width:8px"></td>
-        <td style="background:${coverageColor(coverage.branches)};padding:10px;border-radius:8px;width:25%">
+        <td style="background:${coverageColor(coverage.branches.pct)};padding:10px;border-radius:8px;width:25%">
           <div style="color:#9ca3af;font-size:10px;letter-spacing:1px">BRANCHES</div>
-          <div style="font-size:18px;font-weight:700;color:${coverageTextColor(coverage.branches)}">${coverage.branches ?? '-'}%</div>
+          <div style="font-size:18px;font-weight:700;color:${coverageTextColor(coverage.branches.pct)}">${coverage.branches.pct ?? '-'}%</div>
+          <div style="color:#6b7280;font-size:11px;margin-top:4px">${coverageDetail(coverage.branches)}</div>
         </td>
       </tr>
     </table>
