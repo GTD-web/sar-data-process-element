@@ -36,42 +36,54 @@ const edgeTypes: EdgeTypes = {
 const NODE_WIDTH = 64;
 const NODE_HEIGHT = 64;
 
-/** Radial glow that covers all nodes, expanding with completion ratio */
+/** Per-node radial glow — each node gets its own soft halo so the background lights up evenly */
 function CanvasGlow({ completionRatio }: { completionRatio: number }) {
   const nodesFromStore = useStore((s) => s.nodes);
   const [px, py, zoom] = useStore((s) => s.transform);
 
   if (nodesFromStore.length === 0) return null;
 
-  // Bounding box of all nodes in screen coordinates
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const n of nodesFromStore) {
-    const sx = (n.position?.x ?? 0) * zoom + px;
-    const sy = (n.position?.y ?? 0) * zoom + py;
-    if (sx < minX) minX = sx;
-    if (sy < minY) minY = sy;
-    if (sx + NODE_WIDTH * zoom > maxX) maxX = sx + NODE_WIDTH * zoom;
-    if (sy + NODE_HEIGHT * zoom > maxY) maxY = sy + NODE_HEIGHT * zoom;
-  }
+  // Per-node glow radius scales with completion: 110px base → +90px at 100%
+  const radius = (110 + completionRatio * 90) * zoom;
+  // Per-node opacity also scales with completion: 0.10 → 0.20
+  const glowOpacity = 0.10 + completionRatio * 0.10;
+  const greenInner = `rgba(52,211,153,${glowOpacity})`;
+  const greenMid = `rgba(52,211,153,${(glowOpacity * 0.4).toFixed(3)})`;
+  // FAILED nodes get a red halo at a fixed, slightly stronger intensity so they stand out
+  const redInner = `rgba(239,68,68,0.18)`;
+  const redMid = `rgba(239,68,68,0.07)`;
 
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
-  const bboxW = maxX - minX;
-  const bboxH = maxY - minY;
+  const gradients = nodesFromStore
+    .map((n) => {
+      const data = n.data as PipelineNodeData | undefined;
+      const status = data?.status;
+      let inner: string;
+      let mid: string;
+      if (status === 'FAILED') {
+        inner = redInner;
+        mid = redMid;
+      } else if (status === 'COMPLETED' || status === 'RUNNING') {
+        inner = greenInner;
+        mid = greenMid;
+      } else {
+        // PENDING / SKIPPED / CANCELED → no glow
+        return null;
+      }
+      const cx = (n.position?.x ?? 0) * zoom + px + (NODE_WIDTH * zoom) / 2;
+      const cy = (n.position?.y ?? 0) * zoom + py + (NODE_HEIGHT * zoom) / 2;
+      return `radial-gradient(${radius}px ${radius}px at ${cx}px ${cy}px, ${inner} 0%, ${mid} 45%, transparent 100%)`;
+    })
+    .filter((g): g is string => g !== null)
+    .join(', ');
 
-  // Padding scales with completion: 150px base → +250px at 100%
-  const padding = 150 + completionRatio * 250;
-  const radiusX = bboxW / 2 + padding;
-  const radiusY = bboxH / 2 + padding;
-
-  const glowOpacity = 0.06 + completionRatio * 0.09; // 0.06 → 0.15
+  if (!gradients) return null;
 
   return (
     <div
       style={{
         position: 'absolute', inset: 0,
         pointerEvents: 'none', zIndex: 0,
-        background: `radial-gradient(${radiusX}px ${radiusY}px at ${cx}px ${cy}px, rgba(52,211,153,${glowOpacity}) 0%, rgba(52,211,153,${glowOpacity * 0.4}) 50%, transparent 100%)`,
+        background: gradients,
       }}
     />
   );
