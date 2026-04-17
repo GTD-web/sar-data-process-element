@@ -18,8 +18,10 @@ import ExecutionLogPanel from '@/components/panels/ExecutionLogPanel';
 import StepDetailPopover from '@/components/panels/StepDetailPopover';
 import NodeDetailModal, { type PrevNodeInfo } from '@/components/panels/NodeDetailModal';
 import FileInputConfigDialog from '@/components/panels/FileInputConfigDialog';
+import PipelineDeleteConfirmDialog from '@/components/panels/PipelineDeleteConfirmDialog';
+import PipelineEditDialog from '@/components/panels/PipelineEditDialog';
 import { toast } from '@/components/ui/Toast';
-import { FlaskConical, Plus, PanelRightOpen, GitBranch, Pencil, Check, X } from 'lucide-react';
+import { FlaskConical, Plus, PanelRightOpen, GitBranch, Pencil, Check, X, SlidersHorizontal } from 'lucide-react';
 import type {
   PipelineDefinition,
   PipelineStepDefinition,
@@ -27,6 +29,7 @@ import type {
   ProcessingProfile,
   ExecutionLog,
   JobDetail,
+  JobSummary,
   PipelineStep,
   SarStage,
   PipelineNodeKind,
@@ -43,12 +46,14 @@ function PipelineNameBadge({
   mode,
   editable,
   onRename,
+  onEditProperties,
 }: {
   name: string;
   satellite: string;
   mode: string;
   editable: boolean;
   onRename: (newName: string) => void;
+  onEditProperties: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
@@ -119,6 +124,16 @@ function PipelineNameBadge({
             )}
           </button>
         )}
+        {editable && !editing && (
+          <button
+            type="button"
+            onClick={onEditProperties}
+            className="p-0.5 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+            title="파이프라인 속성 수정"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -154,6 +169,7 @@ export default function ConsolePage() {
   const [pipelines, setPipelines] = useState<PipelineDefinition[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<JobDetail | null>(null);
+  const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [profiles, setProfiles] = useState<ProcessingProfile[]>([]);
   const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
 
@@ -171,18 +187,21 @@ export default function ConsolePage() {
   const [focusEntryTrigger, setFocusEntryTrigger] = useState(0);
   const [nodeDetailStep, setNodeDetailStep] = useState<PipelineStepDefinition | null>(null);
   const [fileInputConfigStep, setFileInputConfigStep] = useState<PipelineStepDefinition | null>(null);
-  const [disabledNodeOrders, setDisabledNodeOrders] = useState<Set<number>>(new Set());
+  const [deletePipelineTarget, setDeletePipelineTarget] = useState<PipelineDefinition | null>(null);
+  const [editPipelineTarget, setEditPipelineTarget] = useState<PipelineDefinition | null>(null);
   const [activeStepOrder, setActiveStepOrder] = useState<number | null>(null);
   const [popoverClickY, setPopoverClickY] = useState(0);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const terminalToastKeysRef = useRef<Set<string>>(new Set());
 
   // --- Load ---
   useEffect(() => {
     (async () => {
-      const [plRes, profRes, logRes] = await Promise.all([
+      const [plRes, profRes, logRes, jobsRes] = await Promise.all([
         service.파이프라인_목록을_조회한다(),
         service.처리_프로파일_목록을_조회한다(),
         service.실행_로그를_조회한다({ limit: 300 }),
+        service.Job_목록을_조회한다({ limit: 100 }),
       ]);
       const isCreateMode = searchParams.get('create') === 'true';
 
@@ -193,6 +212,7 @@ export default function ConsolePage() {
       }
       if (profRes.data) setProfiles(profRes.data);
       if (logRes.data) setExecutionLogs(logRes.data);
+      if (jobsRes.data) setJobs(jobsRes.data.items);
 
       // URL에 jobId가 있으면 자동 선택
       const urlJobId = searchParams.get('jobId');
@@ -214,40 +234,68 @@ export default function ConsolePage() {
     if (!selectedJob) return;
     if (selectedJob.status !== 'ASSIGNED' && selectedJob.status !== 'CREATED') return;
 
-    const interval = setInterval(async () => {
-      const res = await service.Job_상세를_조회한다(selectedJob.jobId);
-      if (res.data) {
-        setSelectedJob(res.data);
-        setConsoleMode({ type: 'job', job: res.data });
+    const jobId = selectedJob.jobId;
+    let stopped = false;
 
-        // 완료/실패 시 폴링 중지 (다음 체크에서 조건 불일치로 자동 정리)
+    const interval = setInterval(async () => {
+      if (stopped) return;
+      const res = await service.Job_상세를_조회한다(jobId);
+      if (res.data) {
+        const nextJob = { ...res.data, steps: res.data.steps.map((step) => ({ ...step })) };
+        setSelectedJob(nextJob);
+        setConsoleMode({ type: 'job', job: nextJob });
+        setJobs((prev) => prev.map((job) =>
+          job.jobId === nextJob.jobId
+            ? {
+                jobId: nextJob.jobId,
+                pipelineId: nextJob.pipelineId,
+                sceneId: nextJob.sceneId,
+                status: nextJob.status,
+                currentLevel: nextJob.currentLevel,
+                currentTargetCsc: nextJob.currentTargetCsc,
+                retryCount: nextJob.retryCount,
+                startedAt: nextJob.startedAt,
+                updatedAt: nextJob.updatedAt,
+              }
+            : job,
+        ));
+
         if (res.data.status === 'COMPLETED') {
-          toast.success(`Job ${res.data.jobId} 처리가 완료되었습니다`);
+          stopped = true;
+          clearInterval(interval);
+          const toastKey = `${res.data.jobId}:COMPLETED`;
+          if (!terminalToastKeysRef.current.has(toastKey)) {
+            terminalToastKeysRef.current.add(toastKey);
+            toast.success(`Job ${res.data.jobId} 처리가 완료되었습니다`);
+          }
         } else if (res.data.status === 'FAILED') {
-          toast.error(`Job ${res.data.jobId} 처리 중 오류가 발생했습니다`);
+          stopped = true;
+          clearInterval(interval);
+          const toastKey = `${res.data.jobId}:FAILED`;
+          if (!terminalToastKeysRef.current.has(toastKey)) {
+            terminalToastKeysRef.current.add(toastKey);
+            toast.error(`Job ${res.data.jobId} 처리 중 오류가 발생했습니다`);
+          }
         }
       }
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+    };
   }, [selectedJob, service]);
-
-  const handleToggleNodeActive = useCallback((order: number) => {
-    setDisabledNodeOrders((prev) => {
-      const next = new Set(prev);
-      if (next.has(order)) {
-        next.delete(order);
-      } else {
-        next.add(order);
-      }
-      return next;
-    });
-  }, []);
 
   // --- Derived ---
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId) ?? null;
+  const pipelineJobs = selectedPipelineId
+    ? jobs
+        .filter((job) => job.pipelineId === selectedPipelineId)
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    : [];
   const canManage = previewRole === 'Administrator';
   const canvasEditable = !selectedJob && canManage;
+  const disabledNodeOrders = new Set(selectedPipeline?.steps.filter((s) => s.disabled).map((s) => s.order) ?? []);
 
   const graphSteps: PipelineStep[] = selectedPipeline
     ? selectedPipeline.steps.map((s) => {
@@ -268,10 +316,10 @@ export default function ConsolePage() {
           inputLevel: s.inputLevel,
           targetCsc,
           productLevel,
-          status: jobStep?.status ?? 'PENDING',
           durationMs: jobStep?.durationMs,
           errorMessage: jobStep?.errorMessage,
           enabledTasks: s.enabledTasks,
+          status: s.disabled && !selectedJob ? 'SKIPPED' : (jobStep?.status ?? 'PENDING'),
         };
       })
     : [];
@@ -280,16 +328,38 @@ export default function ConsolePage() {
 
   // --- Pipeline mutation ---
   const updatePipeline = useCallback(
-    async (data: { steps?: Omit<PipelineStepDefinition, 'order'>[]; edges?: { source: number; target: number }[] }) => {
+    async (data: { name?: string; satelliteId?: string; mode?: string; steps?: Omit<PipelineStepDefinition, 'order'>[]; edges?: { source: number; target: number }[] }) => {
       if (!selectedPipelineId) return;
       const res = await service.파이프라인을_수정한다(selectedPipelineId, data);
       if (res.data) {
         setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? res.data! : p)));
-        setDisabledNodeOrders(new Set()); // 노드 order 재배치 시 바이패스 상태 초기화
       }
     },
     [service, selectedPipelineId],
   );
+
+  const toStepUpdate = useCallback((step: PipelineStepDefinition): Omit<PipelineStepDefinition, 'order'> => ({
+    kind: step.kind,
+    sarStage: step.sarStage,
+    inputLevel: step.inputLevel,
+    parentOrder: step.parentOrder,
+    enabledTasks: step.enabledTasks,
+    jobInitConfig: step.jobInitConfig,
+    fileInputConfig: step.fileInputConfig,
+    disabled: step.disabled,
+  }), []);
+
+  const handleToggleNodeActive = useCallback((order: number) => {
+    if (!selectedPipeline) return;
+    const step = selectedPipeline.steps.find((s) => s.order === order);
+    if (!step || step.kind === 'TRIGGER' || step.kind === 'FILE_INPUT') return;
+
+    const nextSteps = selectedPipeline.steps.map((s) =>
+      s.order === order ? { ...toStepUpdate(s), disabled: !s.disabled } : toStepUpdate(s),
+    );
+    updatePipeline({ steps: nextSteps });
+    toast.success(step.disabled ? '노드 바이패스를 해제했습니다' : '노드를 바이패스 상태로 저장했습니다');
+  }, [selectedPipeline, toStepUpdate, updatePipeline]);
 
   // --- Canvas handlers ---
   const handleNodeClick = useCallback(
@@ -326,12 +396,12 @@ export default function ConsolePage() {
       if (step?.kind === 'TRIGGER' || step?.kind === 'FILE_INPUT') return; // 진입점 노드 삭제 불가
       const newSteps = selectedPipeline.steps
         .filter((s) => s.order !== order)
-        .map((s) => ({ kind: s.kind, sarStage: s.sarStage, inputLevel: s.inputLevel, enabledTasks: s.enabledTasks, jobInitConfig: s.jobInitConfig }));
+        .map(toStepUpdate);
       const newEdges = selectedPipeline.edges.filter((e) => e.source !== order && e.target !== order);
       updatePipeline({ steps: newSteps, edges: newEdges });
       if (consoleMode.type === 'node' && consoleMode.step.order === order) setConsoleMode({ type: 'idle' });
     },
-    [selectedPipeline, updatePipeline, consoleMode],
+    [selectedPipeline, updatePipeline, consoleMode, toStepUpdate],
   );
 
   const handleDeleteEdge = useCallback(
@@ -363,6 +433,8 @@ export default function ConsolePage() {
       }
       const logRes = await service.실행_로그를_조회한다({ limit: 300 });
       if (logRes.data) setExecutionLogs(logRes.data);
+      const jobsRes = await service.Job_목록을_조회한다({ limit: 100 });
+      if (jobsRes.data) setJobs(jobsRes.data.items);
       setLogPanelOpen(true);
 
       // 생성된 Job을 자동 선택하여 실행 진행 상황을 추적
@@ -379,6 +451,19 @@ export default function ConsolePage() {
       toast.error(res.message);
     }
   }, [selectedPipelineId, service, profileMissing]);
+
+  const handleSelectJobFromSidebar = useCallback(async (jobId: string) => {
+    const res = await service.Job_상세를_조회한다(jobId);
+    if (res.data) {
+      setSelectedJob(res.data);
+      setActiveStepOrder(null);
+      setConsoleMode({ type: 'job', job: res.data });
+      setRightCollapsed(false);
+      updateJobIdParam(jobId);
+    } else {
+      toast.error(res.message);
+    }
+  }, [service, updateJobIdParam]);
 
   const handleAddNode = useCallback(
     (afterOrder: number, beforeOrder?: number) => {
@@ -397,7 +482,7 @@ export default function ConsolePage() {
           ? { kind, jobInitConfig: { polarization: '', priority: 5, retryInterval: 'IMMEDIATE' as const } }
           : { kind, sarStage };
       const newSteps = [
-        ...selectedPipeline.steps.map((s) => ({ kind: s.kind, sarStage: s.sarStage, inputLevel: s.inputLevel, enabledTasks: s.enabledTasks, jobInitConfig: s.jobInitConfig })),
+        ...selectedPipeline.steps.map(toStepUpdate),
         newStep,
       ];
       const newOrder = newSteps.length;
@@ -415,7 +500,7 @@ export default function ConsolePage() {
       updatePipeline({ steps: newSteps, edges: newEdges });
       setConsoleMode({ type: 'idle' });
     },
-    [selectedPipeline, updatePipeline, consoleMode],
+    [selectedPipeline, updatePipeline, consoleMode, toStepUpdate],
   );
 
   const handleSaveNode = useCallback(
@@ -423,12 +508,12 @@ export default function ConsolePage() {
       if (!selectedPipeline) return;
       const newSteps = selectedPipeline.steps.map((s) =>
         s.order === updated.order
-          ? { kind: updated.kind, sarStage: updated.sarStage, inputLevel: updated.inputLevel, enabledTasks: updated.enabledTasks, jobInitConfig: updated.jobInitConfig }
-          : { kind: s.kind, sarStage: s.sarStage, inputLevel: s.inputLevel, enabledTasks: s.enabledTasks, jobInitConfig: s.jobInitConfig },
+          ? toStepUpdate(updated)
+          : toStepUpdate(s),
       );
       updatePipeline({ steps: newSteps });
     },
-    [selectedPipeline, updatePipeline],
+    [selectedPipeline, updatePipeline, toStepUpdate],
   );
 
   // --- Job handlers ---
@@ -499,25 +584,31 @@ export default function ConsolePage() {
 
   const handleDeletePipeline = useCallback(async (id: string) => {
     if (!canManage) return;
-    await service.파이프라인을_삭제한다(id);
+    const res = await service.파이프라인을_삭제한다(id);
+    if (!res.success) {
+      toast.error(res.message);
+      return;
+    }
+    toast.success('파이프라인이 삭제되었습니다');
     setPipelines((prev) => prev.filter((p) => p.id !== id));
     if (selectedPipelineId === id) {
       setSelectedPipelineId(null);
       setSelectedJob(null);
       setActiveStepOrder(null);
       setConsoleMode({ type: 'idle' });
-      setDisabledNodeOrders(new Set());
       updateJobIdParam(null);
     }
+    setDeletePipelineTarget(null);
   }, [service, selectedPipelineId, updateJobIdParam, canManage]);
 
   // --- Pipeline handlers ---
-  const handleSavePipeline = useCallback(async (data: { name: string; satelliteId: string; mode: string; steps: { kind: PipelineNodeKind; sarStage?: SarStage }[] }) => {
+  const handleSavePipeline = useCallback(async (data: { name: string; satelliteId: string; mode: string }) => {
     if (!selectedPipelineId) return;
     setEditSaving(true);
     const res = await service.파이프라인을_수정한다(selectedPipelineId, data);
     if (res.data) setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? res.data! : p)));
     setEditSaving(false);
+    setEditPipelineTarget(null);
     setConsoleMode({ type: 'idle' });
   }, [service, selectedPipelineId]);
 
@@ -528,7 +619,6 @@ export default function ConsolePage() {
     setSelectedJob(null);
     setActiveStepOrder(null);
     setConsoleMode({ type: 'idle' });
-    setDisabledNodeOrders(new Set());
   }, [canManage]);
 
   const handlePreviewRoleChange = useCallback((role: MockRole) => {
@@ -640,12 +730,17 @@ export default function ConsolePage() {
           setSelectedJob(null);
           setActiveStepOrder(null);
           setConsoleMode({ type: 'idle' });
-          setDisabledNodeOrders(new Set());
           updateJobIdParam(null);
         }}
         onCreatePipeline={handleCreatePipeline}
-        onDeletePipeline={handleDeletePipeline}
+        onDeletePipeline={(id) => {
+          const target = pipelines.find((p) => p.id === id);
+          if (target) setDeletePipelineTarget(target);
+        }}
         canManagePipelines={canManage}
+        pipelineJobs={pipelineJobs}
+        selectedJobId={selectedJob?.jobId ?? null}
+        onSelectJob={handleSelectJobFromSidebar}
         activePage="console"
       />
 
@@ -680,6 +775,7 @@ export default function ConsolePage() {
                   mode={selectedPipeline.mode}
                   editable={canvasEditable}
                   onRename={handleRenamePipeline}
+                  onEditProperties={() => setEditPipelineTarget(selectedPipeline)}
                 />
               )}
               {/* 캔버스 우측 상단 툴바 — 세로 정렬 */}
@@ -888,6 +984,25 @@ export default function ConsolePage() {
           satelliteId={selectedPipeline?.satelliteId}
           mode={selectedPipeline?.mode}
           prevNodes={getPrevNodes(nodeDetailStep.order)}
+        />
+      )}
+
+      {deletePipelineTarget && (
+        <PipelineDeleteConfirmDialog
+          pipelineName={deletePipelineTarget.name}
+          satelliteId={deletePipelineTarget.satelliteId}
+          mode={deletePipelineTarget.mode}
+          onConfirm={() => handleDeletePipeline(deletePipelineTarget.id)}
+          onCancel={() => setDeletePipelineTarget(null)}
+        />
+      )}
+
+      {editPipelineTarget && (
+        <PipelineEditDialog
+          pipeline={editPipelineTarget}
+          saving={editSaving}
+          onSave={handleSavePipeline}
+          onCancel={() => setEditPipelineTarget(null)}
         />
       )}
 

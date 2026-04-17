@@ -620,6 +620,7 @@ function toDAGSteps(flat: Omit<import('@/types/pipeline').PipelineStepDefinition
     ...(s.enabledTasks !== undefined && { enabledTasks: s.enabledTasks }),
     ...(s.jobInitConfig !== undefined && { jobInitConfig: s.jobInitConfig }),
     ...(s.fileInputConfig !== undefined && { fileInputConfig: s.fileInputConfig }),
+    ...(s.disabled !== undefined && { disabled: s.disabled }),
   }));
   const edges: { source: number; target: number }[] = [];
   for (let i = 0; i < steps.length - 1; i++) {
@@ -1094,6 +1095,7 @@ class MockPipelineUIService implements IPipelineUIService {
         ...(s.enabledTasks !== undefined && { enabledTasks: s.enabledTasks }),
         ...(s.jobInitConfig !== undefined && { jobInitConfig: s.jobInitConfig }),
         ...(s.fileInputConfig !== undefined && { fileInputConfig: s.fileInputConfig }),
+        ...(s.disabled !== undefined && { disabled: s.disabled }),
       }));
     }
     if (data.edges !== undefined) {

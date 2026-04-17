@@ -30,7 +30,7 @@ interface ConsoleTabProps {
   onReprocessJob: () => void;
   onPartialReprocess: (sarStage: SarStage) => void;
   onCancelJob: () => void;
-  onSavePipeline: (data: { name: string; satelliteId: string; mode: string; steps: { kind: PipelineNodeKind; sarStage?: SarStage }[] }) => void;
+  onSavePipeline: (data: { name: string; satelliteId: string; mode: string }) => void;
   pipelineSaving: boolean;
   availableProfiles: ProcessingProfile[];
   onStepClick?: (stepOrder: number, clickY: number) => void;

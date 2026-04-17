@@ -22,8 +22,11 @@ import type {
   JobDetail,
   PipelineStep,
   SarStage,
+  JobStatus,
 } from '@/types/pipeline';
 import { SAR_STAGE_TO_CSC, SAR_STAGE_TO_LEVEL } from '@/types/pipeline';
+
+const JOB_PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 
 // ---------------------------------------------------------------------------
 // Canvas (dynamic import — ReactFlow only on client)
@@ -102,6 +105,9 @@ export default function JobsPage() {
   const [logPanelOpen, setLogPanelOpen] = useState(false);
   const [activeStepOrder, setActiveStepOrder] = useState<number | null>(null);
   const [popoverClickY, setPopoverClickY] = useState(0);
+  const [statusFilter, setStatusFilter] = useState<JobStatus | ''>('');
+  const [jobPage, setJobPage] = useState(1);
+  const [jobPageSize, setJobPageSize] = useState<(typeof JOB_PAGE_SIZE_OPTIONS)[number]>(20);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   // --- Initial load ---
@@ -214,6 +220,17 @@ export default function JobsPage() {
     : [];
 
   const graphEdges = selectedPipeline?.edges ?? [];
+  const filteredJobs = statusFilter ? jobs.filter((job) => job.status === statusFilter) : jobs;
+  const totalJobPages = Math.max(1, Math.ceil(filteredJobs.length / jobPageSize));
+  const currentJobPage = Math.min(jobPage, totalJobPages);
+  const pageStart = (currentJobPage - 1) * jobPageSize;
+  const pagedJobs = filteredJobs.slice(pageStart, pageStart + jobPageSize);
+
+  useEffect(() => {
+    if (jobPage > totalJobPages) {
+      setJobPage(totalJobPages);
+    }
+  }, [jobPage, totalJobPages]);
 
   // --- Job actions ---
   const handleReprocessJob = useCallback(() => {
@@ -284,9 +301,26 @@ export default function JobsPage() {
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((v) => !v)}
         activePage="jobs"
-        jobs={jobs}
+        jobs={pagedJobs}
         selectedJobId={selectedJob?.jobId ?? null}
         onSelectJob={handleSelectJob}
+        statusFilter={statusFilter}
+        onStatusFilterChange={(status) => {
+          setStatusFilter(status);
+          setJobPage(1);
+        }}
+        page={currentJobPage}
+        totalPages={totalJobPages}
+        pageSize={jobPageSize}
+        pageSizeOptions={JOB_PAGE_SIZE_OPTIONS}
+        totalJobs={filteredJobs.length}
+        pageStart={filteredJobs.length === 0 ? 0 : pageStart + 1}
+        pageEnd={Math.min(pageStart + jobPageSize, filteredJobs.length)}
+        onPageChange={setJobPage}
+        onPageSizeChange={(size) => {
+          setJobPageSize(size as (typeof JOB_PAGE_SIZE_OPTIONS)[number]);
+          setJobPage(1);
+        }}
       />
 
       {/* Center: Canvas */}

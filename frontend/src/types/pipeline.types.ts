@@ -218,6 +218,8 @@ export interface PipelineStepDefinition {
   jobInitConfig?: JobInitConfig;
   /** FILE_INPUT 노드 전용. 입력 파일 선택 설정. */
   fileInputConfig?: FileInputConfig;
+  /** UC13: 실행 시 건너뛰도록 비활성화된 노드. 진입 노드는 비활성화하지 않습니다. */
+  disabled?: boolean;
 }
 
 export interface PipelineEdge {
