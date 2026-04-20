@@ -30,11 +30,13 @@ import type {
   AlertKind,
   AuditEventType,
   PipelineNodeKind,
+  PipelineActivationRule,
   ProcessingProfileSummary,
   TriggerSource,
   JobInitConfig,
 } from '@/types/pipeline';
 import {
+  QUEUE_NAME,
   SAR_STAGE_TO_CSC,
   SAR_STAGE_TO_LEVEL,
 } from '@/types/pipeline';
@@ -924,6 +926,46 @@ function generatePipelines(): PipelineDefinition[] {
   return [...full, ...partial, ...branched, ...archived];
 }
 
+const DEFAULT_DEPLOYED_PIPELINE_IDS = new Set([
+  'PL-Lumir-X2-ScanSAR',
+  'PL-Lumir-X3-Spotlight',
+  'PL-LX1-Branched-MultiLevel-Stripmap',
+  'PL-LX3-Branched-QuickLook-Stripmap',
+  'PL-LX1-Partial-L2-Stripmap',
+]);
+
+function buildActivationRuleForPipeline(pipeline: PipelineDefinition, active = false): PipelineActivationRule | null {
+  if (pipeline.archived) return null;
+  const entry = pipeline.steps[0];
+  const isPartial = entry?.kind === 'FILE_INPUT';
+  const pol = MODE_DEFAULT_POLARIZATION[pipeline.mode] ?? 'HH';
+
+  return {
+    id: `AR-${pipeline.id}`,
+    pipelineId: pipeline.id,
+    active,
+    eventType: isPartial ? 'PRODUCT_REPROCESS_REQUESTED' : 'RAW_DATA_RECEIVED',
+    sourceQueue: isPartial ? QUEUE_NAME.PROCESSING_EVENTS : QUEUE_NAME.RECEPTION_EVENTS,
+    match: {
+      satelliteId: pipeline.satelliteId,
+      mode: pipeline.mode,
+      polarization: isPartial ? undefined : pol,
+      inputLevel: entry?.kind === 'FILE_INPUT' ? entry.inputLevel : undefined,
+    },
+    triggerSource: isPartial ? 'PARTIAL_REPROCESS' : 'PIPELINE_AUTO',
+    deployedAt: active ? pipeline.updatedAt : undefined,
+    description: isPartial
+      ? '제품/운영 재처리 요청이 들어오면 입력 레벨과 모드에 맞는 부분 재처리 DAG를 기동합니다.'
+      : '데이터 수집 백엔드가 원시 데이터 수신 이벤트를 pgmq에 기록하면 위성·모드·편파 조건으로 매칭됩니다.',
+  };
+}
+
+function generateActivationRules(pipelines: PipelineDefinition[]): PipelineActivationRule[] {
+  return pipelines
+    .map((pipeline) => buildActivationRuleForPipeline(pipeline, DEFAULT_DEPLOYED_PIPELINE_IDS.has(pipeline.id)))
+    .filter((rule): rule is PipelineActivationRule => rule !== null);
+}
+
 let nextPipelineSeq = 100;
 
 // =============================================================================
@@ -1007,12 +1049,14 @@ class MockPipelineUIService implements IPipelineUIService {
   private auditEvents: AuditEvent[];
   private queueHealth: QueueHealth[];
   private pipelines: PipelineDefinition[];
+  private activationRules: PipelineActivationRule[];
   private executionLogs: ExecutionLog[];
   private profiles: ProcessingProfile[];
   private products: Product[];
 
   constructor() {
     this.pipelines = generatePipelines();
+    this.activationRules = generateActivationRules(this.pipelines);
     this.jobs = generateJobs(50, this.pipelines);
     this.alerts = generateAlerts(this.jobs);
     this.auditEvents = generateAuditEvents(this.jobs);
@@ -1020,6 +1064,14 @@ class MockPipelineUIService implements IPipelineUIService {
     this.executionLogs = generateExecutionLogs(this.jobs);
     this.profiles = [...MOCK_PROCESSING_PROFILES];
     this.products = generateProducts(this.jobs);
+  }
+
+  private upsertActivationRule(pipeline: PipelineDefinition, active?: boolean): PipelineActivationRule | null {
+    const current = this.activationRules.find((rule) => rule.pipelineId === pipeline.id);
+    const nextRule = buildActivationRuleForPipeline(pipeline, active ?? current?.active ?? false);
+    this.activationRules = this.activationRules.filter((rule) => rule.pipelineId !== pipeline.id);
+    if (nextRule) this.activationRules.push(nextRule);
+    return nextRule;
   }
 
   async 대시보드_통계를_조회한다(): Promise<ServiceResponseWithData<DashboardStats>> {
@@ -1250,6 +1302,8 @@ class MockPipelineUIService implements IPipelineUIService {
       updatedAt: now,
     };
     this.pipelines.push(pl);
+    const rule = buildActivationRuleForPipeline(pl, false);
+    if (rule) this.activationRules.push(rule);
     return { success: true, message: '파이프라인이 생성되었습니다', data: { ...pl, steps: [...pl.steps] } };
   }
 
@@ -1275,6 +1329,7 @@ class MockPipelineUIService implements IPipelineUIService {
       pl.edges = data.edges;
     }
     pl.updatedAt = new Date().toISOString();
+    this.upsertActivationRule(pl);
     return { success: true, message: '파이프라인이 수정되었습니다', data: { ...pl, steps: [...pl.steps] } };
   }
 
@@ -1282,6 +1337,7 @@ class MockPipelineUIService implements IPipelineUIService {
     const idx = this.pipelines.findIndex((p) => p.id === id);
     if (idx === -1) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
     this.pipelines.splice(idx, 1);
+    this.activationRules = this.activationRules.filter((rule) => rule.pipelineId !== id);
     return { success: true, message: '파이프라인이 삭제되었습니다' };
   }
 
@@ -1301,6 +1357,8 @@ class MockPipelineUIService implements IPipelineUIService {
       archived: false,
     };
     this.pipelines.push(dup);
+    const rule = buildActivationRuleForPipeline(dup, false);
+    if (rule) this.activationRules.push(rule);
     return { success: true, message: '파이프라인이 복제되었습니다', data: { ...dup, steps: [...dup.steps] } };
   }
 
@@ -1309,6 +1367,7 @@ class MockPipelineUIService implements IPipelineUIService {
     if (!pl) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
     pl.archived = archived;
     pl.updatedAt = new Date().toISOString();
+    this.upsertActivationRule(pl, false);
     return { success: true, message: archived ? '파이프라인이 아카이브되었습니다' : '파이프라인이 복원되었습니다' };
   }
 
@@ -1364,6 +1423,34 @@ class MockPipelineUIService implements IPipelineUIService {
     simulateJobExecution(detail);
 
     return { success: true, message: `파이프라인 "${pl.name}" 실행이 요청되었습니다`, data: summary };
+  }
+
+  async 파이프라인_자동실행규칙을_조회한다(pipelineId?: string): Promise<ServiceResponseWithData<PipelineActivationRule[]>> {
+    const rules = pipelineId
+      ? this.activationRules.filter((rule) => rule.pipelineId === pipelineId)
+      : this.activationRules;
+    return {
+      success: true,
+      message: 'OK',
+      data: rules.map((rule) => ({ ...rule, match: { ...rule.match } })),
+    };
+  }
+
+  async 파이프라인_배포상태를_변경한다(
+    pipelineId: string,
+    active: boolean,
+  ): Promise<ServiceResponseWithData<PipelineActivationRule>> {
+    const pipeline = this.pipelines.find((p) => p.id === pipelineId);
+    if (!pipeline) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
+    if (pipeline.archived) return { success: false, message: '아카이브된 파이프라인은 배포할 수 없습니다' };
+
+    const rule = this.upsertActivationRule(pipeline, active);
+    if (!rule) return { success: false, message: '배포 규칙을 생성할 수 없습니다' };
+    return {
+      success: true,
+      message: active ? '파이프라인이 배포되었습니다' : '파이프라인 배포가 해제되었습니다',
+      data: { ...rule, match: { ...rule.match } },
+    };
   }
 
   async 처리_프로파일_목록을_조회한다(params?: {

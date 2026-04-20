@@ -5,7 +5,7 @@
 // =============================================================================
 
 import type {
-  SarStage, TargetCsc, ProductLevel, RetryInterval, TriggerSource, JobStatus,
+  SarStage, TargetCsc, ProductLevel, RetryInterval, TriggerSource, JobStatus, PipelineEventType,
 } from './pipeline.types';
 
 // --- SAR Stage Labels & Metadata ---
@@ -126,6 +126,12 @@ export const TRIGGER_SOURCE_LABELS: Record<TriggerSource, string> = {
   PIPELINE_AUTO:    '자동 파이프라인',
   MANUAL_REQUEST:   '수동 요청',
   PARTIAL_REPROCESS: '부분 재처리',
+};
+
+export const PIPELINE_EVENT_TYPE_LABELS: Record<PipelineEventType, string> = {
+  RAW_DATA_RECEIVED: '원시 데이터 수신',
+  PARTIAL_REPROCESS_REQUESTED: '부분 재처리 요청',
+  PRODUCT_REPROCESS_REQUESTED: '제품 재처리 요청',
 };
 
 // --- ICD Operational Constants ---

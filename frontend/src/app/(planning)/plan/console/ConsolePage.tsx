@@ -8,7 +8,7 @@ import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-c
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import RightTabbedPanel from '@/components/panels/RightTabbedPanel';
 import ConsoleTab, { type ConsoleMode } from '@/components/panels/ConsoleTab';
-import { RolePreviewSelect, useMockRole, type MockRole } from '@/components/auth/RolePreviewSelect';
+import { useMockRole } from '@/components/auth/RolePreviewSelect';
 
 import ReprocessConfirmDialog from '@/components/panels/ReprocessConfirmDialog';
 import CancelConfirmDialog from '@/components/panels/CancelConfirmDialog';
@@ -20,8 +20,9 @@ import NodeDetailModal, { type PrevNodeInfo } from '@/components/panels/NodeDeta
 import FileInputConfigDialog from '@/components/panels/FileInputConfigDialog';
 import PipelineDeleteConfirmDialog from '@/components/panels/PipelineDeleteConfirmDialog';
 import PipelineEditDialog from '@/components/panels/PipelineEditDialog';
+import PipelineUndeployConfirmDialog from '@/components/panels/PipelineUndeployConfirmDialog';
 import { toast } from '@/components/ui/Toast';
-import { FlaskConical, Plus, PanelRightOpen, GitBranch, Pencil, Check, X, SlidersHorizontal } from 'lucide-react';
+import { FlaskConical, Plus, PanelRightOpen, GitBranch, Pencil, Check, X, SlidersHorizontal, Radio, ServerCog, UploadCloud } from 'lucide-react';
 import type {
   PipelineDefinition,
   PipelineStepDefinition,
@@ -33,8 +34,17 @@ import type {
   PipelineStep,
   SarStage,
   PipelineNodeKind,
+  PipelineActivationRule,
 } from '@/types/pipeline';
-import { SAR_STAGE_TO_CSC, SAR_STAGE_TO_LEVEL, SAR_STAGE_LABELS, JOB_INIT_PROFILE_MISSING_MESSAGE } from '@/types/pipeline';
+import {
+  JOB_INIT_PROFILE_MISSING_MESSAGE,
+  PIPELINE_EVENT_TYPE_LABELS,
+  PRODUCT_LEVEL_LABELS,
+  SAR_STAGE_LABELS,
+  SAR_STAGE_TO_CSC,
+  SAR_STAGE_TO_LEVEL,
+  TRIGGER_SOURCE_LABELS,
+} from '@/types/pipeline';
 
 // ---------------------------------------------------------------------------
 // Pipeline Name Badge (canvas overlay)
@@ -139,6 +149,111 @@ function PipelineNameBadge({
   );
 }
 
+function PipelineActivationPanel({
+  rules,
+  canManage,
+  deploying,
+  onSetDeployment,
+}: {
+  rules: PipelineActivationRule[];
+  canManage: boolean;
+  deploying: boolean;
+  onSetDeployment: (active: boolean) => void;
+}) {
+  const activeRules = rules.filter((rule) => rule.active);
+  const visibleRules = activeRules.length > 0 ? activeRules : rules;
+  const deployed = activeRules.length > 0;
+
+  return (
+    <div className="absolute top-14 left-3 z-10 w-[440px] max-w-[calc(100%-1.5rem)] rounded-lg border border-border bg-card/88 backdrop-blur-sm shadow-lg overflow-hidden">
+      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border/70">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-accent/10 text-accent">
+            <Radio className="w-3.5 h-3.5" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold text-foreground leading-tight">파이프라인 배포</p>
+            <p className="text-[10px] text-muted-foreground truncate">
+              배포된 경우에만 pgmq 이벤트와 매칭됩니다
+            </p>
+          </div>
+        </div>
+        <span className={`shrink-0 rounded px-2 py-1 text-[10px] font-semibold ${
+          deployed ? 'bg-success/10 text-success' : 'bg-muted/60 text-muted-foreground'
+        }`}>
+          {deployed ? 'DEPLOYED' : 'DRAFT'}
+        </span>
+      </div>
+
+      <div className="divide-y divide-border/60">
+        {visibleRules.length === 0 ? (
+          <div className="px-3 py-3 text-xs text-muted-foreground">
+            배포 조건을 만들 수 없습니다. 진입 노드와 파이프라인 속성을 확인하세요.
+          </div>
+        ) : visibleRules.map((rule) => {
+          const conditions = [
+            rule.match.satelliteId,
+            rule.match.mode,
+            rule.match.polarization,
+            rule.match.inputLevel ? PRODUCT_LEVEL_LABELS[rule.match.inputLevel] : undefined,
+          ].filter((condition): condition is string => typeof condition === 'string' && condition.length > 0);
+
+          return (
+            <div key={rule.id} className="px-3 py-2.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <ServerCog className="w-3.5 h-3.5 text-accent shrink-0" />
+                <span className="text-xs font-semibold text-foreground truncate">
+                  {PIPELINE_EVENT_TYPE_LABELS[rule.eventType]}
+                </span>
+                <span className="text-[10px] text-muted-foreground">→</span>
+                <span className="text-[10px] font-medium text-accent shrink-0">
+                  {TRIGGER_SOURCE_LABELS[rule.triggerSource]}
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <span className="rounded bg-background/70 border border-border px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
+                  {rule.sourceQueue}
+                </span>
+                {conditions.map((condition) => (
+                  <span key={condition} className="rounded bg-muted/55 px-1.5 py-0.5 text-[10px] text-foreground">
+                    {condition}
+                  </span>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+                {deployed
+                  ? rule.description
+                  : '아직 배포되지 않았습니다. 배포 전에는 운영 이벤트가 들어와도 이 DAG는 자동 기동되지 않습니다.'}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center justify-between gap-3 px-3 py-2.5 border-t border-border/70">
+        <p className="text-[10px] leading-relaxed text-muted-foreground">
+          {deployed ? '현재 운영 이벤트에 연결되어 있습니다.' : '운영 이벤트에 연결하려면 배포하세요.'}
+        </p>
+        {canManage && visibleRules.length > 0 && (
+          <button
+            type="button"
+            disabled={deploying}
+            onClick={() => onSetDeployment(!deployed)}
+            className={`shrink-0 flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-50 ${
+              deployed
+                ? 'border border-border text-muted-foreground hover:bg-muted/50'
+                : 'bg-accent text-accent-foreground hover:brightness-110'
+            }`}
+          >
+            <UploadCloud className="w-3.5 h-3.5" />
+            {deployed ? '배포 해제' : '배포'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
   ssr: false,
   loading: () => (
@@ -172,13 +287,15 @@ export default function ConsolePage() {
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [profiles, setProfiles] = useState<ProcessingProfile[]>([]);
   const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
+  const [activationRules, setActivationRules] = useState<PipelineActivationRule[]>([]);
 
   // --- UI State ---
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(true);
-  const [previewRole, setPreviewRole] = useMockRole();
+  const [previewRole] = useMockRole();
   const [consoleMode, setConsoleMode] = useState<ConsoleMode>({ type: 'idle' });
   const [editSaving, setEditSaving] = useState(false);
+  const [deploymentSaving, setDeploymentSaving] = useState(false);
   const [reprocessDialogOpen, setReprocessDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [createStep, setCreateStep] = useState<'step1' | 'step2' | null>(null);
@@ -189,6 +306,7 @@ export default function ConsolePage() {
   const [fileInputConfigStep, setFileInputConfigStep] = useState<PipelineStepDefinition | null>(null);
   const [deletePipelineTarget, setDeletePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [editPipelineTarget, setEditPipelineTarget] = useState<PipelineDefinition | null>(null);
+  const [undeployTarget, setUndeployTarget] = useState<PipelineDefinition | null>(null);
   const [activeStepOrder, setActiveStepOrder] = useState<number | null>(null);
   const [popoverClickY, setPopoverClickY] = useState(0);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -197,22 +315,27 @@ export default function ConsolePage() {
   // --- Load ---
   useEffect(() => {
     (async () => {
-      const [plRes, profRes, logRes, jobsRes] = await Promise.all([
+      const [plRes, profRes, logRes, jobsRes, activationRes] = await Promise.all([
         service.파이프라인_목록을_조회한다(),
         service.처리_프로파일_목록을_조회한다(),
         service.실행_로그를_조회한다({ limit: 300 }),
         service.Job_목록을_조회한다({ limit: 100 }),
+        service.파이프라인_자동실행규칙을_조회한다(),
       ]);
       const isCreateMode = searchParams.get('create') === 'true';
 
       if (plRes.data) {
         setPipelines(plRes.data);
+        const urlPipelineId = searchParams.get('pipelineId');
+        const matchedPipeline = urlPipelineId ? plRes.data.find((pipeline) => pipeline.id === urlPipelineId) : undefined;
         // create 모드가 아닐 때만 첫 파이프라인 자동 선택
-        if (!isCreateMode && plRes.data.length > 0) setSelectedPipelineId(plRes.data[0].id);
+        if (!isCreateMode && matchedPipeline) setSelectedPipelineId(matchedPipeline.id);
+        else if (!isCreateMode && plRes.data.length > 0) setSelectedPipelineId(plRes.data[0].id);
       }
       if (profRes.data) setProfiles(profRes.data);
       if (logRes.data) setExecutionLogs(logRes.data);
       if (jobsRes.data) setJobs(jobsRes.data.items);
+      if (activationRes.data) setActivationRules(activationRes.data);
 
       // URL에 jobId가 있으면 자동 선택
       const urlJobId = searchParams.get('jobId');
@@ -288,6 +411,9 @@ export default function ConsolePage() {
 
   // --- Derived ---
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId) ?? null;
+  const selectedActivationRules = selectedPipelineId
+    ? activationRules.filter((rule) => rule.pipelineId === selectedPipelineId)
+    : [];
   const pipelineJobs = selectedPipelineId
     ? jobs
         .filter((job) => job.pipelineId === selectedPipelineId)
@@ -327,15 +453,21 @@ export default function ConsolePage() {
   const graphEdges = selectedPipeline?.edges ?? [];
 
   // --- Pipeline mutation ---
+  const refreshActivationRules = useCallback(async () => {
+    const res = await service.파이프라인_자동실행규칙을_조회한다();
+    if (res.data) setActivationRules(res.data);
+  }, [service]);
+
   const updatePipeline = useCallback(
     async (data: { name?: string; satelliteId?: string; mode?: string; steps?: Omit<PipelineStepDefinition, 'order'>[]; edges?: { source: number; target: number }[] }) => {
       if (!selectedPipelineId) return;
       const res = await service.파이프라인을_수정한다(selectedPipelineId, data);
       if (res.data) {
         setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? res.data! : p)));
+        await refreshActivationRules();
       }
     },
-    [service, selectedPipelineId],
+    [service, selectedPipelineId, refreshActivationRules],
   );
 
   const toStepUpdate = useCallback((step: PipelineStepDefinition): Omit<PipelineStepDefinition, 'order'> => ({
@@ -451,6 +583,37 @@ export default function ConsolePage() {
       toast.error(res.message);
     }
   }, [selectedPipelineId, service, profileMissing]);
+
+  const handleSetDeployment = useCallback(async (active: boolean) => {
+    if (!selectedPipelineId) return;
+    if (!active && selectedPipeline) {
+      setUndeployTarget(selectedPipeline);
+      return;
+    }
+    setDeploymentSaving(true);
+    const res = await service.파이프라인_배포상태를_변경한다(selectedPipelineId, active);
+    setDeploymentSaving(false);
+    if (!res.success) {
+      toast.error(res.message);
+      return;
+    }
+    await refreshActivationRules();
+    toast.success(active ? '파이프라인을 운영 이벤트에 배포했습니다' : '파이프라인 배포를 해제했습니다');
+  }, [service, selectedPipelineId, selectedPipeline, refreshActivationRules]);
+
+  const handleConfirmUndeploy = useCallback(async () => {
+    if (!undeployTarget) return;
+    setDeploymentSaving(true);
+    const res = await service.파이프라인_배포상태를_변경한다(undeployTarget.id, false);
+    setDeploymentSaving(false);
+    if (!res.success) {
+      toast.error(res.message);
+      return;
+    }
+    setUndeployTarget(null);
+    await refreshActivationRules();
+    toast.success('파이프라인 배포를 해제했습니다');
+  }, [service, undeployTarget, refreshActivationRules]);
 
   const handleSelectJobFromSidebar = useCallback(async (jobId: string) => {
     const res = await service.Job_상세를_조회한다(jobId);
@@ -591,6 +754,7 @@ export default function ConsolePage() {
     }
     toast.success('파이프라인이 삭제되었습니다');
     setPipelines((prev) => prev.filter((p) => p.id !== id));
+    await refreshActivationRules();
     if (selectedPipelineId === id) {
       setSelectedPipelineId(null);
       setSelectedJob(null);
@@ -599,18 +763,21 @@ export default function ConsolePage() {
       updateJobIdParam(null);
     }
     setDeletePipelineTarget(null);
-  }, [service, selectedPipelineId, updateJobIdParam, canManage]);
+  }, [service, selectedPipelineId, updateJobIdParam, canManage, refreshActivationRules]);
 
   // --- Pipeline handlers ---
   const handleSavePipeline = useCallback(async (data: { name: string; satelliteId: string; mode: string }) => {
     if (!selectedPipelineId) return;
     setEditSaving(true);
     const res = await service.파이프라인을_수정한다(selectedPipelineId, data);
-    if (res.data) setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? res.data! : p)));
+    if (res.data) {
+      setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? res.data! : p)));
+      await refreshActivationRules();
+    }
     setEditSaving(false);
     setEditPipelineTarget(null);
     setConsoleMode({ type: 'idle' });
-  }, [service, selectedPipelineId]);
+  }, [service, selectedPipelineId, refreshActivationRules]);
 
   const handleCreatePipeline = useCallback(() => {
     if (!canManage) return;
@@ -620,14 +787,6 @@ export default function ConsolePage() {
     setActiveStepOrder(null);
     setConsoleMode({ type: 'idle' });
   }, [canManage]);
-
-  const handlePreviewRoleChange = useCallback((role: MockRole) => {
-    setPreviewRole(role);
-    if (role === 'Operator') {
-      setRightCollapsed(true);
-      setConsoleMode({ type: 'idle' });
-    }
-  }, [setPreviewRole]);
 
   const handleCreateStep1Next = useCallback((data: CreatePipelineBasicData) => {
     setCreateBasicData(data);
@@ -644,10 +803,11 @@ export default function ConsolePage() {
     if (res.data) {
       setPipelines((prev) => [...prev, res.data!]);
       setSelectedPipelineId(res.data.id);
+      await refreshActivationRules();
       setFocusEntryTrigger((n) => n + 1);
     }
     setCreateBasicData(null);
-  }, [service, createBasicData]);
+  }, [service, createBasicData, refreshActivationRules]);
 
   const handleCreateCancel = useCallback(() => {
     setCreateStep(null);
@@ -692,11 +852,12 @@ export default function ConsolePage() {
     const res = await service.파이프라인을_수정한다(selectedPipelineId, { name: newName });
     if (res.success && res.data) {
       setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? { ...p, name: res.data!.name } : p)));
+      await refreshActivationRules();
       toast.success('파이프라인 이름이 변경되었습니다');
     } else {
       toast.error(res.message);
     }
-  }, [service, selectedPipelineId]);
+  }, [service, selectedPipelineId, refreshActivationRules]);
 
   const handleOpenNodesPanel = useCallback(() => {
     if (!selectedPipeline || selectedPipeline.steps.length === 0) return;
@@ -713,9 +874,10 @@ export default function ConsolePage() {
     const res = await service.파이프라인을_수정한다(selectedPipelineId, { steps: updatedSteps });
     if (res.success && res.data) {
       setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? res.data! : p)));
+      await refreshActivationRules();
     }
     setFileInputConfigStep(null);
-  }, [selectedPipelineId, fileInputConfigStep, selectedPipeline, service]);
+  }, [selectedPipelineId, fileInputConfigStep, selectedPipeline, service, refreshActivationRules]);
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -778,9 +940,16 @@ export default function ConsolePage() {
                   onEditProperties={() => setEditPipelineTarget(selectedPipeline)}
                 />
               )}
+              {selectedPipeline && !selectedJob && (
+                <PipelineActivationPanel
+                  rules={selectedActivationRules}
+                  canManage={canManage}
+                  deploying={deploymentSaving}
+                  onSetDeployment={handleSetDeployment}
+                />
+              )}
               {/* 캔버스 우측 상단 툴바 — 세로 정렬 */}
               <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-1.5">
-                <RolePreviewSelect role={previewRole} onChange={handlePreviewRoleChange} />
                 {canvasEditable && selectedPipeline && (
                   <button
                     type="button"
@@ -844,9 +1013,6 @@ export default function ConsolePage() {
             </div>
           ) : (
             <div className="flex-1 relative flex items-center justify-center bg-background">
-              <div className="absolute top-3 right-3 z-10">
-                <RolePreviewSelect role={previewRole} onChange={handlePreviewRoleChange} />
-              </div>
               <div className="flex items-center gap-6">
                 {canManage && (
                   <>
@@ -1003,6 +1169,16 @@ export default function ConsolePage() {
           saving={editSaving}
           onSave={handleSavePipeline}
           onCancel={() => setEditPipelineTarget(null)}
+        />
+      )}
+
+      {undeployTarget && (
+        <PipelineUndeployConfirmDialog
+          pipelineName={undeployTarget.name}
+          satelliteId={undeployTarget.satelliteId}
+          mode={undeployTarget.mode}
+          onConfirm={handleConfirmUndeploy}
+          onCancel={() => setUndeployTarget(null)}
         />
       )}
 

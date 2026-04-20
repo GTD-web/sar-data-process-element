@@ -16,6 +16,7 @@ import type {
   JobDetail,
   JobSummary,
   PaginatedResponse,
+  PipelineActivationRule,
   PipelineDefinition,
   ProcessingProfile,
   Product,
@@ -205,6 +206,25 @@ export const pipelineCurrentService: IPipelineUIService = {
   async 파이프라인을_실행한다(pipelineId: string): Promise<ServiceResponseWithData<JobSummary>> {
     const res = await fetch(`${API_BASE}/pipelines/${pipelineId}/execute`, { method: 'POST' });
     return handleResponse(res, '파이프라인 실행 실패');
+  },
+
+  async 파이프라인_자동실행규칙을_조회한다(pipelineId?: string): Promise<ServiceResponseWithData<PipelineActivationRule[]>> {
+    const query = new URLSearchParams();
+    if (pipelineId) query.set('pipelineId', pipelineId);
+    const res = await fetch(`${API_BASE}/pipeline-activation-rules?${query}`);
+    return handleResponse(res, '파이프라인 자동 실행 규칙 조회 실패');
+  },
+
+  async 파이프라인_배포상태를_변경한다(
+    pipelineId: string,
+    active: boolean,
+  ): Promise<ServiceResponseWithData<PipelineActivationRule>> {
+    const res = await fetch(`${API_BASE}/pipeline-activation-rules/${pipelineId}/deployment`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active }),
+    });
+    return handleResponse(res, '파이프라인 배포 상태 변경 실패');
   },
 
   async 처리_프로파일_목록을_조회한다(params?: {

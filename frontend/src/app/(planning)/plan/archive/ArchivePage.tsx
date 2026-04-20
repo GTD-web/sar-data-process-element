@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
-import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
+import { useMockRole } from '@/components/auth/RolePreviewSelect';
 import { toast } from '@/components/ui/Toast';
-import { ArchiveRestore, Archive } from 'lucide-react';
+import { ArchiveRestore, Archive, X } from 'lucide-react';
 import type { PipelineDefinition, PipelineStep } from '@/types/pipeline';
 import { SAR_STAGE_TO_CSC, SAR_STAGE_TO_LEVEL } from '@/types/pipeline';
 
@@ -19,13 +19,76 @@ const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
   ),
 });
 
+function RestorePipelineConfirmDialog({
+  pipeline,
+  onConfirm,
+  onCancel,
+}: {
+  pipeline: PipelineDefinition;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onCancel}>
+      <div
+        className="w-full max-w-sm bg-card border border-border rounded-xl shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <ArchiveRestore className="w-4 h-4 text-accent" />
+            <h2 className="text-sm font-semibold text-foreground">파이프라인 복원</h2>
+          </div>
+          <button type="button" onClick={onCancel} className="p-1 rounded-md hover:bg-muted/50 transition-colors">
+            <X className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            아카이브에서 운영 파이프라인 목록으로 되돌립니다. 복원 후에는 콘솔에서 별도로 배포해야 운영 이벤트에 연결됩니다.
+          </p>
+          <div className="bg-muted/30 rounded-lg px-3 py-2.5 space-y-1">
+            <div className="flex justify-between gap-3 text-[11px]">
+              <span className="text-muted-foreground">이름</span>
+              <span className="font-semibold text-foreground text-right">{pipeline.name}</span>
+            </div>
+            <div className="flex justify-between text-[11px]">
+              <span className="text-muted-foreground">대상</span>
+              <span className="font-mono text-foreground">{pipeline.satelliteId} · {pipeline.mode}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2 px-4 py-3 border-t border-border">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 py-1.5 rounded-md border border-border text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex-1 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:brightness-110 transition-colors"
+          >
+            복원 확인
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ArchivePage() {
   const service = usePipelineService();
 
   const [pipelines, setPipelines] = useState<PipelineDefinition[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [previewRole, setPreviewRole] = useMockRole();
+  const [previewRole] = useMockRole();
+  const [restoreTarget, setRestoreTarget] = useState<PipelineDefinition | null>(null);
 
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId) ?? null;
   const canManage = previewRole === 'Administrator';
@@ -56,20 +119,24 @@ export default function ArchivePage() {
 
   const graphEdges = selectedPipeline?.edges ?? [];
 
-  const handleRestore = useCallback(async () => {
+  const handleRestoreConfirm = useCallback(async () => {
     if (!canManage) return;
-    if (!selectedPipelineId) return;
-    const res = await service.파이프라인을_아카이브한다(selectedPipelineId, false);
+    if (!restoreTarget) return;
+    const restoringId = restoreTarget.id;
+    const res = await service.파이프라인을_아카이브한다(restoringId, false);
     if (res.success) {
       setPipelines((prev) => {
-        const next = prev.filter((p) => p.id !== selectedPipelineId);
+        const next = prev.filter((p) => p.id !== restoringId);
         if (next.length > 0) setSelectedPipelineId(next[0]!.id);
         else setSelectedPipelineId(null);
         return next;
       });
+      setRestoreTarget(null);
       toast.success('파이프라인이 복원되었습니다');
+    } else {
+      toast.error(res.message);
     }
-  }, [selectedPipelineId, service, canManage]);
+  }, [restoreTarget, service, canManage]);
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -101,15 +168,12 @@ export default function ArchivePage() {
                 <span className="font-semibold text-foreground">{selectedPipeline.name}</span>
               </div>
             </div>
-            <div className="absolute top-3 right-3 z-10">
-              <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
-            </div>
             {/* Restore button */}
             {canManage && (
               <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
                 <button
                   type="button"
-                  onClick={handleRestore}
+                  onClick={() => setRestoreTarget(selectedPipeline)}
                   className="pointer-events-auto flex items-center gap-2 pl-2.5 pr-3.5 py-2 rounded-lg
                              text-[11px] font-semibold shadow-lg whitespace-nowrap
                              bg-accent text-accent-foreground
@@ -123,9 +187,6 @@ export default function ArchivePage() {
           </div>
         ) : (
           <div className="flex-1 relative flex items-center justify-center bg-background">
-            <div className="absolute top-3 right-3 z-10">
-              <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
-            </div>
             <div className="text-center text-muted-foreground">
               <Archive className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
               <p className="text-sm">아카이브된 파이프라인이 없습니다</p>
@@ -134,6 +195,13 @@ export default function ArchivePage() {
         )}
       </div>
 
+      {restoreTarget && (
+        <RestorePipelineConfirmDialog
+          pipeline={restoreTarget}
+          onConfirm={handleRestoreConfirm}
+          onCancel={() => setRestoreTarget(null)}
+        />
+      )}
     </div>
   );
 }

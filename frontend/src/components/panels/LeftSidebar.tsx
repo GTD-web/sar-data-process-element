@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { formatRelativeTime } from '@/lib/utils';
 import type { PipelineDefinition, JobSummary, JobStatus } from '@/types/pipeline';
 import { JobStatusBadge } from '@/components/ui/StatusBadge';
-import { useMockRole } from '@/components/auth/RolePreviewSelect';
+import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
 import PasswordChangeModal from '@/components/auth/PasswordChangeModal';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import { toast } from '@/components/ui/Toast';
@@ -14,7 +14,7 @@ import {
   Activity, GitBranch, Plus, PanelLeftClose, PanelLeftOpen,
   Settings, User, Bell, Trash2, ChevronDown, Briefcase,
   LayoutDashboard, Layers, Archive, SlidersHorizontal, Package, FileText,
-  Users as UsersIcon, KeyRound, LogOut,
+  Users as UsersIcon, KeyRound, LogOut, Radio,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -25,7 +25,7 @@ interface LeftSidebarBaseProps {
   collapsed: boolean;
   onToggle: () => void;
   /** 현재 활성 페이지 (nav highlight용) */
-  activePage?: 'home' | 'console' | 'jobs' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit' | 'users';
+  activePage?: 'home' | 'console' | 'deployed' | 'jobs' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit' | 'users';
 }
 
 interface LeftSidebarConsoleProps extends LeftSidebarBaseProps {
@@ -86,7 +86,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [pwModalOpen, setPwModalOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
-  const [mockRole] = useMockRole();
+  const [mockRole, setMockRole] = useMockRole();
   const service = usePipelineService();
   const canSeeUsers = mockRole === 'Administrator';
   const mockUsername = mockRole === 'Administrator' ? 'admin' : 'operator-01';
@@ -118,6 +118,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
   const navItems: { id: NonNullable<LeftSidebarBaseProps['activePage']>; icon: React.ElementType; label: string; href: string; adminOnly?: boolean }[] = [
     { id: 'home', icon: LayoutDashboard, label: '오버뷰', href: base },
     { id: 'console', icon: GitBranch, label: '파이프라인', href: `${base}/console` },
+    { id: 'deployed', icon: Radio, label: '배포 목록', href: `${base}/deployed` },
     { id: 'jobs', icon: Briefcase, label: '실행 작업', href: `${base}/jobs` },
     { id: 'profiles', icon: SlidersHorizontal, label: '처리 프로파일', href: `${base}/profiles` },
     { id: 'products', icon: Package, label: '제품', href: `${base}/products` },
@@ -451,6 +452,9 @@ export default function LeftSidebar(props: LeftSidebarProps) {
       {/* Bottom */}
       {!collapsed && (
         <div className="border-t border-border px-2 py-2 space-y-0.5 relative" ref={profileRef}>
+          <div className="px-2 pb-1.5">
+            <RolePreviewSelect role={mockRole} onChange={setMockRole} />
+          </div>
           <SidebarItem icon={Settings} label="설정" />
           <button
             type="button"

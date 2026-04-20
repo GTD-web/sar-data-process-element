@@ -54,6 +54,8 @@ export type TriggerSource = 'PIPELINE_AUTO' | 'MANUAL_REQUEST' | 'PARTIAL_REPROC
 
 export type LogLevel = 'INFO' | 'WARN' | 'ERROR';
 
+export type PipelineEventType = 'RAW_DATA_RECEIVED' | 'PARTIAL_REPROCESS_REQUESTED' | 'PRODUCT_REPROCESS_REQUESTED';
+
 // --- Domain Interfaces ---
 
 /**
@@ -245,6 +247,23 @@ export interface PipelineDefinition {
   createdAt: string;
   updatedAt: string;
   archived?: boolean;
+}
+
+export interface PipelineActivationRule {
+  id: string;
+  pipelineId: string;
+  active: boolean;
+  eventType: PipelineEventType;
+  sourceQueue: string;
+  match: {
+    satelliteId?: string;
+    mode?: string;
+    polarization?: string;
+    inputLevel?: ProductLevel;
+  };
+  triggerSource: TriggerSource;
+  deployedAt?: string;
+  description: string;
 }
 
 export interface CreatePipelineData {
