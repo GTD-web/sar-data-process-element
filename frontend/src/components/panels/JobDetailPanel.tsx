@@ -196,7 +196,7 @@ export default function JobDetailPanel({ job, onReprocess, onPartialReprocess, o
                     {step.durationMs !== undefined && ` · ${formatDuration(step.durationMs)}`}
                     {vt && (
                       <span className={vtOver ? 'text-destructive ml-1' : 'text-muted-foreground/60 ml-1'}>
-                        {`(VT: ${vt.toLocaleString()}초${vtOver ? ' 초과' : ''})`}
+                        {`(VT: ${vt.toLocaleString()}s${vtOver ? ' exceeded' : ''})`}
                       </span>
                     )}
                   </div>

@@ -377,19 +377,20 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                     </div>
                   )}
                   </div>
-                  <div className="border-t border-border px-2 py-2 space-y-1.5">
-                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                      <span className="font-mono">
+                  <div className="border-t border-border px-2 py-2 flex items-center gap-2">
+                    <div className="min-w-0 flex-1 text-[10px] font-mono text-muted-foreground truncate">
+                      <span>
                         {(jobsPl.totalJobs ?? 0) === 0 ? '0 / 0' : `${jobsPl.pageStart ?? 1}-${jobsPl.pageEnd ?? jobsPl.jobs.length} / ${jobsPl.totalJobs ?? jobsPl.jobs.length}`}
                       </span>
-                      <span className="font-mono">{jobsPl.page ?? 1}/{jobsPl.totalPages ?? 1}</span>
+                      <span className="text-muted-foreground/50"> · </span>
+                      <span>{jobsPl.page ?? 1}/{jobsPl.totalPages ?? 1}</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-1">
+                    <div className="flex shrink-0 gap-1">
                       <button
                         type="button"
                         disabled={(jobsPl.page ?? 1) <= 1}
                         onClick={() => jobsPl.onPageChange?.(Math.max(1, (jobsPl.page ?? 1) - 1))}
-                        className="py-1 rounded-md border border-border text-[10px] text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="px-2 py-1 rounded-md border border-border text-[10px] text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
                       >
                         이전
                       </button>
@@ -397,7 +398,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                         type="button"
                         disabled={(jobsPl.page ?? 1) >= (jobsPl.totalPages ?? 1)}
                         onClick={() => jobsPl.onPageChange?.(Math.min(jobsPl.totalPages ?? 1, (jobsPl.page ?? 1) + 1))}
-                        className="py-1 rounded-md border border-border text-[10px] text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="px-2 py-1 rounded-md border border-border text-[10px] text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
                       >
                         다음
                       </button>
