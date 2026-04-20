@@ -38,6 +38,13 @@ import {
   SAR_STAGE_TO_CSC,
   SAR_STAGE_TO_LEVEL,
 } from '@/types/pipeline';
+import type {
+  CreateUserRequest,
+  Session,
+  UpdateUserRequest,
+  User,
+  UserListQuery,
+} from '@/types/user';
 
 // =============================================================================
 // Mock Data Generators
@@ -1302,6 +1309,230 @@ class MockPipelineUIService implements IPipelineUIService {
     const limit = params?.limit ?? 200;
     return { success: true, message: 'OK', data: filtered.slice(0, limit) };
   }
+
+  // =========================================================================
+  // Auth (UC43~UC46) — Mock
+  // =========================================================================
+
+  private mockSession: Session | null = null;
+
+  async 로그인한다(req: { username: string; password: string }): Promise<ServiceResponseWithData<Session>> {
+    await new Promise((r) => setTimeout(r, 400));
+    const user = mockUsers.find((u) => u.username === req.username);
+    if (!user) return { success: false, message: '사용자명 또는 비밀번호가 올바르지 않습니다', code: 401 };
+    if (!user.active) return { success: false, message: '비활성화된 계정입니다. 관리자에게 문의하세요.', code: 403 };
+    if (req.password.length < 4) {
+      return { success: false, message: '사용자명 또는 비밀번호가 올바르지 않습니다', code: 401 };
+    }
+    const session: Session = {
+      accessToken: `mock-access-${Date.now().toString(36)}`,
+      refreshToken: `mock-refresh-${Date.now().toString(36)}`,
+      user: { ...user, lastLoginAt: new Date().toISOString(), lastLoginIp: '10.0.0.42' },
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    };
+    this.mockSession = session;
+    user.lastLoginAt = session.user.lastLoginAt;
+    user.lastLoginIp = session.user.lastLoginIp;
+    return { success: true, message: 'OK', data: session };
+  }
+
+  async 로그아웃한다(): Promise<ServiceResponse> {
+    this.mockSession = null;
+    return { success: true, message: 'OK' };
+  }
+
+  async 토큰을_갱신한다(): Promise<ServiceResponseWithData<Session>> {
+    if (!this.mockSession) return { success: false, message: '세션이 만료되었습니다', code: 401 };
+    const next: Session = {
+      ...this.mockSession,
+      accessToken: `mock-access-${Date.now().toString(36)}`,
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    };
+    this.mockSession = next;
+    return { success: true, message: 'OK', data: next };
+  }
+
+  async 본인_비밀번호를_변경한다(req: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<ServiceResponse> {
+    if (!this.mockSession) return { success: false, message: '로그인이 필요합니다', code: 401 };
+    if (req.currentPassword.length < 4) return { success: false, message: '현재 비밀번호가 올바르지 않습니다', code: 400 };
+    if (req.newPassword.length < 12) return { success: false, message: '새 비밀번호는 최소 12자 이상이어야 합니다', code: 400 };
+    const u = mockUsers.find((x) => x.id === this.mockSession?.user.id);
+    if (u) u.requiresPasswordReset = false;
+    return { success: true, message: '비밀번호가 변경되었습니다' };
+  }
+
+  async 현재_사용자를_조회한다(): Promise<ServiceResponseWithData<User>> {
+    if (!this.mockSession) return { success: false, message: '로그인이 필요합니다', code: 401 };
+    return { success: true, message: 'OK', data: this.mockSession.user };
+  }
+
+  // =========================================================================
+  // User Management (UC47~UC50) — Mock
+  // =========================================================================
+
+  async 사용자목록을_조회한다(params?: UserListQuery): Promise<ServiceResponseWithData<PaginatedResponse<User>>> {
+    let filtered = [...mockUsers];
+    const q = params?.search?.trim().toLowerCase();
+    if (q) filtered = filtered.filter((u) => u.username.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+    if (params?.role) filtered = filtered.filter((u) => u.role === params.role);
+    if (params?.active === true) filtered = filtered.filter((u) => u.active);
+    if (params?.active === false) filtered = filtered.filter((u) => !u.active);
+
+    const sortBy = params?.sortBy;
+    if (sortBy) {
+      const order = params?.sortOrder === 'desc' ? -1 : 1;
+      filtered.sort((a, b) => {
+        const av = a[sortBy];
+        const bv = b[sortBy];
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        if (av < bv) return -1 * order;
+        if (av > bv) return 1 * order;
+        return 0;
+      });
+    } else {
+      filtered.sort((a, b) => a.username.localeCompare(b.username));
+    }
+
+    const page = params?.page ?? 1;
+    const size = params?.size ?? 25;
+    const total = filtered.length;
+    const items = filtered.slice((page - 1) * size, page * size);
+    return { success: true, message: 'OK', data: { items, total } };
+  }
+
+  async 사용자를_생성한다(req: CreateUserRequest): Promise<ServiceResponseWithData<User>> {
+    if (mockUsers.some((u) => u.username === req.username)) {
+      return { success: false, message: '이미 존재하는 사용자명입니다', code: 409 };
+    }
+    if (mockUsers.some((u) => u.email === req.email)) {
+      return { success: false, message: '이미 등록된 이메일입니다', code: 409 };
+    }
+    const user: User = {
+      id: `user-${Date.now().toString(36)}`,
+      username: req.username,
+      email: req.email,
+      role: req.role,
+      active: true,
+      createdAt: new Date().toISOString(),
+      lastLoginAt: null,
+      lastLoginIp: null,
+      requiresPasswordReset: true,
+    };
+    mockUsers.push(user);
+    return { success: true, message: '사용자가 생성되었습니다', data: user };
+  }
+
+  async 사용자를_수정한다(id: string, req: UpdateUserRequest): Promise<ServiceResponseWithData<User>> {
+    const user = mockUsers.find((u) => u.id === id);
+    if (!user) return { success: false, message: '사용자를 찾을 수 없습니다', code: 404 };
+
+    if (req.active === false && user.role === 'Administrator') {
+      const activeAdmins = mockUsers.filter((u) => u.role === 'Administrator' && u.active && u.id !== id).length;
+      if (activeAdmins === 0) {
+        return { success: false, message: '최소 1명의 Administrator가 활성 상태여야 합니다', code: 409 };
+      }
+    }
+
+    if (req.email != null) user.email = req.email;
+    if (req.role != null) user.role = req.role;
+    if (req.active != null) user.active = req.active;
+    return { success: true, message: '사용자 정보가 수정되었습니다', data: user };
+  }
+
+  async 사용자_비밀번호를_초기화한다(id: string): Promise<ServiceResponseWithData<{ temporaryPassword: string }>> {
+    const user = mockUsers.find((u) => u.id === id);
+    if (!user) return { success: false, message: '사용자를 찾을 수 없습니다', code: 404 };
+    const temp = generateTempPassword();
+    user.requiresPasswordReset = true;
+    return { success: true, message: '비밀번호가 초기화되었습니다', data: { temporaryPassword: temp } };
+  }
 }
+
+// =============================================================================
+// Mock Users (UC47~UC50)
+// =============================================================================
+
+function generateTempPassword(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const specials = '!@#$%^&*';
+  let out = '';
+  for (let i = 0; i < 14; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  out += specials[Math.floor(Math.random() * specials.length)];
+  return out;
+}
+
+const mockUsers: User[] = [
+  {
+    id: 'user-admin-01',
+    username: 'admin',
+    email: 'admin@sdpe.lumir.local',
+    role: 'Administrator',
+    active: true,
+    createdAt: '2025-09-01T00:00:00Z',
+    lastLoginAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+    lastLoginIp: '10.0.0.12',
+    requiresPasswordReset: false,
+  },
+  {
+    id: 'user-admin-02',
+    username: 'admin-backup',
+    email: 'admin.backup@sdpe.lumir.local',
+    role: 'Administrator',
+    active: true,
+    createdAt: '2025-09-02T00:00:00Z',
+    lastLoginAt: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
+    lastLoginIp: '10.0.0.13',
+    requiresPasswordReset: false,
+  },
+  {
+    id: 'user-op-01',
+    username: 'operator-01',
+    email: 'operator01@sdpe.lumir.local',
+    role: 'Operator',
+    active: true,
+    createdAt: '2025-09-15T00:00:00Z',
+    lastLoginAt: new Date(Date.now() - 1000 * 60 * 8).toISOString(),
+    lastLoginIp: '10.0.0.41',
+    requiresPasswordReset: false,
+  },
+  {
+    id: 'user-op-02',
+    username: 'operator-02',
+    email: 'operator02@sdpe.lumir.local',
+    role: 'Operator',
+    active: true,
+    createdAt: '2025-10-02T00:00:00Z',
+    lastLoginAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+    lastLoginIp: '10.0.0.42',
+    requiresPasswordReset: false,
+  },
+  {
+    id: 'user-op-03',
+    username: 'operator-03',
+    email: 'operator03@sdpe.lumir.local',
+    role: 'Operator',
+    active: true,
+    createdAt: '2025-11-11T00:00:00Z',
+    lastLoginAt: null,
+    lastLoginIp: null,
+    requiresPasswordReset: true,
+  },
+  {
+    id: 'user-op-04',
+    username: 'operator-04',
+    email: 'operator04@sdpe.lumir.local',
+    role: 'Operator',
+    active: false,
+    createdAt: '2025-08-20T00:00:00Z',
+    lastLoginAt: '2025-12-15T09:12:00Z',
+    lastLoginIp: '10.0.0.44',
+    requiresPasswordReset: false,
+  },
+];
 
 export const mockPipelineService = new MockPipelineUIService();

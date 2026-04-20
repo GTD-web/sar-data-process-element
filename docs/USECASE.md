@@ -4,8 +4,8 @@
 
 | 항목      | 내용                                                                            |
 | --------- | ------------------------------------------------------------------------------- |
-| 역할      | **Administrator** — 전체 기능 접근 (시스템 설정, 감사 로그, 프로파일 관리 포함) |
-|           | **Operator** — 파이프라인 조회·실행·재처리, Job 관리, 모니터링                  |
+| 역할      | **Administrator** — 전체 기능 접근 (시스템 설정, 감사 로그, 프로파일 관리, 사용자·계정 관리 포함) |
+|           | **Operator** — 파이프라인 조회·실행·재처리, Job 관리, 모니터링, 본인 계정 관리  |
 | 접근 권한 | Operator 이상 역할 필수. Analyst 이하 접근 불가 (SAD 14.2, REQ-SEC-002)         |
 | 책임      | SAR 데이터 처리 파이프라인의 구성·운영·모니터링·장애 대응                       |
 
@@ -56,9 +56,17 @@
 |                       | UC37          | 처리량 확인                   | 1시간·24시간 처리량 및 평균 처리 시간 통계를 확인한다.                                                                                                                                                                                                           | ✓     | ✓        |
 | 알림 관리             | UC38          | 알림 목록 조회                | 미확인/전체 알림을 필터링하여 조회한다. 알림 종류: MAX_RETRY, PIPELINE_DELAY, QUALITY_FAIL, RESOURCE_THRESHOLD (SAD CSU-08.07).                                                                                                                                  | ✓     | ✓        |
 |                       | UC39          | 알림 확인(Acknowledge)        | 알림을 확인 처리하여 조치 완료를 기록한다. 낙관적 동시성 제어(ETag)가 적용된다.                                                                                                                                                                                  | ✓     | ✓        |
-| 감사 로그             | UC40          | 감사 로그 조회                | 시스템 이벤트 이력을 날짜 범위, Job ID 등으로 필터링하여 조회한다. Administrator 역할 전용 (SAD 14.4). 이벤트 종류: JOB_CREATED, JOB_ASSIGNED, JOB_COMPLETED, JOB_FAILED, PIPELINE_STARTED, PIPELINE_REPROCESSED, ALERT_DISPATCHED (SAD CSU-08.06, REQ-SEC-005). | ✓     | ✗        |
+| 감사 로그             | UC40          | 감사 로그 조회                | 시스템 이벤트 이력을 날짜 범위, Job ID, 조작자(operatorId) 등으로 필터링하여 조회한다. Administrator 역할 전용 (SAD 14.4). 이벤트 종류: JOB_CREATED, JOB_ASSIGNED, JOB_COMPLETED, JOB_FAILED, PIPELINE_STARTED, PIPELINE_REPROCESSED, ALERT_DISPATCHED, LOGIN_SUCCEEDED, LOGIN_FAILED, USER_CREATED, USER_UPDATED, USER_ROLE_CHANGED, USER_DEACTIVATED, PASSWORD_RESET, PASSWORD_CHANGED (SAD CSU-08.06, REQ-SEC-005). | ✓     | ✗        |
 | 실행 로그             | UC41          | 실행 로그 조회                | Job ID, 로그 레벨, 건수 등으로 필터링하여 실행 로그를 조회한다 (REQ-FUNC-020).                                                                                                                                                                                   | ✓     | ✓        |
 | 대시보드              | UC42          | 대시보드 통계 확인            | 처리 중 Job 수, 24시간 완료·실패 건수, 실패율, 평균 처리 시간을 확인한다 (SAD CSU-08.08).                                                                                                                                                                        | ✓     | ✓        |
+| 인증                  | UC43          | 로그인                        | 사용자명·비밀번호로 인증하고 JWT(Access + Refresh)를 발급받아 세션을 시작한다. 연속 실패 시 계정 잠금(REQ-SEC-002). 실패는 감사 로그 LOGIN_FAILED로 기록된다 (AD-08, SAD 14.2).                                                                                    | ✓     | ✓        |
+|                       | UC44          | 로그아웃                      | 현재 세션의 토큰을 폐기하고 로그인 화면으로 복귀한다.                                                                                                                                                                                                             | ✓     | ✓        |
+|                       | UC45          | 토큰 갱신                     | Access 토큰 만료 시 Refresh 토큰으로 자동 재발급한다. 실패 시 강제 로그아웃된다.                                                                                                                                                                                  | ✓     | ✓        |
+|                       | UC46          | 비밀번호 변경 (본인)          | 로그인된 사용자가 현재 비밀번호 확인 후 새 비밀번호로 변경한다. 비밀번호 정책(REQ-SEC-002)을 따른다. 감사 로그 PASSWORD_CHANGED로 기록된다.                                                                                                                        | ✓     | ✓        |
+| 사용자 관리           | UC47          | 사용자 목록 조회              | 등록된 사용자 목록을 역할·활성 상태·검색어로 필터링하여 조회한다. Administrator 역할 전용 (SAD 14.4, REQ-SEC-002).                                                                                                                                                | ✓     | ✗        |
+|                       | UC48          | 사용자 생성                   | 새 사용자 계정을 등록한다. 사용자명·이메일·역할(Administrator / Operator)·초기 비밀번호를 지정한다. 감사 로그 USER_CREATED로 기록된다.                                                                                                                            | ✓     | ✗        |
+|                       | UC49          | 사용자 수정·비활성화          | 사용자의 역할, 활성 상태, 프로필 정보를 변경한다. 비활성화된 사용자는 로그인이 거부된다. 감사 로그 USER_UPDATED / USER_ROLE_CHANGED / USER_DEACTIVATED로 기록된다.                                                                                                 | ✓     | ✗        |
+|                       | UC50          | 비밀번호 초기화               | 사용자 비밀번호를 임시 비밀번호로 초기화한다. 임시 비밀번호는 1회 노출되며, 최초 로그인 시 변경이 강제된다. 감사 로그 PASSWORD_RESET로 기록된다.                                                                                                                  | ✓     | ✗        |
 
 ---
 
@@ -80,6 +88,9 @@
 | trigger_source | 작업 할당 출처. PIPELINE_AUTO / MANUAL_REQUEST / PARTIAL_REPROCESS (ICD SI-04)                       |
 | Dead Letter    | 최대 재시도 횟수(3회) 초과로 처리 실패한 큐 메시지 (REQ-AVAIL-002)                                   |
 | 바이패스       | 노드를 비활성화하여 실행 시 건너뛰는 설정 ※ ICD/SAD 미정의                                           |
+| Access Token   | 로그인 시 발급되는 단기 JWT. API 요청 인증에 사용된다 (AD-08)                                        |
+| Refresh Token  | Access Token 재발급용 장기 토큰. 유출 시 서버 측 폐기가 가능하다                                     |
+| 역할 (Role)    | RBAC 기반 권한 그룹. Administrator / Operator 로 구분된다 (SAD 14.2)                                 |
 
 ## 4. SAR 처리 레벨
 

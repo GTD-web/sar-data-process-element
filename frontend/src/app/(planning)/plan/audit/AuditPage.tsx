@@ -22,6 +22,13 @@ import {
   Bell,
   UserCheck,
   ExternalLink,
+  LogIn,
+  ShieldAlert,
+  UserPlus,
+  UserCog,
+  UserX,
+  KeyRound,
+  Key,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -80,6 +87,62 @@ const EVENT_CONFIG: Record<
     bgColor: 'bg-destructive/15 text-destructive',
     icon: Bell,
     description: '시스템 이상 상황이 감지되어 운영자에게 알림이 발행되었습니다.',
+  },
+  LOGIN_SUCCEEDED: {
+    label: '로그인 성공',
+    color: 'text-success',
+    bgColor: 'bg-success/15 text-success',
+    icon: LogIn,
+    description: '사용자가 인증에 성공하여 세션이 시작되었습니다.',
+  },
+  LOGIN_FAILED: {
+    label: '로그인 실패',
+    color: 'text-destructive',
+    bgColor: 'bg-destructive/15 text-destructive',
+    icon: ShieldAlert,
+    description: '잘못된 자격 증명으로 로그인에 실패했습니다. 연속 실패 시 계정이 잠길 수 있습니다.',
+  },
+  USER_CREATED: {
+    label: '사용자 생성',
+    color: 'text-accent',
+    bgColor: 'bg-accent/15 text-accent',
+    icon: UserPlus,
+    description: 'Administrator 가 신규 사용자 계정을 생성했습니다.',
+  },
+  USER_UPDATED: {
+    label: '사용자 수정',
+    color: 'text-accent',
+    bgColor: 'bg-accent/15 text-accent',
+    icon: UserCog,
+    description: '사용자의 프로필 정보(이메일·역할·상태)가 변경되었습니다.',
+  },
+  USER_ROLE_CHANGED: {
+    label: '역할 변경',
+    color: 'text-accent',
+    bgColor: 'bg-accent/15 text-accent',
+    icon: UserCog,
+    description: '사용자의 RBAC 역할이 변경되었습니다.',
+  },
+  USER_DEACTIVATED: {
+    label: '사용자 비활성화',
+    color: 'text-destructive',
+    bgColor: 'bg-destructive/15 text-destructive',
+    icon: UserX,
+    description: '사용자 계정이 비활성화되어 이후 로그인이 거부됩니다.',
+  },
+  PASSWORD_RESET: {
+    label: '비밀번호 초기화',
+    color: 'text-muted-foreground',
+    bgColor: 'bg-muted/50 text-muted-foreground',
+    icon: KeyRound,
+    description: 'Administrator 가 사용자 비밀번호를 임시 비밀번호로 초기화했습니다.',
+  },
+  PASSWORD_CHANGED: {
+    label: '비밀번호 변경',
+    color: 'text-muted-foreground',
+    bgColor: 'bg-muted/50 text-muted-foreground',
+    icon: Key,
+    description: '사용자가 본인 비밀번호를 변경했습니다.',
   },
 };
 

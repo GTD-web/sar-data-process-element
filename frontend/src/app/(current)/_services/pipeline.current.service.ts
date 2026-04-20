@@ -26,8 +26,17 @@ import type {
   UpdatePipelineData,
 } from '@/types/pipeline';
 import { SAR_STAGE_TO_CSC, SAR_STAGE_TO_LEVEL } from '@/types/pipeline';
+import type {
+  CreateUserRequest,
+  Session,
+  UpdateUserRequest,
+  User,
+  UserListQuery,
+} from '@/types/user';
 
 const API_BASE = '/api/pipeline';
+const AUTH_BASE = '/api/auth';
+const ADMIN_BASE = '/api/admin';
 
 async function handleResponse<T>(res: Response, errorMsg: string): Promise<ServiceResponseWithData<T>> {
   if (!res.ok) {
@@ -285,5 +294,98 @@ export const pipelineCurrentService: IPipelineUIService = {
     if (params?.limit) query.set('limit', String(params.limit));
     const res = await fetch(`${API_BASE}/logs?${query}`);
     return handleResponse(res, '실행 로그 조회 실패');
+  },
+
+  // =========================================================================
+  // Auth (UC43~UC46)
+  // =========================================================================
+
+  async 로그인한다(req: { username: string; password: string }): Promise<ServiceResponseWithData<Session>> {
+    const res = await fetch(`${AUTH_BASE}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+      credentials: 'include',
+    });
+    return handleResponse(res, '로그인 실패');
+  },
+
+  async 로그아웃한다(): Promise<ServiceResponse> {
+    const res = await fetch(`${AUTH_BASE}/logout`, { method: 'POST', credentials: 'include' });
+    if (!res.ok) return { success: false, message: `로그아웃 실패: ${res.status}` };
+    return { success: true, message: 'OK' };
+  },
+
+  async 토큰을_갱신한다(): Promise<ServiceResponseWithData<Session>> {
+    const res = await fetch(`${AUTH_BASE}/refresh`, { method: 'POST', credentials: 'include' });
+    return handleResponse(res, '토큰 갱신 실패');
+  },
+
+  async 본인_비밀번호를_변경한다(req: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<ServiceResponse> {
+    const res = await fetch(`${AUTH_BASE}/password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      return { success: false, message: (body as { message?: string })?.message ?? `비밀번호 변경 실패: ${res.status}` };
+    }
+    return { success: true, message: '비밀번호가 변경되었습니다' };
+  },
+
+  async 현재_사용자를_조회한다(): Promise<ServiceResponseWithData<User>> {
+    const res = await fetch(`${AUTH_BASE}/me`, { credentials: 'include' });
+    return handleResponse(res, '현재 사용자 조회 실패');
+  },
+
+  // =========================================================================
+  // User Management (UC47~UC50)
+  // =========================================================================
+
+  async 사용자목록을_조회한다(params?: UserListQuery): Promise<ServiceResponseWithData<PaginatedResponse<User>>> {
+    const query = new URLSearchParams();
+    if (params?.search) query.set('search', params.search);
+    if (params?.role) query.set('role', params.role);
+    if (params?.active === true) query.set('active', 'true');
+    if (params?.active === false) query.set('active', 'false');
+    if (params?.page) query.set('page', String(params.page));
+    if (params?.size) query.set('size', String(params.size));
+    if (params?.sortBy) query.set('sortBy', String(params.sortBy));
+    if (params?.sortOrder) query.set('sortOrder', params.sortOrder);
+    const res = await fetch(`${ADMIN_BASE}/users?${query}`, { credentials: 'include' });
+    return handleResponse(res, '사용자 목록 조회 실패');
+  },
+
+  async 사용자를_생성한다(req: CreateUserRequest): Promise<ServiceResponseWithData<User>> {
+    const res = await fetch(`${ADMIN_BASE}/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+      credentials: 'include',
+    });
+    return handleResponse(res, '사용자 생성 실패');
+  },
+
+  async 사용자를_수정한다(id: string, req: UpdateUserRequest): Promise<ServiceResponseWithData<User>> {
+    const res = await fetch(`${ADMIN_BASE}/users/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+      credentials: 'include',
+    });
+    return handleResponse(res, '사용자 수정 실패');
+  },
+
+  async 사용자_비밀번호를_초기화한다(id: string): Promise<ServiceResponseWithData<{ temporaryPassword: string }>> {
+    const res = await fetch(`${ADMIN_BASE}/users/${id}/password-reset`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    return handleResponse(res, '비밀번호 초기화 실패');
   },
 };

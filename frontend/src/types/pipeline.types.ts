@@ -36,7 +36,15 @@ export type AuditEventType =
   | 'JOB_FAILED'
   | 'PIPELINE_STARTED'
   | 'PIPELINE_REPROCESSED'
-  | 'ALERT_DISPATCHED';
+  | 'ALERT_DISPATCHED'
+  | 'LOGIN_SUCCEEDED'
+  | 'LOGIN_FAILED'
+  | 'USER_CREATED'
+  | 'USER_UPDATED'
+  | 'USER_ROLE_CHANGED'
+  | 'USER_DEACTIVATED'
+  | 'PASSWORD_RESET'
+  | 'PASSWORD_CHANGED';
 
 /** ICD 3.5: 재시도 간격 전략 (TBC — 내부 결정 대기) */
 export type RetryInterval = 'IMMEDIATE' | 'EXPONENTIAL_BACKOFF';

@@ -17,6 +17,13 @@ import type {
   ServiceResponseWithData,
   UpdatePipelineData,
 } from '@/types/pipeline';
+import type {
+  CreateUserRequest,
+  Session,
+  UpdateUserRequest,
+  User,
+  UserListQuery,
+} from '@/types/user';
 
 /**
  * Pipeline UI Service Interface
@@ -167,4 +174,33 @@ export interface IPipelineUIService {
     level?: string;
     limit?: number;
   }): Promise<ServiceResponseWithData<ExecutionLog[]>>;
+
+  // =========================================================================
+  // Auth (UC43~UC46)
+  // =========================================================================
+
+  로그인한다(req: { username: string; password: string }): Promise<ServiceResponseWithData<Session>>;
+
+  로그아웃한다(): Promise<ServiceResponse>;
+
+  토큰을_갱신한다(): Promise<ServiceResponseWithData<Session>>;
+
+  본인_비밀번호를_변경한다(req: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<ServiceResponse>;
+
+  현재_사용자를_조회한다(): Promise<ServiceResponseWithData<User>>;
+
+  // =========================================================================
+  // User Management — Administrator only (UC47~UC50)
+  // =========================================================================
+
+  사용자목록을_조회한다(params?: UserListQuery): Promise<ServiceResponseWithData<PaginatedResponse<User>>>;
+
+  사용자를_생성한다(req: CreateUserRequest): Promise<ServiceResponseWithData<User>>;
+
+  사용자를_수정한다(id: string, req: UpdateUserRequest): Promise<ServiceResponseWithData<User>>;
+
+  사용자_비밀번호를_초기화한다(id: string): Promise<ServiceResponseWithData<{ temporaryPassword: string }>>;
 }

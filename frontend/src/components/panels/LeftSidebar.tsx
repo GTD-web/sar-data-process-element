@@ -1,15 +1,20 @@
 'use client';
 
-import { useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { formatRelativeTime } from '@/lib/utils';
 import type { PipelineDefinition, JobSummary, JobStatus } from '@/types/pipeline';
 import { JobStatusBadge } from '@/components/ui/StatusBadge';
+import { useMockRole } from '@/components/auth/RolePreviewSelect';
+import PasswordChangeModal from '@/components/auth/PasswordChangeModal';
+import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
+import { toast } from '@/components/ui/Toast';
 import {
   Activity, GitBranch, Plus, PanelLeftClose, PanelLeftOpen,
   Settings, User, Bell, Trash2, ChevronDown, Briefcase,
   LayoutDashboard, Layers, Archive, SlidersHorizontal, Package, FileText,
+  Users as UsersIcon, KeyRound, LogOut,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -20,7 +25,7 @@ interface LeftSidebarBaseProps {
   collapsed: boolean;
   onToggle: () => void;
   /** 현재 활성 페이지 (nav highlight용) */
-  activePage?: 'home' | 'console' | 'jobs' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit';
+  activePage?: 'home' | 'console' | 'jobs' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit' | 'users';
 }
 
 interface LeftSidebarConsoleProps extends LeftSidebarBaseProps {
@@ -71,12 +76,36 @@ type LeftSidebarProps = LeftSidebarConsoleProps | LeftSidebarJobsProps | LeftSid
 export default function LeftSidebar(props: LeftSidebarProps) {
   const { collapsed, onToggle, activePage, mode = 'console' } = props;
   const pathname = usePathname();
+  const router = useRouter();
   const base = pathname.startsWith('/current') ? '/current' : '/plan';
 
   const [pipelinesOpen, setPipelinesOpen] = useState(true);
   const [jobsOpen, setJobsOpen] = useState(true);
   const [pipelineJobsOpen, setPipelineJobsOpen] = useState(true);
   const [navArchiveOpen, setNavArchiveOpen] = useState(true);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [pwModalOpen, setPwModalOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
+  const [mockRole] = useMockRole();
+  const service = usePipelineService();
+  const canSeeUsers = mockRole === 'Administrator';
+  const mockUsername = mockRole === 'Administrator' ? 'admin' : 'operator-01';
+
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!profileRef.current?.contains(e.target as Node)) setProfileMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [profileMenuOpen]);
+
+  const handleLogout = async () => {
+    setProfileMenuOpen(false);
+    const res = await service.로그아웃한다();
+    if (res.success) toast.success('로그아웃되었습니다');
+    router.push('/login');
+  };
 
   const isConsole = mode === 'console';
   const isJobs = mode === 'jobs';
@@ -86,7 +115,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
   const navProps = isNav ? (props as LeftSidebarNavProps) : null;
   const activeJobCount = jobsPl?.jobs.filter((j) => j.status === 'ASSIGNED' || j.status === 'CREATED').length ?? 0;
 
-  const navItems: { id: NonNullable<LeftSidebarBaseProps['activePage']>; icon: React.ElementType; label: string; href: string }[] = [
+  const navItems: { id: NonNullable<LeftSidebarBaseProps['activePage']>; icon: React.ElementType; label: string; href: string; adminOnly?: boolean }[] = [
     { id: 'home', icon: LayoutDashboard, label: '오버뷰', href: base },
     { id: 'console', icon: GitBranch, label: '파이프라인', href: `${base}/console` },
     { id: 'jobs', icon: Briefcase, label: '실행 작업', href: `${base}/jobs` },
@@ -94,9 +123,11 @@ export default function LeftSidebar(props: LeftSidebarProps) {
     { id: 'products', icon: Package, label: '제품', href: `${base}/products` },
     { id: 'queues', icon: Layers, label: '큐 모니터링', href: `${base}/queues` },
     { id: 'alerts', icon: Bell, label: '알림', href: `${base}/alerts` },
-    { id: 'audit', icon: FileText, label: '감사 로그', href: `${base}/audit` },
+    { id: 'audit', icon: FileText, label: '감사 로그', href: `${base}/audit`, adminOnly: true },
+    { id: 'users', icon: UsersIcon, label: '사용자 관리', href: `${base}/users`, adminOnly: true },
     { id: 'archive', icon: Archive, label: '아카이브', href: `${base}/archive` },
   ];
+  const visibleNavItems = navItems.filter((item) => !item.adminOnly || canSeeUsers);
   const jobStatusLabels: Record<JobStatus, string> = {
     CREATED: '대기',
     ASSIGNED: '실행 중',
@@ -140,7 +171,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
       {collapsed ? (
         /* ── Collapsed icons ── */
         <div className="flex-1 flex flex-col items-center py-2 gap-1">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <a
               key={item.id}
               href={item.href}
@@ -159,7 +190,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
           {/* Navigation */}
           <div className="px-2 py-2 border-b border-border space-y-0.5">
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <a
                 key={item.id}
                 href={item.href}
@@ -419,15 +450,51 @@ export default function LeftSidebar(props: LeftSidebarProps) {
 
       {/* Bottom */}
       {!collapsed && (
-        <div className="border-t border-border px-2 py-2 space-y-0.5">
+        <div className="border-t border-border px-2 py-2 space-y-0.5 relative" ref={profileRef}>
           <SidebarItem icon={Settings} label="설정" />
-          <div className="flex items-center gap-2 px-2 py-1.5 text-[11px] text-muted-foreground">
+          <button
+            type="button"
+            onClick={() => setProfileMenuOpen((v) => !v)}
+            className={cn(
+              'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-[11px] transition-colors',
+              profileMenuOpen
+                ? 'bg-muted/30 text-foreground'
+                : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground',
+            )}
+          >
             <User className="w-3 h-3 flex-shrink-0" />
-            <span className="truncate">operator-01</span>
-          </div>
+            <span className="truncate flex-1 text-left">{mockUsername}</span>
+            <span className="text-[9px] font-mono text-muted-foreground">{mockRole === 'Administrator' ? 'Admin' : 'Op'}</span>
+          </button>
           <div className="px-2 text-[9px] text-muted-foreground">v0.1.0 · Mock</div>
+
+          {profileMenuOpen && (
+            <div className="absolute bottom-full left-2 right-2 mb-1 bg-card border border-border rounded-md shadow-xl py-1 z-30">
+              <button
+                type="button"
+                onClick={() => {
+                  setProfileMenuOpen(false);
+                  setPwModalOpen(true);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-foreground hover:bg-muted/30 transition-colors"
+              >
+                <KeyRound className="w-3 h-3 text-muted-foreground" />
+                <span>비밀번호 변경</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-destructive hover:bg-destructive/10 transition-colors"
+              >
+                <LogOut className="w-3 h-3" />
+                <span>로그아웃</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
+
+      <PasswordChangeModal open={pwModalOpen} onClose={() => setPwModalOpen(false)} />
     </div>
   );
 }

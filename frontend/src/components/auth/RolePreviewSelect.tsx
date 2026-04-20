@@ -5,8 +5,9 @@ import { useCallback, useEffect, useState } from 'react';
 export type MockRole = 'Administrator' | 'Operator';
 
 const STORAGE_KEY = 'sdpe.mockRole';
+const CHANGE_EVENT = 'sdpe.mockRole.change';
 
-function isMockRole(value: string | null): value is MockRole {
+function isMockRole(value: string | null | undefined): value is MockRole {
   return value === 'Administrator' || value === 'Operator';
 }
 
@@ -23,13 +24,23 @@ export function useMockRole(): [MockRole, (role: MockRole) => void] {
         setRoleState(event.newValue);
       }
     };
+    const onCustom = (event: Event) => {
+      const next = (event as CustomEvent<MockRole>).detail;
+      if (isMockRole(next)) setRoleState(next);
+    };
     window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    window.addEventListener(CHANGE_EVENT, onCustom);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(CHANGE_EVENT, onCustom);
+    };
   }, []);
 
   const setRole = useCallback((nextRole: MockRole) => {
     setRoleState(nextRole);
     window.localStorage.setItem(STORAGE_KEY, nextRole);
+    // 동일 탭 내 다른 useMockRole 인스턴스(LeftSidebar 등)에도 전파
+    window.dispatchEvent(new CustomEvent<MockRole>(CHANGE_EVENT, { detail: nextRole }));
   }, []);
 
   return [role, setRole];
