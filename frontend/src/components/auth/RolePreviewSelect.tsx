@@ -57,8 +57,8 @@ export function RolePreviewSelect({
     <select
       value={role}
       onChange={(e) => onChange(e.target.value as MockRole)}
-      className="bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-      title="목업 권한 미리보기"
+      className="w-full bg-background border border-border rounded-md px-2.5 py-1.5 text-[11px] font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+      aria-label="목업 권한 미리보기"
     >
       <option value="Administrator">Administrator</option>
       <option value="Operator">Operator</option>

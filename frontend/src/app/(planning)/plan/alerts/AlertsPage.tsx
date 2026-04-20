@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
-import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
 import { toast } from '@/components/ui/Toast';
 import type { Alert, AlertKind } from '@/types/pipeline';
 import { cn, formatKST, formatRelativeTime } from '@/lib/utils';
@@ -182,7 +181,6 @@ export default function AlertsPage() {
   const base = pathname.startsWith('/current') ? '/current' : '/plan';
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [previewRole, setPreviewRole] = useMockRole();
   const [alerts, setAlerts] = useState<Alert[]>([]);
 
   // Filters
@@ -268,7 +266,6 @@ export default function AlertsPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
             {unackedCount > 0 && filterStatus !== 'acked' && (
               <button
                 onClick={handleBulkAcknowledge}

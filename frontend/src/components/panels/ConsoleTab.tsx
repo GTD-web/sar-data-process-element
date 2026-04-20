@@ -266,7 +266,7 @@ function ProcessInfoSection({ kind }: { kind: string }) {
   return (
     <>
       <div className="h-px bg-border" />
-      <div className="text-[11px] font-medium text-muted-foreground">처리 프로세스</div>
+      <div className="text-[11px] font-medium text-muted-foreground">Processes</div>
       <ul className="space-y-1.5">
         {info.processes.map((p) => (
           <li key={p} className="flex items-start gap-2 text-[11px] text-foreground/80">

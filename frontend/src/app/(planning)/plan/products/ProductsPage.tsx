@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
-import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
 import { toast } from '@/components/ui/Toast';
 import type { Product, ProductLevel } from '@/types/pipeline';
 import { PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
@@ -458,7 +457,6 @@ function MetaItem({ label, value, href }: { label: string; value: string; href?:
 export default function ProductsPage() {
   const service = usePipelineService();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [previewRole, setPreviewRole] = useMockRole();
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [totalCount, setTotalCount] = useState(0);
@@ -578,7 +576,6 @@ export default function ProductsPage() {
               <h1 className="text-sm font-semibold text-foreground">제품</h1>
               <span className="text-[10px] text-muted-foreground font-mono">{totalCount}건</span>
             </div>
-            <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
           </div>
 
           {/* Filters */}

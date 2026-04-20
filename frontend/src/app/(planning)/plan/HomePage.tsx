@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
-import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
+import { useMockRole } from '@/components/auth/RolePreviewSelect';
 import { cn, formatDuration, formatRelativeTime } from '@/lib/utils';
 import type {
   PipelineDefinition,
@@ -100,7 +100,7 @@ export default function HomePage() {
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [queues, setQueues] = useState<QueueHealth[]>([]);
   const [activeTab, setActiveTab] = useState<'pipelines' | 'jobs' | 'queues'>('pipelines');
-  const [previewRole, setPreviewRole] = useMockRole();
+  const [previewRole] = useMockRole();
 
   const consolePath = pathname.startsWith('/current') ? '/current/console' : '/plan/console';
   const jobsPath = pathname.startsWith('/current') ? '/current/jobs' : '/plan/jobs';
@@ -165,7 +165,6 @@ export default function HomePage() {
             <p className="text-xs text-muted-foreground mt-0.5">파이프라인과 작업 실행 현황을 확인합니다</p>
           </div>
           <div className="flex items-center gap-2">
-            <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
             {canManage && (
               <a
                 href={`${consolePath}?create=true`}

@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
-import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
 import QueueDetailPanel from '@/components/panels/QueueDetailPanel';
 import type { QueueHealth, QueueDepthPoint } from '@/types/pipeline';
 import { cn } from '@/lib/utils';
@@ -90,7 +89,6 @@ function QueueListItem({ q, selected, onSelect }: { q: QueueHealth; selected: bo
 export default function QueueDashboardPage() {
   const service = usePipelineService();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [previewRole, setPreviewRole] = useMockRole();
   const [queues, setQueues] = useState<QueueHealth[]>([]);
   const [selectedQueue, setSelectedQueue] = useState<string | null>(null);
 
@@ -140,9 +138,6 @@ export default function QueueDashboardPage() {
                 <span className="font-mono font-bold text-warning">{unhealthyCount}</span>
               </div>
             )}
-            <div className="ml-auto">
-              <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
-            </div>
           </div>
           {/* Queue items */}
           <div className="flex-1 overflow-y-auto p-3 space-y-1">

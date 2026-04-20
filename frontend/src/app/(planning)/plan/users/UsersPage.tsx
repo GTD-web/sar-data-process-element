@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
-import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
+import { useMockRole } from '@/components/auth/RolePreviewSelect';
 import UserFormModal from '@/components/auth/UserFormModal';
 import PasswordResetModal from '@/components/auth/PasswordResetModal';
 import { cn, formatKST, formatRelativeTime } from '@/lib/utils';
@@ -308,7 +308,7 @@ const SORT_COLUMNS: { id: keyof User; label: string }[] = [
 export default function UsersPage() {
   const service = usePipelineService();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [previewRole, setPreviewRole] = useMockRole();
+  const [previewRole] = useMockRole();
   const canManage = previewRole === 'Administrator';
 
   // Mock 환경에서는 useMockRole 값을 본인 역할로 가정. username 은 sticky 목업으로 매핑.
@@ -455,7 +455,6 @@ export default function UsersPage() {
             <span className="text-[10px] text-muted-foreground font-mono">{total}건</span>
           </div>
           <div className="flex items-center gap-2">
-            <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
             {hasFilters && canManage && (
               <button
                 onClick={clearFilters}

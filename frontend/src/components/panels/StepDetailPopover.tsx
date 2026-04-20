@@ -128,7 +128,7 @@ export default function StepDetailPopover({ step, job, logs, onClose, topOffset 
 
           {/* Tasks / Processes */}
           {kindInfo && step.status === 'COMPLETED' && (
-            <Section title="프로세스">
+            <Section title="Processes">
               <div className="flex flex-wrap gap-1.5">
                 {kindInfo.processes.map((proc) => (
                   <span key={proc} className="text-[11px] rounded-md px-1.5 py-0.5 bg-success/10 text-success">{proc}</span>
@@ -137,7 +137,7 @@ export default function StepDetailPopover({ step, job, logs, onClose, topOffset 
             </Section>
           )}
           {isSAR && step.sarStage && (step.status === 'COMPLETED' || step.status === 'RUNNING') && (
-            <Section title="태스크">
+            <Section title="Tasks">
               <div className="flex flex-wrap gap-1.5">
                 {SAR_STAGE_TASKS[step.sarStage].map((task) => {
                   const active = !step.enabledTasks || step.enabledTasks.includes(task);
@@ -156,7 +156,7 @@ export default function StepDetailPopover({ step, job, logs, onClose, topOffset 
           )}
 
           {/* Input / Output */}
-          <Section title="입출력">
+          <Section title="I/O">
             <div className="space-y-2">
               {inputPath && (
                 <IORow direction="Input" path={inputPath} />
@@ -165,9 +165,9 @@ export default function StepDetailPopover({ step, job, logs, onClose, topOffset 
                 direction="Output"
                 path={step.outputPath}
                 placeholder={
-                  step.status === 'FAILED' ? '처리 실패 — 산출물 없음'
-                  : step.status === 'RUNNING' ? '처리 중...'
-                  : step.status === 'PENDING' || step.status === 'CANCELED' ? '대기 중'
+                  step.status === 'FAILED' ? 'Processing failed - no output produced'
+                  : step.status === 'RUNNING' ? 'Processing...'
+                  : step.status === 'PENDING' || step.status === 'CANCELED' ? 'Waiting for execution'
                   : undefined
                 }
               />
@@ -176,7 +176,7 @@ export default function StepDetailPopover({ step, job, logs, onClose, topOffset 
 
           {/* Errors */}
           {errorLogs.length > 0 && (
-            <Section title={`오류 (${errorLogs.length})`} titleColor="text-destructive">
+            <Section title={`Errors (${errorLogs.length})`} titleColor="text-destructive">
               <div className="space-y-1.5">
                 {errorLogs.map((log) => (
                   <div key={log.id} className="bg-destructive/5 border border-destructive/15 rounded-md px-3 py-2">
@@ -192,7 +192,7 @@ export default function StepDetailPopover({ step, job, logs, onClose, topOffset 
 
           {/* Warnings */}
           {warnLogs.length > 0 && (
-            <Section title={`경고 (${warnLogs.length})`} titleColor="text-amber-500">
+            <Section title={`Warnings (${warnLogs.length})`} titleColor="text-amber-500">
               <div className="space-y-1.5">
                 {warnLogs.map((log) => (
                   <div key={log.id} className="bg-amber-500/5 border border-amber-500/15 rounded-md px-3 py-2 text-xs text-amber-400/80 break-all">
@@ -205,7 +205,7 @@ export default function StepDetailPopover({ step, job, logs, onClose, topOffset 
 
           {/* All Logs */}
           {stepLogs.length > 0 && (
-            <Section title={`실행 로그 (${stepLogs.length})`}>
+            <Section title={`Execution Logs (${stepLogs.length})`}>
               <div className="max-h-[180px] overflow-y-auto space-y-0.5 rounded-md bg-background/50 border border-border/30 px-3 py-2">
                 {stepLogs.map((log) => {
                   const style = LOG_LEVEL_STYLE[log.level];
@@ -231,7 +231,7 @@ export default function StepDetailPopover({ step, job, logs, onClose, topOffset 
 
           {stepLogs.length === 0 && (
             <div className="text-xs text-muted-foreground/50 text-center py-3">
-              이 단계의 로그가 없습니다
+              No logs are available for this step.
             </div>
           )}
         </div>

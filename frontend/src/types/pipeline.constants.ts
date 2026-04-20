@@ -45,23 +45,23 @@ export const SAR_STAGE_DESCRIPTIONS: Record<SarStage, string> = {
 export const NODE_KIND_INFO: Record<string, { description: string; processes: string[] }> = {
   TRIGGER: {
     description: 'EI-01 원시 데이터 수신 트리거(RAW_DATA_RECEIVED)로 파이프라인이 시작됩니다',
-    processes:   ['수신 이벤트 감지', '원시 파일 무결성 검증', 'NAS 저장 확인'],
+    processes:   ['Reception Event Detection', 'Raw File Integrity Check', 'NAS Staging Verification'],
   },
   FILE_INPUT: {
     description: '기존 처리 결과를 입력으로 부분 재처리를 시작합니다',
-    processes:   ['입력 파일 검증', '처리 레벨 확인', 'DAG 시작점 결정'],
+    processes:   ['Input File Validation', 'Processing Level Resolution', 'DAG Start Point Selection'],
   },
   JOB_INIT: {
     description: '작업을 생성하고 데이터 특성에 맞는 처리 프로파일을 선택합니다',
-    processes:   ['Job 레코드 생성', '프로파일 매칭', 'DAG 구성', '우선순위 설정'],
+    processes:   ['Job Record Creation', 'Profile Matching', 'DAG Construction', 'Priority Assignment'],
   },
   CATALOG: {
     description: '처리 완료된 산출물의 메타데이터를 추출하고 카탈로그에 등록합니다',
-    processes:   ['메타데이터 추출', '품질 검증', 'STAC 등록', '버전 관리'],
+    processes:   ['Metadata Extraction', 'Quality Validation', 'STAC Registration', 'Version Management'],
   },
   THUMBNAIL: {
     description: 'Quick-look 미리보기 이미지를 조기 생성하여 후속 처리와 병행 제공합니다 (SAD CSU-07.06)',
-    processes:   ['Quick-look 이미지 생성', 'KMZ 생성', 'NAS 저장', '조회 URL 갱신'],
+    processes:   ['Quick-look Rendering', 'KMZ Generation', 'NAS Storage', 'Preview URL Refresh'],
   },
 };
 

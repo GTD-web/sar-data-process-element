@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import { toast } from '@/components/ui/Toast';
-import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
+import { useMockRole } from '@/components/auth/RolePreviewSelect';
 import type { ProcessingProfile } from '@/types/pipeline';
 import { POLARIZATION_OPTIONS } from '@/types/pipeline';
 import { cn, formatKST } from '@/lib/utils';
@@ -425,7 +425,7 @@ export default function ProcessingProfilesPage() {
   const [filterSatellite, setFilterSatellite] = useState('');
   const [filterMode, setFilterMode] = useState('');
   const [search, setSearch] = useState('');
-  const [previewRole, setPreviewRole] = useMockRole();
+  const [previewRole] = useMockRole();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
@@ -507,7 +507,6 @@ export default function ProcessingProfilesPage() {
             <span className="text-[10px] text-muted-foreground font-mono">{filtered.length}건</span>
           </div>
           <div className="flex items-center gap-2">
-            <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
             {canManage && (
               <button
                 onClick={() => { setEditProfile(null); setFormOpen(true); }}

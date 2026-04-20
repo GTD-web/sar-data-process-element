@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
-import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
+import { useMockRole } from '@/components/auth/RolePreviewSelect';
 import type { AuditEvent, AuditEventType } from '@/types/pipeline';
 import { cn, formatKST } from '@/lib/utils';
 import {
@@ -466,7 +466,7 @@ export default function AuditPage() {
   const base = pathname.startsWith('/current') ? '/current' : '/plan';
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [previewRole, setPreviewRole] = useMockRole();
+  const [previewRole] = useMockRole();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [total, setTotal] = useState(0);
 
@@ -602,7 +602,6 @@ export default function AuditPage() {
             <span className="text-[10px] text-muted-foreground font-mono">{total}건</span>
           </div>
           <div className="flex items-center gap-2">
-            <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
             {hasActiveFilters && canViewAudit && (
               <button
                 onClick={clearFilters}
