@@ -927,11 +927,25 @@ function generatePipelines(): PipelineDefinition[] {
 }
 
 const DEFAULT_DEPLOYED_PIPELINE_IDS = new Set([
+  // RAW_DATA_RECEIVED: 위성/모드/편파 조건별 자동 처리 라우팅 샘플
+  'PL-Lumir-X1-Stripmap',
+  'PL-Lumir-X1-ScanSAR',
+  'PL-Lumir-X1-Spotlight',
+  'PL-Lumir-X2-Stripmap',
   'PL-Lumir-X2-ScanSAR',
+  'PL-Lumir-X2-Spotlight',
+  'PL-Lumir-X3-Stripmap',
+  'PL-Lumir-X3-ScanSAR',
   'PL-Lumir-X3-Spotlight',
-  'PL-LX1-Branched-MultiLevel-Stripmap',
-  'PL-LX3-Branched-QuickLook-Stripmap',
+
+  // PRODUCT_REPROCESS_REQUESTED: 입력 레벨/위성/모드별 부분 재처리 라우팅 샘플
+  'PL-LX1-Partial-L1-Stripmap',
+  'PL-LX2-Partial-L1-Stripmap',
+  'PL-LX3-Partial-L1-Stripmap',
+  'PL-LX1-Partial-L1-ScanSAR',
+  'PL-LX1-Partial-L1-Spotlight',
   'PL-LX1-Partial-L2-Stripmap',
+  'PL-LX2-Partial-L2-Stripmap',
 ]);
 
 function buildActivationRuleForPipeline(pipeline: PipelineDefinition, active = false): PipelineActivationRule | null {

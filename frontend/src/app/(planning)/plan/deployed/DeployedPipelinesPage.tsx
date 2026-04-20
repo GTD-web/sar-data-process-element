@@ -24,6 +24,10 @@ function ruleConditions(rule: PipelineActivationRule): string[] {
   ].filter((condition): condition is string => typeof condition === 'string' && condition.length > 0);
 }
 
+function summarizeQueueRules(rules: PipelineActivationRule[]): string {
+  return Array.from(new Set(rules.map((rule) => PIPELINE_EVENT_TYPE_LABELS[rule.eventType]))).join(', ');
+}
+
 function routeKey(rule: PipelineActivationRule): string {
   return [
     rule.sourceQueue,
@@ -54,7 +58,8 @@ const LOG_LEVEL_CLASS: Record<LogLevel, string> = {
 const MIN_LOG_PANEL_WIDTH = 320;
 const DEFAULT_LOG_PANEL_WIDTH = 420;
 const MIN_CONTENT_WIDTH = 940;
-const DEPLOYMENT_TABLE_WIDTH = 1302;
+const DEPLOYMENT_TABLE_WIDTH = 1042;
+const DEPLOYMENT_TABLE_GRID = '180px 135px 185px 125px 210px 115px';
 
 export default function DeployedPipelinesPage() {
   const service = usePipelineService();
@@ -223,23 +228,27 @@ export default function DeployedPipelinesPage() {
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
                 <div className="flex items-center gap-2">
                   <ServerCog className="w-4 h-4 text-accent" />
-                  <span className="text-xs font-semibold text-foreground">이벤트 수신 소스</span>
+                  <span className="text-xs font-semibold text-foreground">pgmq 수신 큐</span>
                 </div>
-                <span className="text-[10px] font-mono text-muted-foreground">{sourceQueueGroups.length}</span>
+                <span className="text-[10px] font-mono text-muted-foreground">{sourceQueueGroups.length} queues</span>
               </div>
               <div className="max-h-40 overflow-y-auto divide-y divide-border/70">
                 {sourceQueueGroups.length === 0 ? (
                   <div className="px-4 py-4 text-xs text-muted-foreground">연결된 pgmq 이벤트 소스가 없습니다</div>
                 ) : sourceQueueGroups.map(([queue, queueRules]) => (
-                  <button
+                  <div
                     key={queue}
-                    type="button"
-                    onClick={() => handleOpenPipeline(queueRules[0]!.pipelineId)}
-                    className="w-full grid grid-cols-[1fr_120px] gap-3 px-4 py-2.5 text-left hover:bg-muted/25 transition-colors cursor-pointer"
+                    className="grid grid-cols-[1fr_150px] gap-3 px-4 py-2.5"
                   >
-                    <span className="text-[10px] font-mono text-foreground truncate">{queue}</span>
-                    <span className="text-[10px] text-muted-foreground text-right">{queueRules.length} routes</span>
-                  </button>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-mono text-foreground truncate">{queue}</p>
+                      <p className="mt-1 text-[10px] text-muted-foreground truncate">{summarizeQueueRules(queueRules)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-accent">{queueRules.length}개 매칭 규칙</p>
+                      <p className="mt-1 text-[10px] text-muted-foreground">이벤트 1건은 1개 실행</p>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -253,12 +262,15 @@ export default function DeployedPipelinesPage() {
                 <p className="mt-1 text-xs text-muted-foreground">파이프라인 화면에서 배포하면 이 목록에 표시됩니다.</p>
               </div>
             ) : (
-              <div className="max-w-none" style={{ width: DEPLOYMENT_TABLE_WIDTH }}>
-                <div className="grid grid-cols-[230px_170px_250px_130px_270px_160px] gap-3 px-4 py-2.5 border-b border-border text-[10px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
-                  <span>수신 이벤트 소스</span>
+              <div className="max-w-none" style={{ width: `max(100%, ${DEPLOYMENT_TABLE_WIDTH}px)` }}>
+                <div
+                  className="grid gap-3 px-4 py-2.5 border-b border-border text-[10px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap"
+                  style={{ gridTemplateColumns: DEPLOYMENT_TABLE_GRID }}
+                >
+                  <span>pgmq 수신 큐</span>
                   <span>이벤트 유형</span>
                   <span>매칭 조건</span>
-                  <span>실행 출처</span>
+                  <span>처리 흐름</span>
                   <span>실행 파이프라인</span>
                   <span className="text-right">작업</span>
                 </div>
@@ -271,7 +283,8 @@ export default function DeployedPipelinesPage() {
                       <div
                         key={rule.id}
                         onClick={() => setSelectedRuleId(rule.id)}
-                        className="relative grid grid-cols-[230px_170px_250px_130px_270px_160px] gap-3 px-4 py-3 items-center cursor-pointer whitespace-nowrap group"
+                        className="relative grid gap-3 px-4 py-3 items-center cursor-pointer whitespace-nowrap group"
+                        style={{ gridTemplateColumns: DEPLOYMENT_TABLE_GRID }}
                       >
                       <div className={`absolute inset-0 transition-colors pointer-events-none ${
                         selectedRule?.id === rule.id ? 'bg-accent/10' : 'group-hover:bg-muted/20'
@@ -291,13 +304,13 @@ export default function DeployedPipelinesPage() {
 
                       <div className="relative flex gap-1.5 overflow-hidden">
                         {conditions.map((condition) => (
-                          <span key={condition} className="rounded bg-muted/55 px-1.5 py-0.5 text-[10px] text-foreground truncate shrink-0 max-w-[92px]">
+                          <span key={condition} className="rounded bg-muted/55 px-1.5 py-0.5 text-[10px] text-foreground truncate shrink-0 max-w-[72px]">
                             {condition}
                           </span>
                         ))}
                       </div>
 
-                      <span className="relative rounded border border-border px-1.5 py-0.5 text-[10px] text-accent truncate max-w-[120px]">
+                      <span className="relative rounded border border-border px-1.5 py-0.5 text-[10px] text-accent truncate max-w-[125px]">
                         {TRIGGER_SOURCE_LABELS[rule.triggerSource]}
                       </span>
 

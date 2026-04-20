@@ -123,8 +123,8 @@ export const RETRY_INTERVAL_LABELS: Record<RetryInterval, string> = {
 };
 
 export const TRIGGER_SOURCE_LABELS: Record<TriggerSource, string> = {
-  PIPELINE_AUTO:    '자동 파이프라인',
-  MANUAL_REQUEST:   '수동 요청',
+  PIPELINE_AUTO:    '원시 수신 처리',
+  MANUAL_REQUEST:   '수동 처리 요청',
   PARTIAL_REPROCESS: '부분 재처리',
 };
 
