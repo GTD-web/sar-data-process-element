@@ -31,6 +31,7 @@ import {
   Package,
   Database,
   FileInput,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 export interface PipelineNodeData {
@@ -276,6 +277,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
   const isEntryNode = isTrigger || isFileInput;
   const isJobInit = kind === 'JOB_INIT';
   const isCatalog = kind === 'CATALOG';
+  const isThumbnail = kind === 'THUMBNAIL';
   const isSAR = kind === 'SAR';
 
   let CscIcon: React.ElementType;
@@ -287,6 +289,8 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
     CscIcon = SlidersHorizontal;
   } else if (isCatalog) {
     CscIcon = Database;
+  } else if (isThumbnail) {
+    CscIcon = ImageIcon;
   } else if (isSAR && sarStage) {
     CscIcon = SAR_ICON_CONFIG[sarStage].icon;
   } else {
@@ -308,6 +312,9 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
   } else if (isCatalog) {
     label = '카탈로그 등록';
     subLabel = 'CSC-07 · 등록';
+  } else if (isThumbnail) {
+    label = 'Quick-look 생성';
+    subLabel = 'CSU-07.06 · 조기 미리보기';
   } else if (isSAR && sarStage) {
     label = SAR_STAGE_LABELS[sarStage];
     subLabel = `${sarStage} · ${PRODUCT_LEVEL_LABELS[SAR_STAGE_TO_LEVEL[sarStage]]}`;

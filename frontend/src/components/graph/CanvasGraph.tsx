@@ -134,7 +134,7 @@ function buildNodes(
       id: `step-${step.order}`,
       type: 'pipeline',
       position: positions.get(step.order) ?? { x: step.order * 260, y: 0 },
-      draggable: editable && !isEntryNode,
+      draggable: editable,
       data: {
         kind: step.kind,
         sarStage: step.sarStage,

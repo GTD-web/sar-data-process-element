@@ -89,7 +89,8 @@ const MODE_DEFAULT_POLARIZATION: Record<string, string> = {
   Spotlight: 'HH',
 };
 
-type StepDef = { kind: PipelineNodeKind; sarStage?: SarStage; inputLevel?: ProductLevel };
+type StepDef = { kind: PipelineNodeKind; sarStage?: SarStage; inputLevel?: ProductLevel; enabledTasks?: string[] };
+type BranchedEdge = { source: number; target: number };
 
 /** D-01: 파이프라인 첫 노드 — RAW_DATA_RECEIVED 트리거 (EI-01) */
 const TRIGGER_STEP: StepDef = { kind: 'TRIGGER' };
@@ -144,6 +145,107 @@ const PARTIAL_L2_STEPS: StepDef[] = [
   CATALOG_STEP,
 ];
 
+// ─── 분기형 DAG 파이프라인 (DAG-RATIONALE §5) ─────────────────────────────
+// 선형 파이프라인으로는 표현 불가능한 구성을 검증하기 위한 샘플.
+
+/** §5.1 다중 레벨 제품 생성: L1C → {L2A, L2B, L3} fan-out → CATALOG fan-in */
+const MULTI_LEVEL_BRANCH_STEPS: StepDef[] = [
+  TRIGGER_STEP,                          // 1
+  JOB_INIT_STEP,                         // 2
+  { kind: 'SAR', sarStage: 'L0' },       // 3
+  { kind: 'SAR', sarStage: 'L1A' },      // 4
+  { kind: 'SAR', sarStage: 'L1B' },      // 5
+  { kind: 'SAR', sarStage: 'L1C' },      // 6
+  { kind: 'SAR', sarStage: 'L2A' },      // 7
+  { kind: 'SAR', sarStage: 'L2B' },      // 8
+  { kind: 'SAR', sarStage: 'L3' },       // 9
+  CATALOG_STEP,                          // 10
+];
+const MULTI_LEVEL_BRANCH_EDGES: BranchedEdge[] = [
+  { source: 1, target: 2 },
+  { source: 2, target: 3 },
+  { source: 3, target: 4 },
+  { source: 4, target: 5 },
+  { source: 5, target: 6 },
+  // fan-out
+  { source: 6, target: 7 },
+  { source: 6, target: 8 },
+  { source: 6, target: 9 },
+  // fan-in
+  { source: 7, target: 10 },
+  { source: 8, target: 10 },
+  { source: 9, target: 10 },
+];
+
+/**
+ * §5.2 편파별 병렬 처리: L0 → L1A(HH)/L1A(HV) 병렬 → L1B 합류 이후 공통 흐름.
+ * ⚠ ICD §1369 TBD 가정: "채널별 파일" 방식을 전제. 편파 다채널 처리 방식이 "단일 파일"로 확정되면
+ * 두 L1A 노드는 단일 L1A로 축약되어야 한다. DAG UI의 편파 병렬 수용성 검증용 탐색 샘플.
+ */
+const DUAL_POL_BRANCH_STEPS: StepDef[] = [
+  TRIGGER_STEP,                                                   // 1
+  JOB_INIT_STEP,                                                  // 2
+  { kind: 'SAR', sarStage: 'L0' },                                // 3
+  { kind: 'SAR', sarStage: 'L1A', enabledTasks: ['process_hh'] }, // 4
+  { kind: 'SAR', sarStage: 'L1A', enabledTasks: ['process_hv'] }, // 5
+  { kind: 'SAR', sarStage: 'L1B' },                               // 6
+  { kind: 'SAR', sarStage: 'L1C' },                               // 7
+  { kind: 'SAR', sarStage: 'L2A' },                               // 8
+  { kind: 'SAR', sarStage: 'L2B' },                               // 9
+  { kind: 'SAR', sarStage: 'L3' },                                // 10
+  CATALOG_STEP,                                                   // 11
+];
+const DUAL_POL_BRANCH_EDGES: BranchedEdge[] = [
+  { source: 1, target: 2 },
+  { source: 2, target: 3 },
+  // fan-out (편파별 병렬)
+  { source: 3, target: 4 },
+  { source: 3, target: 5 },
+  // fan-in (영상 합성)
+  { source: 4, target: 6 },
+  { source: 5, target: 6 },
+  { source: 6, target: 7 },
+  { source: 7, target: 8 },
+  { source: 8, target: 9 },
+  { source: 9, target: 10 },
+  { source: 10, target: 11 },
+];
+
+/** §5.4 Quick-look 조기 분기: L1A 완료 시점에 THUMBNAIL 발행(side-branch), 메인 흐름은 L3까지 계속 */
+const QUICK_LOOK_BRANCH_STEPS: StepDef[] = [
+  TRIGGER_STEP,                           // 1
+  JOB_INIT_STEP,                          // 2
+  { kind: 'SAR', sarStage: 'L0' },        // 3
+  { kind: 'SAR', sarStage: 'L1A' },       // 4 (fan-out 지점)
+  { kind: 'THUMBNAIL' },                  // 5 (조기 미리보기 side-branch)
+  { kind: 'SAR', sarStage: 'L1B' },       // 6 (메인 흐름 계속)
+  { kind: 'SAR', sarStage: 'L1C' },       // 7
+  { kind: 'SAR', sarStage: 'L2A' },       // 8
+  { kind: 'SAR', sarStage: 'L2B' },       // 9
+  { kind: 'SAR', sarStage: 'L3' },        // 10
+  CATALOG_STEP,                            // 11 (fan-in)
+];
+const QUICK_LOOK_BRANCH_EDGES: BranchedEdge[] = [
+  { source: 1, target: 2 },
+  { source: 2, target: 3 },
+  { source: 3, target: 4 },
+  // fan-out: L1A → {THUMBNAIL, L1B}
+  { source: 4, target: 5 },
+  { source: 4, target: 6 },
+  // 메인 흐름
+  { source: 6, target: 7 },
+  { source: 7, target: 8 },
+  { source: 8, target: 9 },
+  { source: 9, target: 10 },
+  { source: 10, target: 11 },
+  // side-branch 합류: THUMBNAIL → CATALOG
+  { source: 5, target: 11 },
+];
+
+// §5.3 복수 진입점 샘플은 제거됨.
+// ICD가 "진입점별 별도 파이프라인"으로 설계를 확정했고 (PARTIAL_L1_* / PARTIAL_L2_* 가 이미 반영),
+// 두 진입 노드를 한 DAG에 섞는 모델은 ICD 설계와 상충하여 삭제함. (DAG-RATIONALE §5 참조)
+
 function buildSteps(pipelineSteps: StepDef[], status: JobStatus, retryCount: number): PipelineStep[] {
   // TRIGGER·FILE_INPUT·JOB_INIT 스텝은 항상 COMPLETED. 나머지 스텝에만 completedCount 적용
   const activeDagSteps = pipelineSteps.filter((s) => s.kind !== 'TRIGGER' && s.kind !== 'FILE_INPUT' && s.kind !== 'JOB_INIT');
@@ -177,11 +279,13 @@ function buildSteps(pipelineSteps: StepDef[], status: JobStatus, retryCount: num
       : def.kind === 'FILE_INPUT' ? 'CSC-02'
       : def.kind === 'JOB_INIT' ? 'CSC-08'
       : def.kind === 'CATALOG' ? 'CSC-07'
+      : def.kind === 'THUMBNAIL' ? 'CSC-07'
       : SAR_STAGE_TO_CSC[def.sarStage!];
     const productLevel: ProductLevel = def.kind === 'TRIGGER' ? 'LEVEL_0'
       : def.kind === 'FILE_INPUT' ? (def.inputLevel ?? 'LEVEL_0')
       : def.kind === 'JOB_INIT' ? 'LEVEL_0'
       : def.kind === 'CATALOG' ? 'LEVEL_3'
+      : def.kind === 'THUMBNAIL' ? 'LEVEL_1'
       : SAR_STAGE_TO_LEVEL[def.sarStage!];
 
     const baseTime = new Date();
@@ -687,6 +791,43 @@ function buildPipelineFromSteps(
   return { id, name, satelliteId: sat, mode, steps, edges, createdAt, updatedAt: createdAt };
 }
 
+/** 명시적 엣지를 받아 분기형 DAG 파이프라인을 생성한다 (fan-out, fan-in, 복수 진입점 등). */
+function buildBranchedPipeline(
+  id: string,
+  name: string,
+  sat: string,
+  mode: string,
+  stepDefs: StepDef[],
+  edges: BranchedEdge[],
+  createdAt = '2026-03-20T09:00:00Z',
+): PipelineDefinition {
+  const pol = MODE_DEFAULT_POLARIZATION[mode] ?? 'HH';
+  const matchingProfile = MOCK_PROCESSING_PROFILES.find(
+    (p) => p.satelliteId === sat && p.mode === mode && p.polarization === pol,
+  );
+  const steps = stepDefs.map((s, i) => {
+    const base = {
+      order: i + 1,
+      kind: s.kind,
+      sarStage: s.sarStage,
+      ...(s.inputLevel !== undefined && { inputLevel: s.inputLevel }),
+      ...(s.enabledTasks !== undefined && { enabledTasks: s.enabledTasks }),
+    };
+    if (s.kind === 'JOB_INIT') {
+      const config: JobInitConfig = {
+        polarization: pol,
+        profileId: matchingProfile?.id,
+        priority: 5,
+        deadlineHours: 4,
+        retryInterval: 'IMMEDIATE',
+      };
+      return { ...base, jobInitConfig: config };
+    }
+    return base;
+  });
+  return { id, name, satelliteId: sat, mode, steps, edges: edges.map((e) => ({ ...e })), createdAt, updatedAt: createdAt };
+}
+
 function generatePipelines(): PipelineDefinition[] {
   // 전체 처리 파이프라인 (위성 × 모드)
   const full = SATELLITE_IDS.flatMap((sat) =>
@@ -739,6 +880,31 @@ function generatePipelines(): PipelineDefinition[] {
     ),
   ];
 
+  // 분기형 DAG 파이프라인 (DAG-RATIONALE §5) — fan-out/fan-in, 병렬 처리, 복수 진입점 검증용
+  const branched: PipelineDefinition[] = [
+    buildBranchedPipeline(
+      'PL-LX1-Branched-MultiLevel-Stripmap',
+      'Lumir-X1 다중 레벨 동시 생성 (Stripmap)',
+      'Lumir-X1', 'Stripmap',
+      MULTI_LEVEL_BRANCH_STEPS, MULTI_LEVEL_BRANCH_EDGES,
+      '2026-03-20T09:00:00Z',
+    ),
+    buildBranchedPipeline(
+      'PL-LX2-Branched-DualPol-Stripmap',
+      'Lumir-X2 편파 병렬 처리 [ICD TBD 가정: 채널별 파일]',
+      'Lumir-X2', 'Stripmap',
+      DUAL_POL_BRANCH_STEPS, DUAL_POL_BRANCH_EDGES,
+      '2026-03-25T09:00:00Z',
+    ),
+    buildBranchedPipeline(
+      'PL-LX3-Branched-QuickLook-Stripmap',
+      'Lumir-X3 Quick-look 조기 분기 (Stripmap)',
+      'Lumir-X3', 'Stripmap',
+      QUICK_LOOK_BRANCH_STEPS, QUICK_LOOK_BRANCH_EDGES,
+      '2026-04-15T09:00:00Z',
+    ),
+  ];
+
   // 아카이브된 파이프라인 (구버전, 테스트용 등)
   const archived: PipelineDefinition[] = [
     { ...buildPipelineFromSteps(
@@ -755,7 +921,7 @@ function generatePipelines(): PipelineDefinition[] {
     ), archived: true },
   ];
 
-  return [...full, ...partial, ...archived];
+  return [...full, ...partial, ...branched, ...archived];
 }
 
 let nextPipelineSeq = 100;

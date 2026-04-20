@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { X, Play, Loader, CheckCircle, ChevronRight, Check, Save, Antenna, SlidersHorizontal, HardDrive, Cpu, Layers, Compass, Map, Crosshair, Package, Database, FileInput as FileInputIcon } from 'lucide-react';
+import { X, Play, Loader, CheckCircle, ChevronRight, Check, Save, Antenna, SlidersHorizontal, HardDrive, Cpu, Layers, Compass, Map, Crosshair, Package, Database, FileInput as FileInputIcon, Image as ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { PipelineStepDefinition, SarStage, TargetCsc, ProcessingProfile } from '@/types/pipeline';
 import {
@@ -152,6 +152,7 @@ function getNodeIcon(kind: PipelineNodeKind, sarStage?: SarStage): React.Element
   if (kind === 'FILE_INPUT') return FileInputIcon;
   if (kind === 'JOB_INIT') return SlidersHorizontal;
   if (kind === 'CATALOG') return Database;
+  if (kind === 'THUMBNAIL') return ImageIcon;
   if (kind === 'SAR' && sarStage) {
     const icons: Record<SarStage, React.ElementType> = {
       L0: HardDrive, L1A: Cpu, L1B: Layers, L1C: Compass, L2A: Map, L2B: Crosshair, L3: Package,
@@ -168,6 +169,7 @@ function NodeIcon({ step, size = 18 }: { step: PipelineStepDefinition; size?: nu
   if (step.kind === 'FILE_INPUT') return <FileInputIcon {...props} />;
   if (step.kind === 'JOB_INIT')   return <SlidersHorizontal {...props} />;
   if (step.kind === 'CATALOG')    return <Database {...props} />;
+  if (step.kind === 'THUMBNAIL')  return <ImageIcon {...props} />;
   if (step.kind === 'SAR') {
     const icons: Record<SarStage, React.ElementType> = {
       L0: HardDrive, L1A: Cpu, L1B: Layers, L1C: Compass, L2A: Map, L2B: Crosshair, L3: Package,
@@ -183,6 +185,7 @@ function nodeLabel(step: PipelineStepDefinition): string {
   if (step.kind === 'FILE_INPUT') return '결과 파일 입력';
   if (step.kind === 'JOB_INIT')   return '작업 초기화';
   if (step.kind === 'CATALOG')    return '카탈로그 등록';
+  if (step.kind === 'THUMBNAIL')  return 'Quick-look 생성';
   if (step.kind === 'SAR' && step.sarStage) return SAR_STAGE_LABELS[step.sarStage];
   return '노드';
 }
@@ -192,6 +195,7 @@ function nodeCsc(step: PipelineStepDefinition): string {
   if (step.kind === 'FILE_INPUT') return 'SI-07';
   if (step.kind === 'JOB_INIT')   return 'CSC-08.02';
   if (step.kind === 'CATALOG')    return 'CSC-07';
+  if (step.kind === 'THUMBNAIL')  return 'CSU-07.06';
   if (step.kind === 'SAR' && step.sarStage) return SAR_STAGE_TO_CSC[step.sarStage];
   return '—';
 }

@@ -148,10 +148,11 @@ export default function JobDetailPanel({ job, onReprocess, onPartialReprocess, o
           {job.steps.map((step) => {
               const isSAR = step.kind === 'SAR' && step.sarStage;
               const isCatalog = step.kind === 'CATALOG';
+              const isThumbnail = step.kind === 'THUMBNAIL';
               const isTrigger = step.kind === 'TRIGGER';
               const isFileInput = step.kind === 'FILE_INPUT';
               const isJobInit = step.kind === 'JOB_INIT';
-              const isSpecialNode = isTrigger || isFileInput || isJobInit || isCatalog;
+              const isSpecialNode = isTrigger || isFileInput || isJobInit || isCatalog || isThumbnail;
               const kindInfo = isSpecialNode ? NODE_KIND_INFO[step.kind!] : undefined;
 
               const stageLabel = isSAR
@@ -164,7 +165,9 @@ export default function JobDetailPanel({ job, onReprocess, onPartialReprocess, o
                       ? '작업 초기화'
                       : isCatalog
                         ? '카탈로그 등록'
-                        : step.targetCsc;
+                        : isThumbnail
+                          ? 'Quick-look 생성'
+                          : step.targetCsc;
               const levelLabel = isSAR
                 ? PRODUCT_LEVEL_LABELS[SAR_STAGE_TO_LEVEL[step.sarStage!]]
                 : step.productLevel;

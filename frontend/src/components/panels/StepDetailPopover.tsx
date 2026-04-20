@@ -39,6 +39,7 @@ function getStepLabel(step: PipelineStep): string {
   if (step.kind === 'FILE_INPUT') return `${PRODUCT_LEVEL_LABELS[step.productLevel] ?? 'L?'} 결과 입력`;
   if (step.kind === 'JOB_INIT') return '작업 초기화';
   if (step.kind === 'CATALOG') return '카탈로그 등록';
+  if (step.kind === 'THUMBNAIL') return 'Quick-look 생성';
   return step.targetCsc;
 }
 
@@ -64,7 +65,7 @@ export default function StepDetailPopover({ step, job, logs, onClose, topOffset 
   const warnLogs = useMemo(() => stepLogs.filter((l) => l.level === 'WARN'), [stepLogs]);
 
   const isSAR = step.kind === 'SAR' && step.sarStage;
-  const isSpecialNode = step.kind === 'TRIGGER' || step.kind === 'FILE_INPUT' || step.kind === 'JOB_INIT' || step.kind === 'CATALOG';
+  const isSpecialNode = step.kind === 'TRIGGER' || step.kind === 'FILE_INPUT' || step.kind === 'JOB_INIT' || step.kind === 'CATALOG' || step.kind === 'THUMBNAIL';
   const kindInfo = isSpecialNode ? NODE_KIND_INFO[step.kind!] : undefined;
 
   // Input: previous step's output or rawDataPath for L0

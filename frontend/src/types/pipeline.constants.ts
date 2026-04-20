@@ -59,6 +59,10 @@ export const NODE_KIND_INFO: Record<string, { description: string; processes: st
     description: '처리 완료된 산출물의 메타데이터를 추출하고 카탈로그에 등록합니다',
     processes:   ['메타데이터 추출', '품질 검증', 'STAC 등록', '버전 관리'],
   },
+  THUMBNAIL: {
+    description: 'Quick-look 미리보기 이미지를 조기 생성하여 후속 처리와 병행 제공합니다 (SAD CSU-07.06)',
+    processes:   ['Quick-look 이미지 생성', 'KMZ 생성', 'NAS 저장', '조회 URL 갱신'],
+  },
 };
 
 // --- SAR Stage Mappings ---

@@ -18,7 +18,7 @@ export type SarStage = 'L0' | 'L1A' | 'L1B' | 'L1C' | 'L2A' | 'L2B' | 'L3';
  * JOB_INIT = 작업 생성·프로파일 선택(CSU-08.02),
  * SAR = SAR 처리 스테이지, CATALOG = 카탈로그 등록
  */
-export type PipelineNodeKind = 'TRIGGER' | 'FILE_INPUT' | 'JOB_INIT' | 'SAR' | 'CATALOG';
+export type PipelineNodeKind = 'TRIGGER' | 'FILE_INPUT' | 'JOB_INIT' | 'SAR' | 'CATALOG' | 'THUMBNAIL';
 
 /**
  * UI 표시용 CSC 범위. 백엔드 호환용으로 유지.
