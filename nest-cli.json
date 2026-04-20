@@ -28,6 +28,87 @@
         "tsConfigPath": "libs/sdpe-database/tsconfig.lib.json"
       }
     },
+    "sdpe-infrastructure": {
+      "type": "library",
+      "root": "libs/sdpe-infrastructure",
+      "entryFile": "index",
+      "sourceRoot": "libs/sdpe-infrastructure/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/sdpe-infrastructure/tsconfig.lib.json"
+      }
+    },
+    "csu-08.01-reception-event": {
+      "type": "library",
+      "root": "libs/csu-08.01-reception-event",
+      "entryFile": "index",
+      "sourceRoot": "libs/csu-08.01-reception-event/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/csu-08.01-reception-event/tsconfig.lib.json"
+      }
+    },
+    "csu-08.02-processing-profile": {
+      "type": "library",
+      "root": "libs/csu-08.02-processing-profile",
+      "entryFile": "index",
+      "sourceRoot": "libs/csu-08.02-processing-profile/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/csu-08.02-processing-profile/tsconfig.lib.json"
+      }
+    },
+    "csu-08.03-pipeline-scheduler": {
+      "type": "library",
+      "root": "libs/csu-08.03-pipeline-scheduler",
+      "entryFile": "index",
+      "sourceRoot": "libs/csu-08.03-pipeline-scheduler/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/csu-08.03-pipeline-scheduler/tsconfig.lib.json"
+      }
+    },
+    "csu-08.04-task-queue": {
+      "type": "library",
+      "root": "libs/csu-08.04-task-queue",
+      "entryFile": "index",
+      "sourceRoot": "libs/csu-08.04-task-queue/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/csu-08.04-task-queue/tsconfig.lib.json"
+      }
+    },
+    "csu-08.05-processing-monitor": {
+      "type": "library",
+      "root": "libs/csu-08.05-processing-monitor",
+      "entryFile": "index",
+      "sourceRoot": "libs/csu-08.05-processing-monitor/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/csu-08.05-processing-monitor/tsconfig.lib.json"
+      }
+    },
+    "csu-08.06-audit-log": {
+      "type": "library",
+      "root": "libs/csu-08.06-audit-log",
+      "entryFile": "index",
+      "sourceRoot": "libs/csu-08.06-audit-log/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/csu-08.06-audit-log/tsconfig.lib.json"
+      }
+    },
+    "csu-08.07-alert": {
+      "type": "library",
+      "root": "libs/csu-08.07-alert",
+      "entryFile": "index",
+      "sourceRoot": "libs/csu-08.07-alert/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/csu-08.07-alert/tsconfig.lib.json"
+      }
+    },
+    "csu-08.08-performance-analyzer": {
+      "type": "library",
+      "root": "libs/csu-08.08-performance-analyzer",
+      "entryFile": "index",
+      "sourceRoot": "libs/csu-08.08-performance-analyzer/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/csu-08.08-performance-analyzer/tsconfig.lib.json"
+      }
+    },
 "data-collecting-subsystem": {
       "type": "application",
       "root": "apps/data-collecting-subsystem",

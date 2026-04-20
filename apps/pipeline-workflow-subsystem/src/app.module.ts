@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { SdpeDatabaseRootModule } from '@sdpe/database';
-import { Csc06PipelineModule } from './csc06-pipeline/csc06-pipeline.module';
+import { Csc08OrchestratorModule } from './csc08-orchestrator/csc08-orchestrator.module';
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -19,9 +19,9 @@ const databaseUrl = process.env.DATABASE_URL;
               logging: process.env.TYPEORM_LOGGING === 'true',
             }),
           }),
+          Csc08OrchestratorModule,
         ]
       : []),
-    Csc06PipelineModule,
   ],
 })
 export class AppModule {}

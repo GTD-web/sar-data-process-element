@@ -1,0 +1,250 @@
+stages:
+  - test
+  - notify
+  - deploy
+
+# ── 공통 변수 ──
+variables:
+  POSTGRES_USER: sdpe
+  POSTGRES_PASSWORD: sdpe
+  POSTGRES_DB: sdpe
+  DATABASE_URL: postgresql://sdpe:sdpe@postgres:5432/sdpe
+
+# ── TypeScript 테스트 ──
+typescript:
+  stage: test
+  tags:
+    - shared
+    - ubuntu
+    - linux
+  image: node:22
+  services:
+    - name: quay.io/tembo/pgmq-pg:latest
+      alias: postgres
+      variables:
+        POSTGRES_USER: sdpe
+        POSTGRES_PASSWORD: sdpe
+        POSTGRES_DB: sdpe
+  before_script:
+    - apt-get update && apt-get install -y postgresql-client
+    - |
+      echo "Waiting for PostgreSQL..."
+      for i in $(seq 1 30); do
+        pg_isready -h postgres -U sdpe && break
+        sleep 1
+      done
+    - PGHOST=postgres PGUSER=sdpe PGPASSWORD=sdpe PGDATABASE=sdpe psql -f deploy/local/init/01-init.sql
+    - npm ci
+    - mkdir -p ci-results
+  script:
+    # Build
+    - |
+      BUILD_RESULT="success"
+      npm run build 2>&1 | tee ci-results/build-output.txt || BUILD_RESULT="failure"
+      echo "$BUILD_RESULT" > ci-results/build-result.txt
+
+    # Lint
+    - |
+      LINT_RESULT="success"
+      npm run lint 2>&1 | tee ci-results/lint-output.txt || LINT_RESULT="failure"
+      echo "$LINT_RESULT" > ci-results/lint-result.txt
+
+    # Unit Test
+    - |
+      TEST_RESULT="success"
+      npx jest --coverage --coverageReporters=json-summary --json --outputFile=ci-results/test-unit.json 2>&1 | tee ci-results/test-output.txt || TEST_RESULT="failure"
+      cp coverage/coverage-summary.json ci-results/coverage-summary.json 2>/dev/null || true
+      echo "$TEST_RESULT" > ci-results/test-result.txt
+
+    # E2E Test
+    - |
+      E2E_RESULT="success"
+      npx jest --config ./apps/pipeline-workflow-subsystem/test/jest-e2e.json --json --outputFile=ci-results/test-e2e.json 2>&1 | tee ci-results/test-e2e-output.txt || E2E_RESULT="failure"
+      echo "$E2E_RESULT" > ci-results/e2e-result.txt
+
+    # 최종 결과 확인
+    - |
+      if grep -q "failure" ci-results/build-result.txt ci-results/lint-result.txt ci-results/test-result.txt ci-results/e2e-result.txt; then
+        echo "One or more steps failed."
+        exit 1
+      fi
+  artifacts:
+    when: always
+    paths:
+      - ci-results/
+    expire_in: 7 days
+  allow_failure: true
+
+# ── Python 테스트 ──
+python:
+  stage: test
+  tags:
+    - shared
+    - ubuntu
+    - linux
+  image: python:3.11
+  before_script:
+    - python -m pip install --upgrade pip
+    - python -m pip install ruff mypy
+    - mkdir -p ci-results
+  script:
+    # Ruff check
+    - |
+      RUFF_CHECK_RESULT="success"
+      python -m ruff check algorithms 2>&1 | tee ci-results/python-output.txt || RUFF_CHECK_RESULT="failure"
+      echo "$RUFF_CHECK_RESULT" > ci-results/ruff-check-result.txt
+
+    # Ruff format check
+    - |
+      RUFF_FORMAT_RESULT="success"
+      python -m ruff format algorithms --check 2>&1 | tee -a ci-results/python-output.txt || RUFF_FORMAT_RESULT="failure"
+      echo "$RUFF_FORMAT_RESULT" > ci-results/ruff-format-result.txt
+
+    # Mypy
+    - |
+      MYPY_RESULT="success"
+      python -m mypy algorithms/csc03_range_compression 2>&1 | tee -a ci-results/python-output.txt || MYPY_RESULT="failure"
+      echo "$MYPY_RESULT" > ci-results/mypy-result.txt
+
+    # 최종 결과 확인
+    - |
+      if grep -q "failure" ci-results/ruff-check-result.txt ci-results/ruff-format-result.txt ci-results/mypy-result.txt; then
+        echo "One or more Python steps failed."
+        exit 1
+      fi
+  artifacts:
+    when: always
+    paths:
+      - ci-results/
+    expire_in: 7 days
+  allow_failure: true
+
+# ── 실패 시 이메일 알림 ──
+notify:failure:
+  stage: notify
+  tags:
+    - shared
+    - ubuntu
+    - linux
+  image: node:22
+  needs:
+    - job: typescript
+      artifacts: true
+    - job: python
+      artifacts: true
+  when: always
+  script:
+    - |
+      # 실패가 없으면 스킵
+      FAIL_FOUND=false
+      for f in ci-results/*-result.txt; do
+        if [ -f "$f" ] && grep -q "failure" "$f"; then
+          FAIL_FOUND=true
+          break
+        fi
+      done
+      if [ "$FAIL_FOUND" = "false" ]; then
+        echo "No failures detected — skipping email."
+        exit 0
+      fi
+    - npm install nodemailer --no-save
+    - node scripts/send-failure-email.mjs
+  artifacts:
+    when: always
+    paths:
+      - ci-results/failure-email.html
+    expire_in: 7 days
+
+# ── GitLab Pages 보고서 ──
+pages:
+  stage: deploy
+  tags:
+    - shared
+    - ubuntu
+    - linux
+  image: node:22
+  needs:
+    - job: typescript
+      artifacts: true
+    - job: python
+      artifacts: true
+  when: always
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "merge_request_event"
+  script:
+    # artifact에서 결과 읽기
+    - |
+      export CI_RESULTS_DIR=ci-results
+      export STEP_BUILD=$(cat ci-results/build-result.txt 2>/dev/null || echo "skipped")
+      export STEP_LINT=$(cat ci-results/lint-result.txt 2>/dev/null || echo "skipped")
+      export STEP_TEST=$(cat ci-results/test-result.txt 2>/dev/null || echo "skipped")
+      export STEP_E2E=$(cat ci-results/e2e-result.txt 2>/dev/null || echo "skipped")
+      export STEP_RUFF_CHECK=$(cat ci-results/ruff-check-result.txt 2>/dev/null || echo "skipped")
+      export STEP_RUFF_FORMAT=$(cat ci-results/ruff-format-result.txt 2>/dev/null || echo "skipped")
+      export STEP_MYPY=$(cat ci-results/mypy-result.txt 2>/dev/null || echo "skipped")
+
+    # 보고서 생성 (reports/ 에 HTML 생성됨)
+    - node scripts/generate-ci-report.mjs
+
+    # 호스트 영구 저장소에 이번 보고서 누적 (Runner volume mount 필요: /var/lib/sdpe-reports:/sdpe-reports)
+    - |
+      if [ -d /sdpe-reports ]; then
+        mkdir -p /sdpe-reports
+        cp -r reports/* /sdpe-reports/ 2>/dev/null || true
+        echo "Reports archived to /sdpe-reports (host: /var/lib/sdpe-reports)"
+      else
+        echo "WARNING: /sdpe-reports mount not found. Check runner config.toml volumes."
+      fi
+
+    # GitLab Pages는 public/ 디렉토리를 서빙 — 호스트 저장소의 전체 히스토리를 복사
+    - mkdir -p public
+    - |
+      if [ -d /sdpe-reports ] && [ "$(ls -A /sdpe-reports 2>/dev/null)" ]; then
+        cp -r /sdpe-reports/* public/
+      else
+        cp -r reports/* public/
+      fi
+
+    # index.html 생성 (보고서 목록 페이지)
+    - |
+      cat > public/index.html << 'INDEXEOF'
+      <!DOCTYPE html>
+      <html lang="ko">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>SDPE CI/CD Reports</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; padding: 2rem; }
+          h1 { color: #58a6ff; margin-bottom: 1.5rem; }
+          .report-list { list-style: none; }
+          .report-list a { color: #58a6ff; text-decoration: none; display: block; padding: 0.75rem 1rem; border: 1px solid #30363d; border-radius: 6px; margin-bottom: 0.5rem; transition: background 0.2s; }
+          .report-list a:hover { background: #161b22; }
+          .meta { color: #8b949e; font-size: 0.85rem; margin-top: 1.5rem; }
+        </style>
+      </head>
+      <body>
+        <h1>SDPE CI/CD Reports</h1>
+        <p class="meta">이 페이지는 파이프라인 실행 시 자동 갱신됩니다.</p>
+        <ul class="report-list" id="list"></ul>
+      </body>
+      </html>
+      INDEXEOF
+
+    # index.html에 보고서 링크 동적 삽입
+    - |
+      LINKS=""
+      for dir in $(ls -rd public/*/); do
+        dirname=$(basename "$dir")
+        for f in $(ls -r "$dir"*.html 2>/dev/null); do
+          fname=$(basename "$f")
+          LINKS="$LINKS<li><a href=\"${dirname}/${fname}\">${dirname} / ${fname}</a></li>"
+        done
+      done
+      sed -i "s|<ul class=\"report-list\" id=\"list\"></ul>|<ul class=\"report-list\" id=\"list\">${LINKS}</ul>|" public/index.html
+
+  artifacts:
+    paths:
+      - public
+    expire_in: 30 days

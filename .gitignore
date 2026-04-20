@@ -23,6 +23,9 @@ yarn-error.log*
 coverage/
 .nyc_output/
 
+# CI intermediate results
+ci-results/
+
 # Python (algorithms/)
 __pycache__/
 *.py[cod]
@@ -30,6 +33,7 @@ __pycache__/
 .Python
 .venv/
 venv/
+.python-packages/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/

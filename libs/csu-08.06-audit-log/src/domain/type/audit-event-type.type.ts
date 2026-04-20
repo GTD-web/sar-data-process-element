@@ -1,0 +1,14 @@
+/** 파이프라인 감사 로그에 기록되는 이벤트 유형 */
+export const AuditEventType = {
+  JOB_CREATED: 'JOB_CREATED',
+  JOB_ASSIGNED: 'JOB_ASSIGNED',
+  JOB_COMPLETED: 'JOB_COMPLETED',
+  JOB_FAILED: 'JOB_FAILED',
+  JOB_RETRIED: 'JOB_RETRIED',
+  PIPELINE_STARTED: 'PIPELINE_STARTED',
+  PIPELINE_COMPLETED: 'PIPELINE_COMPLETED',
+  PIPELINE_REPROCESSED: 'PIPELINE_REPROCESSED',
+  ALERT_DISPATCHED: 'ALERT_DISPATCHED',
+} as const;
+
+export type AuditEventType = (typeof AuditEventType)[keyof typeof AuditEventType];

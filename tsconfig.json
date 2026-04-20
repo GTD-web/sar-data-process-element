@@ -24,7 +24,16 @@
     "noFallthroughCasesInSwitch": true,
     "paths": {
       "@sdpe/shared": ["libs/sdpe-shared/src"],
-      "@sdpe/database": ["libs/sdpe-database/src"]
+      "@sdpe/database": ["libs/sdpe-database/src"],
+      "@sdpe/infrastructure": ["libs/sdpe-infrastructure/src"],
+      "@sdpe/reception-event": ["libs/csu-08.01-reception-event/src"],
+      "@sdpe/processing-profile": ["libs/csu-08.02-processing-profile/src"],
+      "@sdpe/pipeline-scheduler": ["libs/csu-08.03-pipeline-scheduler/src"],
+      "@sdpe/task-queue": ["libs/csu-08.04-task-queue/src"],
+      "@sdpe/processing-monitor": ["libs/csu-08.05-processing-monitor/src"],
+      "@sdpe/audit-log": ["libs/csu-08.06-audit-log/src"],
+      "@sdpe/alert": ["libs/csu-08.07-alert/src"],
+      "@sdpe/performance-analyzer": ["libs/csu-08.08-performance-analyzer/src"]
     }
   }
 }

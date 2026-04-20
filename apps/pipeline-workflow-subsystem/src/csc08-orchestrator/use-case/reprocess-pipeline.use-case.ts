@@ -1,0 +1,64 @@
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { v4 as uuidv4 } from 'uuid';
+import { PipelineExecution, createJobId } from '@sdpe/shared';
+import { JOB_REPOSITORY, type IJobRepository } from '@sdpe/task-queue';
+import {
+  DAG_BUILDER,
+  type IDagBuilder,
+  PIPELINE_EXECUTION_REPOSITORY,
+  type IPipelineExecutionRepository,
+} from '@sdpe/pipeline-scheduler';
+import { AUDIT_LOG_WRITER, type IAuditLogWriter, AuditEventType } from '@sdpe/audit-log';
+import type { ReprocessParams } from '../interfaces/csc08-orchestrator.interface';
+
+/**
+ * SI-07 재처리 요청을 처리하는 유스케이스.
+ * CSC-09(Data API Provider)로부터 특정 레벨까지의 재처리 요청을 받는다.
+ *
+ * 전체 DAG가 아닌 부분 DAG(partial DAG)를 생성하여,
+ * targetLevel 이전 단계는 건너뛰고 해당 레벨부터 재처리를 시작한다.
+ */
+@Injectable()
+export class ReprocessPipelineUseCase {
+  private readonly logger = new Logger(ReprocessPipelineUseCase.name);
+
+  constructor(
+    @Inject(JOB_REPOSITORY) private readonly jobRepository: IJobRepository,
+    @Inject(PIPELINE_EXECUTION_REPOSITORY)
+    private readonly pipelineExecutionRepository: IPipelineExecutionRepository,
+    @Inject(AUDIT_LOG_WRITER) private readonly auditLogWriter: IAuditLogWriter,
+    @Inject(DAG_BUILDER) private readonly dagBuilder: IDagBuilder,
+  ) {}
+
+  async execute(params: ReprocessParams): Promise<void> {
+    this.logger.log(`Reprocessing pipeline: job=${params.jobId}, targetLevel=${params.targetLevel}`);
+
+    const jobId = createJobId(params.jobId);
+    const job = await this.jobRepository.findById(jobId);
+    if (!job) throw new Error(`Job not found: ${params.jobId}`);
+
+    job.resetForReprocessing();
+
+    const steps = this.dagBuilder.buildPartialDag(params.targetLevel);
+    const execution = PipelineExecution.create(uuidv4(), params.jobId, steps);
+
+    const firstStep = execution.nextPendingStep;
+    if (firstStep) {
+      firstStep.start();
+      job.assign(firstStep.targetCsc, firstStep.productLevel);
+    }
+
+    await this.jobRepository.save(job);
+    await this.pipelineExecutionRepository.save(execution);
+
+    await this.auditLogWriter.write({
+      eventType: AuditEventType.PIPELINE_REPROCESSED,
+      timestamp: new Date(),
+      actor: params.requestedBy,
+      jobId: params.jobId,
+      payload: { targetLevel: params.targetLevel },
+    });
+
+    this.logger.log(`Reprocessing started: job=${params.jobId}, firstStep=${firstStep?.targetCsc}`);
+  }
+}

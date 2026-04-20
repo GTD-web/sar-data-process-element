@@ -5,7 +5,8 @@ import { InitSdpeSchema1730000000000 } from './migrations/1730000000000-init-sdp
 const defaultLocalUrl = 'postgresql://sdpe:sdpe@127.0.0.1:5432/sdpe';
 
 /**
- * TypeORM CLI entry (migrations). Set DATABASE_URL or rely on local docker-compose defaults.
+ * TypeORM CLI 및 마이그레이션용 DataSource 설정.
+ * DATABASE_URL 환경변수가 없으면 로컬 docker-compose 기본값을 사용한다.
  */
 export default new DataSource({
   type: 'postgres',

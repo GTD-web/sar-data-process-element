@@ -2,34 +2,167 @@ name: CI
 
 on:
   push:
+    paths-ignore:
+      - 'reports/**'
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   typescript:
     runs-on: ubuntu-latest
+    outputs:
+      build-result: ${{ steps.build.outcome }}
+      lint-result: ${{ steps.lint.outcome }}
+      test-result: ${{ steps.test.outcome }}
+      e2e-result: ${{ steps.e2e.outcome }}
+    services:
+      postgres:
+        image: quay.io/tembo/pgmq-pg:latest
+        env:
+          POSTGRES_USER: sdpe
+          POSTGRES_PASSWORD: sdpe
+          POSTGRES_DB: sdpe
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sdpe"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
+      - name: Init test database
+        run: psql -f deploy/local/init/01-init.sql
+        env:
+          PGHOST: localhost
+          PGUSER: sdpe
+          PGPASSWORD: sdpe
+          PGDATABASE: sdpe
       - run: npm ci
-      - run: npm run build
-      - run: npm run lint
-      - run: npm test
-      - run: npm run test:e2e
+      - run: mkdir -p ci-results
+
+      - name: Build
+        id: build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee ci-results/build-output.txt
+
+      - name: Lint
+        id: lint
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee ci-results/lint-output.txt
+
+      - name: Unit Test
+        id: test
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npx jest --coverage --coverageReporters=json-summary --json --outputFile=ci-results/test-unit.json 2>&1 | tee ci-results/test-output.txt
+          cp coverage/coverage-summary.json ci-results/coverage-summary.json 2>/dev/null || true
+
+      - name: E2E Test
+        id: e2e
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://sdpe:sdpe@localhost:5432/sdpe
+        run: |
+          set -o pipefail
+          npx jest --config ./apps/pipeline-workflow-subsystem/test/jest-e2e.json --json --outputFile=ci-results/test-e2e.json 2>&1 | tee ci-results/test-e2e-output.txt
+
+      - name: Upload CI results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-results-typescript
+          path: ci-results/
+          retention-days: 7
+
+      - name: Check results
+        if: always()
+        run: |
+          if [ "${{ steps.build.outcome }}" = "failure" ] || \
+             [ "${{ steps.lint.outcome }}" = "failure" ] || \
+             [ "${{ steps.test.outcome }}" = "failure" ] || \
+             [ "${{ steps.e2e.outcome }}" = "failure" ]; then
+            echo "One or more steps failed."
+            exit 1
+          fi
 
   python:
     runs-on: ubuntu-latest
+    outputs:
+      ruff-check-result: ${{ steps.ruff-check.outcome }}
+      ruff-format-result: ${{ steps.ruff-format.outcome }}
+      mypy-result: ${{ steps.mypy.outcome }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Ruff and mypy (SDPE-CDS-001 §4.4)
+      - name: Install tools
         run: |
           python -m pip install --upgrade pip
           python -m pip install ruff mypy
-          python -m ruff check algorithms
-          python -m ruff format algorithms --check
-          python -m mypy algorithms/csc03_range_compression
+      - run: mkdir -p ci-results
+
+      - name: Ruff check
+        id: ruff-check
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m ruff check algorithms 2>&1 | tee ci-results/python-output.txt
+
+      - name: Ruff format check
+        id: ruff-format
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m ruff format algorithms --check 2>&1 | tee -a ci-results/python-output.txt
+
+      - name: Mypy
+        id: mypy
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m mypy algorithms/csc03_range_compression 2>&1 | tee -a ci-results/python-output.txt
+
+      - name: Upload CI results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-results-python
+          path: ci-results/
+          retention-days: 7
+
+      - name: Check results
+        if: always()
+        run: |
+          if [ "${{ steps.ruff-check.outcome }}" = "failure" ] || \
+             [ "${{ steps.ruff-format.outcome }}" = "failure" ] || \
+             [ "${{ steps.mypy.outcome }}" = "failure" ]; then
+            echo "One or more Python steps failed."
+            exit 1
+          fi
+
