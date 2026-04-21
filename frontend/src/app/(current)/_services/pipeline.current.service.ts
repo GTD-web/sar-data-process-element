@@ -193,11 +193,11 @@ export const pipelineCurrentService: IPipelineUIService = {
     return handleResponse(res, '파이프라인 복제 실패');
   },
 
-  async 파이프라인을_아카이브한다(id: string, archived: boolean): Promise<ServiceResponse> {
+  async 파이프라인을_아카이브한다(id: string, archived: boolean, archiveReason?: string): Promise<ServiceResponse> {
     const res = await fetch(`${API_BASE}/pipelines/${id}/archive`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ archived }),
+      body: JSON.stringify({ archived, archiveReason }),
     });
     if (!res.ok) return { success: false, message: `아카이브 처리 실패: ${res.status}` };
     return { success: true, message: 'OK' };

@@ -18,11 +18,11 @@ import ExecutionLogPanel from '@/components/panels/ExecutionLogPanel';
 import StepDetailPopover from '@/components/panels/StepDetailPopover';
 import NodeDetailModal, { type PrevNodeInfo } from '@/components/panels/NodeDetailModal';
 import FileInputConfigDialog from '@/components/panels/FileInputConfigDialog';
-import PipelineDeleteConfirmDialog from '@/components/panels/PipelineDeleteConfirmDialog';
+import PipelineArchiveConfirmDialog from '@/components/panels/PipelineArchiveConfirmDialog';
 import PipelineEditDialog from '@/components/panels/PipelineEditDialog';
 import PipelineUndeployConfirmDialog from '@/components/panels/PipelineUndeployConfirmDialog';
 import { toast } from '@/components/ui/Toast';
-import { FlaskConical, Plus, PanelRightOpen, GitBranch, Pencil, Check, X, SlidersHorizontal, Radio, ServerCog, UploadCloud } from 'lucide-react';
+import { FlaskConical, Plus, GitBranch, Pencil, Check, X, SlidersHorizontal, Radio, ServerCog, UploadCloud } from 'lucide-react';
 import type {
   PipelineDefinition,
   PipelineStepDefinition,
@@ -304,7 +304,7 @@ export default function ConsolePage() {
   const [focusEntryTrigger, setFocusEntryTrigger] = useState(0);
   const [nodeDetailStep, setNodeDetailStep] = useState<PipelineStepDefinition | null>(null);
   const [fileInputConfigStep, setFileInputConfigStep] = useState<PipelineStepDefinition | null>(null);
-  const [deletePipelineTarget, setDeletePipelineTarget] = useState<PipelineDefinition | null>(null);
+  const [archivePipelineTarget, setArchivePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [editPipelineTarget, setEditPipelineTarget] = useState<PipelineDefinition | null>(null);
   const [undeployTarget, setUndeployTarget] = useState<PipelineDefinition | null>(null);
   const [activeStepOrder, setActiveStepOrder] = useState<number | null>(null);
@@ -344,8 +344,6 @@ export default function ConsolePage() {
         if (jobRes.data) {
           setSelectedJob(jobRes.data);
           setConsoleMode({ type: 'job', job: jobRes.data });
-          
-          setRightCollapsed(false);
         }
       }
     })();
@@ -575,8 +573,6 @@ export default function ConsolePage() {
         if (jobDetailRes.data) {
           setSelectedJob(jobDetailRes.data);
           setConsoleMode({ type: 'job', job: jobDetailRes.data });
-          
-          setRightCollapsed(false);
         }
       }
     } else {
@@ -621,7 +617,6 @@ export default function ConsolePage() {
       setSelectedJob(res.data);
       setActiveStepOrder(null);
       setConsoleMode({ type: 'job', job: res.data });
-      setRightCollapsed(false);
       updateJobIdParam(jobId);
     } else {
       toast.error(res.message);
@@ -662,6 +657,7 @@ export default function ConsolePage() {
       }
       updatePipeline({ steps: newSteps, edges: newEdges });
       setConsoleMode({ type: 'idle' });
+      setRightCollapsed(true);
     },
     [selectedPipeline, updatePipeline, consoleMode, toStepUpdate],
   );
@@ -745,14 +741,14 @@ export default function ConsolePage() {
     handlePartialReprocess(step.sarStage);
   }, [selectedJob, selectedPipeline, handlePartialReprocess]);
 
-  const handleDeletePipeline = useCallback(async (id: string) => {
+  const handleArchivePipeline = useCallback(async (id: string, reason: string) => {
     if (!canManage) return;
-    const res = await service.파이프라인을_삭제한다(id);
+    const res = await service.파이프라인을_아카이브한다(id, true, reason);
     if (!res.success) {
       toast.error(res.message);
       return;
     }
-    toast.success('파이프라인이 삭제되었습니다');
+    toast.success('파이프라인이 폐기되어 아카이브로 이동했습니다');
     setPipelines((prev) => prev.filter((p) => p.id !== id));
     await refreshActivationRules();
     if (selectedPipelineId === id) {
@@ -762,7 +758,7 @@ export default function ConsolePage() {
       setConsoleMode({ type: 'idle' });
       updateJobIdParam(null);
     }
-    setDeletePipelineTarget(null);
+    setArchivePipelineTarget(null);
   }, [service, selectedPipelineId, updateJobIdParam, canManage, refreshActivationRules]);
 
   // --- Pipeline handlers ---
@@ -777,6 +773,7 @@ export default function ConsolePage() {
     setEditSaving(false);
     setEditPipelineTarget(null);
     setConsoleMode({ type: 'idle' });
+    setRightCollapsed(true);
   }, [service, selectedPipelineId, refreshActivationRules]);
 
   const handleCreatePipeline = useCallback(() => {
@@ -786,6 +783,7 @@ export default function ConsolePage() {
     setSelectedJob(null);
     setActiveStepOrder(null);
     setConsoleMode({ type: 'idle' });
+    setRightCollapsed(true);
   }, [canManage]);
 
   const handleCreateStep1Next = useCallback((data: CreatePipelineBasicData) => {
@@ -897,7 +895,7 @@ export default function ConsolePage() {
         onCreatePipeline={handleCreatePipeline}
         onDeletePipeline={(id) => {
           const target = pipelines.find((p) => p.id === id);
-          if (target) setDeletePipelineTarget(target);
+          if (target) setArchivePipelineTarget(target);
         }}
         canManagePipelines={canManage}
         pipelineJobs={pipelineJobs}
@@ -959,17 +957,6 @@ export default function ConsolePage() {
                     title="노드 추가"
                   >
                     <Plus className="w-4 h-4" />
-                  </button>
-                )}
-                {canManage && rightCollapsed && (
-                  <button
-                    type="button"
-                    onClick={() => setRightCollapsed(false)}
-                    className="p-1.5 rounded-md bg-card/80 backdrop-blur-sm border border-border shadow-sm
-                               text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                    title="패널 열기"
-                  >
-                    <PanelRightOpen className="w-4 h-4" />
                   </button>
                 )}
               </div>
@@ -1071,9 +1058,12 @@ export default function ConsolePage() {
       {/* Right: Tabbed Panel */}
       <RightTabbedPanel
           collapsed={rightCollapsed}
-          onToggle={() => setRightCollapsed((v) => !v)}
+          onToggle={() => {
+            setRightCollapsed(true);
+            setConsoleMode({ type: 'idle' });
+          }}
           showCollapsedToggle={false}
-          title={consoleMode.type === 'addStep' ? '노드 추가' : '콘솔'}
+          title="노드 추가"
         >
           <ConsoleTab
             mode={consoleMode}
@@ -1153,13 +1143,13 @@ export default function ConsolePage() {
         />
       )}
 
-      {deletePipelineTarget && (
-        <PipelineDeleteConfirmDialog
-          pipelineName={deletePipelineTarget.name}
-          satelliteId={deletePipelineTarget.satelliteId}
-          mode={deletePipelineTarget.mode}
-          onConfirm={() => handleDeletePipeline(deletePipelineTarget.id)}
-          onCancel={() => setDeletePipelineTarget(null)}
+      {archivePipelineTarget && (
+        <PipelineArchiveConfirmDialog
+          pipelineName={archivePipelineTarget.name}
+          satelliteId={archivePipelineTarget.satelliteId}
+          mode={archivePipelineTarget.mode}
+          onConfirm={(reason) => handleArchivePipeline(archivePipelineTarget.id, reason)}
+          onCancel={() => setArchivePipelineTarget(null)}
         />
       )}
 

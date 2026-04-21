@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { PanelRightOpen, X } from 'lucide-react';
 
 interface RightTabbedPanelProps {
   collapsed: boolean;
@@ -44,8 +44,8 @@ export default function RightTabbedPanel({
       >
         {/* Header */}
         <div className="flex items-center border-b border-border flex-shrink-0 h-11">
-          <button onClick={onToggle} className="px-2.5 h-full flex items-center border-r border-border hover:bg-muted/30 transition-colors flex-shrink-0" title="패널 닫기">
-            <PanelRightClose className="w-3.5 h-3.5 text-muted-foreground" />
+          <button onClick={onToggle} className="px-2.5 h-full flex items-center border-r border-border hover:bg-muted/30 transition-colors flex-shrink-0" title="닫기">
+            <X className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
           <div className="flex items-center flex-1 px-3">
             <span className="text-[11px] font-medium text-muted-foreground">{title}</span>

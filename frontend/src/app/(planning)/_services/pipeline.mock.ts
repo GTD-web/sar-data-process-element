@@ -912,15 +912,15 @@ function generatePipelines(): PipelineDefinition[] {
     { ...buildPipelineFromSteps(
       'PL-LX1-Archive-1', 'Lumir-X1 Stripmap Pipeline (v1 — 폐기)',
       'Lumir-X1', 'Stripmap', PIPELINE_STEPS, '2025-06-01T09:00:00Z',
-    ), archived: true },
+    ), archived: true, archivedAt: '2026-01-12T02:40:00Z', archiveReason: '초기 Stripmap DAG 기준으로 작성되어 현재 운영 라우팅 조건과 맞지 않습니다.' },
     { ...buildPipelineFromSteps(
       'PL-LX1-Archive-2', 'Lumir-X1 ScanSAR 테스트 파이프라인',
       'Lumir-X1', 'ScanSAR', MODE_STEP_VARIANTS['ScanSAR'] ?? PIPELINE_STEPS, '2025-08-15T09:00:00Z',
-    ), archived: true },
+    ), archived: true, archivedAt: '2026-02-18T05:15:00Z', archiveReason: '성능 검증용 테스트 파이프라인으로 운영 배포 대상에서 제외했습니다.' },
     { ...buildPipelineFromSteps(
       'PL-LX2-Archive-1', 'Lumir-X2 Spotlight 실험 파이프라인',
       'Lumir-X2', 'Spotlight', MODE_STEP_VARIANTS['Spotlight'] ?? PIPELINE_STEPS, '2025-10-20T09:00:00Z',
-    ), archived: true },
+    ), archived: true, archivedAt: '2026-03-07T08:30:00Z', archiveReason: 'Spotlight 처리 프로파일이 신규 프로파일로 대체되어 기존 실험 구성을 폐기했습니다.' },
   ];
 
   return [...full, ...partial, ...branched, ...archived];
@@ -1376,10 +1376,17 @@ class MockPipelineUIService implements IPipelineUIService {
     return { success: true, message: '파이프라인이 복제되었습니다', data: { ...dup, steps: [...dup.steps] } };
   }
 
-  async 파이프라인을_아카이브한다(id: string, archived: boolean): Promise<ServiceResponse> {
+  async 파이프라인을_아카이브한다(id: string, archived: boolean, archiveReason?: string): Promise<ServiceResponse> {
     const pl = this.pipelines.find((p) => p.id === id);
     if (!pl) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
     pl.archived = archived;
+    if (archived) {
+      pl.archivedAt = new Date().toISOString();
+      pl.archiveReason = archiveReason?.trim() || '폐기 사유가 입력되지 않았습니다.';
+    } else {
+      pl.archivedAt = undefined;
+      pl.archiveReason = undefined;
+    }
     pl.updatedAt = new Date().toISOString();
     this.upsertActivationRule(pl, false);
     return { success: true, message: archived ? '파이프라인이 아카이브되었습니다' : '파이프라인이 복원되었습니다' };

@@ -5,7 +5,7 @@ import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-c
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import { toast } from '@/components/ui/Toast';
 import { useMockRole } from '@/components/auth/RolePreviewSelect';
-import type { ProcessingProfile } from '@/types/pipeline';
+import type { PipelineDefinition, ProcessingProfile } from '@/types/pipeline';
 import { POLARIZATION_OPTIONS } from '@/types/pipeline';
 import { cn, formatKST } from '@/lib/utils';
 import {
@@ -19,6 +19,43 @@ import {
 const SATELLITES = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'];
 const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+
+interface ReferencingPipelineInfo {
+  id: string;
+  name: string;
+  satelliteId: string;
+  mode: string;
+  archived?: boolean;
+}
+
+function buildProfileReferenceMap(pipelines: PipelineDefinition[]): Record<string, ReferencingPipelineInfo[]> {
+  const map: Record<string, ReferencingPipelineInfo[]> = {};
+
+  for (const pipeline of pipelines) {
+    const profileIds = new Set(
+      pipeline.steps
+        .map((step) => step.jobInitConfig?.profileId)
+        .filter((profileId): profileId is string => typeof profileId === 'string' && profileId.length > 0),
+    );
+
+    for (const profileId of profileIds) {
+      if (!map[profileId]) map[profileId] = [];
+      map[profileId].push({
+        id: pipeline.id,
+        name: pipeline.name,
+        satelliteId: pipeline.satelliteId,
+        mode: pipeline.mode,
+        archived: pipeline.archived,
+      });
+    }
+  }
+
+  for (const profileId of Object.keys(map)) {
+    map[profileId].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  return map;
+}
 
 function getPageRange(current: number, total: number): (number | 'ellipsis')[] {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
@@ -341,9 +378,11 @@ function DeleteConfirmDialog({
 
 function ProfileDetailDialog({
   profile,
+  referencedPipelines,
   onClose,
 }: {
   profile: ProcessingProfile;
+  referencedPipelines: ReferencingPipelineInfo[];
   onClose: () => void;
 }) {
   const parameters = JSON.stringify(profile.parameters ?? {}, null, 2);
@@ -369,9 +408,39 @@ function ProfileDetailDialog({
             <DetailItem label="모드" value={profile.mode} />
             <DetailItem label="편파" value={profile.polarization} />
             <DetailItem label="우선순위" value={String(profile.priority)} mono />
-            <DetailItem label="참조 파이프라인" value={`${profile.referencedPipelineCount ?? 0}개`} mono />
+            <DetailItem label="참조 중인 파이프라인" value={`${referencedPipelines.length}개`} mono />
             <DetailItem label="생성일" value={formatKST(profile.createdAt)} />
             <DetailItem label="수정일" value={formatKST(profile.updatedAt)} />
+          </div>
+
+          <div>
+            <div className="text-[11px] font-medium text-muted-foreground mb-1">참조 중인 파이프라인</div>
+            {referencedPipelines.length === 0 ? (
+              <p className="text-xs text-muted-foreground">이 프로파일을 사용하는 파이프라인이 없습니다.</p>
+            ) : (
+              <div className="space-y-2">
+                {referencedPipelines.map((pipeline) => (
+                  <div
+                    key={pipeline.id}
+                    className="rounded-md border border-border bg-background px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs font-medium text-foreground truncate">{pipeline.name}</div>
+                        <div className="mt-0.5 text-[11px] text-muted-foreground">
+                          {pipeline.satelliteId} · {pipeline.mode}
+                        </div>
+                      </div>
+                      {pipeline.archived && (
+                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground bg-muted">
+                          아카이브
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {profile.description && (
@@ -420,6 +489,7 @@ export default function ProcessingProfilesPage() {
   const service = usePipelineService();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [profiles, setProfiles] = useState<ProcessingProfile[]>([]);
+  const [profileReferences, setProfileReferences] = useState<Record<string, ReferencingPipelineInfo[]>>({});
 
   // Filters
   const [filterSatellite, setFilterSatellite] = useState('');
@@ -436,8 +506,17 @@ export default function ProcessingProfilesPage() {
   const [detailProfile, setDetailProfile] = useState<ProcessingProfile | null>(null);
 
   const loadData = useCallback(async () => {
-    const pRes = await service.처리_프로파일_목록을_조회한다();
+    const [pRes, plRes, archivedRes] = await Promise.all([
+      service.처리_프로파일_목록을_조회한다(),
+      service.파이프라인_목록을_조회한다(),
+      service.아카이브_파이프라인_목록을_조회한다(),
+    ]);
+
     if (pRes.data) setProfiles(pRes.data);
+
+    const activePipelines = plRes.data ?? [];
+    const archivedPipelines = (archivedRes.data ?? []).map((pipeline) => ({ ...pipeline, archived: true }));
+    setProfileReferences(buildProfileReferenceMap([...activePipelines, ...archivedPipelines]));
   }, [service]);
 
   useEffect(() => {
@@ -567,7 +646,7 @@ export default function ProcessingProfilesPage() {
                 <th className="text-left px-3 py-2.5">모드</th>
                 <th className="text-left px-3 py-2.5">편파</th>
                 <th className="text-center px-3 py-2.5">우선순위</th>
-                <th className="text-center px-3 py-2.5">참조</th>
+                <th className="text-center px-3 py-2.5">참조 파이프라인</th>
                 <th className="text-left px-3 py-2.5">생성일</th>
                 <th className="text-right px-5 py-2.5">작업</th>
               </tr>
@@ -594,13 +673,13 @@ export default function ProcessingProfilesPage() {
                   </td>
                   <td className="px-3 py-2.5 text-center text-xs text-foreground font-mono">{p.priority}</td>
                   <td className="px-3 py-2.5 text-center">
-                    {(p.referencedPipelineCount ?? 0) > 0 ? (
-                      <span className="inline-flex items-center gap-0.5 text-xs text-accent">
+                    {(profileReferences[p.id]?.length ?? 0) > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-accent">
                         <GitBranch className="w-3 h-3" />
-                        {p.referencedPipelineCount}
+                        {profileReferences[p.id]!.length}개
                       </span>
                     ) : (
-                      <span className="text-xs text-muted-foreground/50">—</span>
+                      <span className="text-xs text-muted-foreground/50">없음</span>
                     )}
                   </td>
                   <td className="px-3 py-2.5 text-xs text-muted-foreground">{formatKST(p.createdAt)}</td>
@@ -674,6 +753,7 @@ export default function ProcessingProfilesPage() {
       {detailProfile && (
         <ProfileDetailDialog
           profile={detailProfile}
+          referencedPipelines={profileReferences[detailProfile.id] ?? []}
           onClose={() => setDetailProfile(null)}
         />
       )}

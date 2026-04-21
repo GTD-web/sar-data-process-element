@@ -247,6 +247,8 @@ export interface PipelineDefinition {
   createdAt: string;
   updatedAt: string;
   archived?: boolean;
+  archivedAt?: string;
+  archiveReason?: string;
 }
 
 export interface PipelineActivationRule {

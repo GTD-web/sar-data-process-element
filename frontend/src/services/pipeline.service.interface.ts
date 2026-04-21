@@ -117,8 +117,8 @@ export interface IPipelineUIService {
   /** 파이프라인 복제. 이름에 "(복사)" 접미사 추가. */
   파이프라인을_복제한다(id: string): Promise<ServiceResponseWithData<PipelineDefinition>>;
 
-  /** 파이프라인 아카이브/복원 토글. */
-  파이프라인을_아카이브한다(id: string, archived: boolean): Promise<ServiceResponse>;
+  /** 파이프라인 아카이브/복원 토글. 아카이브 시 폐기 사유를 함께 저장한다. */
+  파이프라인을_아카이브한다(id: string, archived: boolean, archiveReason?: string): Promise<ServiceResponse>;
 
   /** EI-01: 파이프라인 수동 실행 (테스트/운영). 새 Job을 생성하여 파이프라인을 기동합니다. */
   파이프라인을_실행한다(pipelineId: string): Promise<ServiceResponseWithData<JobSummary>>;

@@ -25,7 +25,7 @@ interface LeftSidebarBaseProps {
   collapsed: boolean;
   onToggle: () => void;
   /** 현재 활성 페이지 (nav highlight용) */
-  activePage?: 'home' | 'console' | 'deployed' | 'jobs' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit' | 'users';
+  activePage?: 'home' | 'console' | 'deployed' | 'jobs' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit' | 'users' | 'settings';
 }
 
 interface LeftSidebarConsoleProps extends LeftSidebarBaseProps {
@@ -118,7 +118,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
   const navItems: { id: NonNullable<LeftSidebarBaseProps['activePage']>; icon: React.ElementType; label: string; href: string; adminOnly?: boolean }[] = [
     { id: 'home', icon: LayoutDashboard, label: '오버뷰', href: base },
     { id: 'console', icon: GitBranch, label: '파이프라인', href: `${base}/console` },
-    { id: 'deployed', icon: Radio, label: '배포 목록', href: `${base}/deployed` },
+    { id: 'deployed', icon: Radio, label: '배포 파이프라인 목록', href: `${base}/deployed` },
     { id: 'jobs', icon: Briefcase, label: '실행 작업', href: `${base}/jobs` },
     { id: 'profiles', icon: SlidersHorizontal, label: '처리 프로파일', href: `${base}/profiles` },
     { id: 'products', icon: Package, label: '제품', href: `${base}/products` },
@@ -203,7 +203,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                 )}
               >
                 <item.icon className="w-3.5 h-3.5 flex-shrink-0" />
-                <span>{item.label}</span>
+                <span className="leading-4 break-words">{item.label}</span>
               </a>
             ))}
           </div>
@@ -246,7 +246,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                           <button
                             onClick={(e) => { e.stopPropagation(); consolePl.onDeletePipeline(pl.id); }}
                             className="flex-shrink-0 p-1 mr-1 rounded opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
-                            title="파이프라인 삭제"
+                            title="파이프라인 폐기"
                           >
                             <Trash2 className="w-3 h-3" />
                           </button>
@@ -459,7 +459,19 @@ export default function LeftSidebar(props: LeftSidebarProps) {
             </div>
             <RolePreviewSelect role={mockRole} onChange={setMockRole} />
           </div>
-          <SidebarItem icon={Settings} label="설정" />
+          <button
+            type="button"
+            onClick={() => router.push(`${base}/settings`)}
+            className={cn(
+              'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-[11px] cursor-pointer transition-colors',
+              activePage === 'settings'
+                ? 'bg-accent/10 text-accent'
+                : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground',
+            )}
+          >
+            <Settings className="w-3 h-3 flex-shrink-0" />
+            <span className="truncate">설정</span>
+          </button>
           <div className="relative" ref={profileRef}>
             <button
               type="button"

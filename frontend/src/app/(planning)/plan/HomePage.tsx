@@ -4,6 +4,8 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
+import PipelineArchiveConfirmDialog from '@/components/panels/PipelineArchiveConfirmDialog';
+import { toast } from '@/components/ui/Toast';
 import { useMockRole } from '@/components/auth/RolePreviewSelect';
 import { cn, formatDuration, formatRelativeTime } from '@/lib/utils';
 import type {
@@ -79,7 +81,7 @@ function PipelineDropdown({ pipelineId, onDuplicate, onArchive }: {
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onArchive(pipelineId); setOpen(false); }}
           >
             <Archive className="w-3 h-3 text-muted-foreground" />
-            아카이브
+            폐기
           </button>
         </div>
       )}
@@ -100,6 +102,7 @@ export default function HomePage() {
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [queues, setQueues] = useState<QueueHealth[]>([]);
   const [activeTab, setActiveTab] = useState<'pipelines' | 'jobs' | 'queues'>('pipelines');
+  const [archiveTarget, setArchiveTarget] = useState<PipelineDefinition | null>(null);
   const [previewRole] = useMockRole();
 
   const consolePath = pathname.startsWith('/current') ? '/current/console' : '/plan/console';
@@ -132,12 +135,22 @@ export default function HomePage() {
     }
   }, [service]);
 
-  const handleArchive = useCallback(async (id: string) => {
-    const res = await service.파이프라인을_아카이브한다(id, true);
+  const handleArchiveRequest = useCallback((id: string) => {
+    const target = pipelines.find((p) => p.id === id);
+    if (target) setArchiveTarget(target);
+  }, [pipelines]);
+
+  const handleArchiveConfirm = useCallback(async (reason: string) => {
+    if (!archiveTarget) return;
+    const res = await service.파이프라인을_아카이브한다(archiveTarget.id, true, reason);
     if (res.success) {
-      setPipelines((prev) => prev.filter((p) => p.id !== id));
+      setPipelines((prev) => prev.filter((p) => p.id !== archiveTarget.id));
+      setArchiveTarget(null);
+      toast.success('파이프라인이 폐기되어 아카이브로 이동했습니다');
+    } else {
+      toast.error(res.message);
     }
-  }, [service]);
+  }, [service, archiveTarget]);
 
   const failureRate = stats
     ? stats.completedLast24h + stats.failedLast24h > 0
@@ -178,11 +191,10 @@ export default function HomePage() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="px-8 py-6 space-y-6">
+        <div className="flex-1 min-h-0 px-8 py-6 flex flex-col gap-6 overflow-hidden">
             {/* Stats */}
             {stats && (
-              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 shrink-0">
                 <StatCard label="진행 중 작업" value={stats.inflightJobs} icon={Activity} color="text-accent" />
                 <StatCard label="완료 (24h)" value={stats.completedLast24h} icon={CheckCircle} color="text-success" />
                 <StatCard label="실패 (24h)" value={stats.failedLast24h} icon={XCircle} color="text-destructive" />
@@ -192,7 +204,7 @@ export default function HomePage() {
             )}
 
             {/* Tabs */}
-            <div className="flex items-center gap-1 border-b border-border">
+            <div className="flex items-center gap-1 border-b border-border shrink-0">
               <TabButton active={activeTab === 'pipelines'} onClick={() => setActiveTab('pipelines')}>
                 파이프라인
               </TabButton>
@@ -206,7 +218,7 @@ export default function HomePage() {
 
             {/* Pipelines tab */}
             {activeTab === 'pipelines' && (
-              <div className="space-y-0">
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
                 {pipelines.length === 0 ? (
                   <EmptyState text="등록된 파이프라인이 없습니다" />
                 ) : (
@@ -242,7 +254,7 @@ export default function HomePage() {
                             <PipelineDropdown
                               pipelineId={pl.id}
                               onDuplicate={handleDuplicate}
-                              onArchive={handleArchive}
+                              onArchive={handleArchiveRequest}
                             />
                           </div>
                         )}
@@ -258,7 +270,7 @@ export default function HomePage() {
 
             {/* Jobs tab */}
             {activeTab === 'jobs' && (
-              <div className="space-y-0">
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
                 {jobs.length === 0 ? (
                   <EmptyState text="실행 기록이 없습니다" />
                 ) : (
@@ -297,7 +309,7 @@ export default function HomePage() {
 
             {/* Queues tab */}
             {activeTab === 'queues' && (
-              <div className="space-y-0">
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs text-muted-foreground">
                     {healthyQueues}/{totalQueues} healthy
@@ -329,9 +341,18 @@ export default function HomePage() {
                 </div>
               </div>
             )}
-          </div>
         </div>
       </div>
+
+      {archiveTarget && (
+        <PipelineArchiveConfirmDialog
+          pipelineName={archiveTarget.name}
+          satelliteId={archiveTarget.satelliteId}
+          mode={archiveTarget.mode}
+          onConfirm={handleArchiveConfirm}
+          onCancel={() => setArchiveTarget(null)}
+        />
+      )}
     </div>
   );
 }
@@ -346,7 +367,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       type="button"
       onClick={onClick}
       className={cn(
-        'px-3.5 py-2 text-xs font-medium border-b-2 -mb-px transition-colors',
+        'px-3.5 py-2 text-xs font-medium border-b-2 -mb-px transition-colors cursor-pointer',
         active ? 'border-accent text-accent' : 'border-transparent text-muted-foreground hover:text-foreground',
       )}
     >

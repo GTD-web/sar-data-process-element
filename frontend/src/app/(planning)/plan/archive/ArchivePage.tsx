@@ -19,6 +19,17 @@ const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
   ),
 });
 
+function formatArchiveDate(value?: string) {
+  if (!value) return '-';
+  return new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
 function RestorePipelineConfirmDialog({
   pipeline,
   onConfirm,
@@ -57,6 +68,16 @@ function RestorePipelineConfirmDialog({
               <span className="text-muted-foreground">대상</span>
               <span className="font-mono text-foreground">{pipeline.satelliteId} · {pipeline.mode}</span>
             </div>
+            <div className="flex justify-between gap-3 text-[11px]">
+              <span className="text-muted-foreground">폐기일</span>
+              <span className="font-mono text-foreground text-right">{formatArchiveDate(pipeline.archivedAt)}</span>
+            </div>
+          </div>
+          <div className="rounded-lg border border-warning/25 bg-warning/10 px-3 py-2.5">
+            <div className="text-[10px] font-semibold text-warning mb-1">폐기 사유</div>
+            <p className="text-[11px] leading-relaxed text-foreground">
+              {pipeline.archiveReason ?? '폐기 사유가 기록되지 않았습니다.'}
+            </p>
           </div>
         </div>
 
@@ -166,6 +187,18 @@ export default function ArchivePage() {
               <div className="px-3 py-1.5 rounded-md bg-card/80 backdrop-blur-sm border border-border shadow-sm text-xs">
                 <span className="text-muted-foreground">아카이브: </span>
                 <span className="font-semibold text-foreground">{selectedPipeline.name}</span>
+              </div>
+            </div>
+            {/* Archive reason */}
+            <div className="absolute top-3 right-3 z-10 w-[min(360px,calc(100%-1.5rem))]">
+              <div className="rounded-lg bg-card/90 backdrop-blur-sm border border-border shadow-lg overflow-hidden">
+                <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border">
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase">폐기 사유</span>
+                  <span className="font-mono text-[10px] text-muted-foreground">{formatArchiveDate(selectedPipeline.archivedAt)}</span>
+                </div>
+                <p className="px-3 py-2.5 text-[11px] leading-relaxed text-foreground">
+                  {selectedPipeline.archiveReason ?? '폐기 사유가 기록되지 않았습니다.'}
+                </p>
               </div>
             </div>
             {/* Restore button */}
