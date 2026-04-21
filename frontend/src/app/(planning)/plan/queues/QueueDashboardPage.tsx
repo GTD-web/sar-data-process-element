@@ -116,9 +116,18 @@ export default function QueueDashboardPage() {
         activePage="queues"
       />
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left: Queue list with summary */}
-        <div className="w-1/3 min-w-60 max-w-90 border-r border-border flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-accent" />
+            <h1 className="text-sm font-semibold text-foreground">시스템 운영 모니터링</h1>
+            <span className="text-[10px] text-muted-foreground font-mono">{queues.length} queues</span>
+          </div>
+        </div>
+
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left: Queue list with summary */}
+          <div className="w-1/3 min-w-60 max-w-90 border-r border-border flex flex-col overflow-hidden">
           {/* Summary stats */}
           <div className="flex items-center gap-3 px-3 py-2.5 border-b border-border shrink-0 text-[11px]">
             <div className="flex items-center gap-1">
@@ -150,15 +159,16 @@ export default function QueueDashboardPage() {
               />
             ))}
           </div>
-        </div>
+          </div>
 
-        {/* Right: Detail */}
-        <div className="flex-1 overflow-hidden">
-          {selectedQ ? (
-            <QueueDetailPanel queue={selectedQ} onClose={() => setSelectedQueue(null)} />
-          ) : (
-            <div className="h-full flex items-center justify-center text-sm text-muted-foreground">큐를 선택하세요</div>
-          )}
+          {/* Right: Detail */}
+          <div className="flex-1 overflow-hidden">
+            {selectedQ ? (
+              <QueueDetailPanel queue={selectedQ} onClose={() => setSelectedQueue(null)} />
+            ) : (
+              <div className="h-full flex items-center justify-center text-sm text-muted-foreground">큐를 선택하세요</div>
+            )}
+          </div>
         </div>
       </div>
     </div>

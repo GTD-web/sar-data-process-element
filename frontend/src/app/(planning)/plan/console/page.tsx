@@ -1,10 +1,10 @@
 import { Suspense } from 'react';
-import ConsolePage from './ConsolePage';
+import PipelineManagementPage from './PipelineManagementPage';
 
 export default function Page() {
   return (
     <Suspense>
-      <ConsolePage />
+      <PipelineManagementPage />
     </Suspense>
   );
 }

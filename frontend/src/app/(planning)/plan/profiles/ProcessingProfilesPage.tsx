@@ -3,13 +3,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
+import PipelineManagementTabs from '@/components/panels/PipelineManagementTabs';
 import { toast } from '@/components/ui/Toast';
 import { useMockRole } from '@/components/auth/RolePreviewSelect';
 import type { PipelineDefinition, ProcessingProfile } from '@/types/pipeline';
 import { POLARIZATION_OPTIONS } from '@/types/pipeline';
 import { cn, formatKST } from '@/lib/utils';
 import {
-  Plus, Pencil, Trash2, X, Search, SlidersHorizontal, GitBranch,
+  Plus, Pencil, Trash2, X, Search, GitBranch,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -574,28 +575,13 @@ export default function ProcessingProfilesPage() {
         mode="nav"
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((v) => !v)}
-        activePage="profiles"
+        activePage="console"
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
-          <div className="flex items-center gap-2">
-            <SlidersHorizontal className="w-4 h-4 text-accent" />
-            <h1 className="text-sm font-semibold text-foreground">처리 프로파일</h1>
-            <span className="text-[10px] text-muted-foreground font-mono">{filtered.length}건</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {canManage && (
-              <button
-                onClick={() => { setEditProfile(null); setFormOpen(true); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-accent text-background hover:bg-accent/90 transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>새 프로파일</span>
-              </button>
-            )}
-          </div>
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-border shrink-0">
+          <PipelineManagementTabs active="profiles" counts={{ profiles: filtered.length }} />
         </div>
 
         {/* Filters */}
@@ -634,6 +620,17 @@ export default function ProcessingProfilesPage() {
             <option value="">전체 모드</option>
             {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
+          <div className="ml-auto">
+            {canManage && (
+              <button
+                onClick={() => { setEditProfile(null); setFormOpen(true); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-accent text-background hover:bg-accent/90 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>새 프로파일</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Table */}

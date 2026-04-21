@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Activity, GitBranch, GripVertical, ServerCog, Unplug, ExternalLink, TerminalSquare, X } from 'lucide-react';
 import LeftSidebar from '@/components/panels/LeftSidebar';
+import PipelineExecutionTabs from '@/components/panels/PipelineExecutionTabs';
 import { useMockRole } from '@/components/auth/RolePreviewSelect';
 import PipelineUndeployConfirmDialog from '@/components/panels/PipelineUndeployConfirmDialog';
 import { toast } from '@/components/ui/Toast';
@@ -197,6 +198,9 @@ export default function DeployedPipelinesPage() {
       />
 
       <main className="flex-1 min-w-0 overflow-y-auto">
+        <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-background px-5 py-2.5">
+          <PipelineExecutionTabs active="auto" counts={{ auto: deployedRules.length }} />
+        </div>
         <div className="min-h-full px-8 py-7">
           <section className="grid grid-cols-2 gap-3">
             <div className="rounded-lg border border-border bg-card overflow-hidden">
@@ -258,7 +262,7 @@ export default function DeployedPipelinesPage() {
             {deployedRules.length === 0 ? (
               <div className="px-4 py-16 text-center">
                 <Activity className="w-10 h-10 mx-auto text-muted-foreground/30" />
-                <p className="mt-3 text-sm font-medium text-foreground">배포된 파이프라인이 없습니다</p>
+                <p className="mt-3 text-sm font-medium text-foreground">자동 파이프라인이 없습니다</p>
                 <p className="mt-1 text-xs text-muted-foreground">파이프라인 화면에서 배포하면 이 목록에 표시됩니다.</p>
               </div>
             ) : (

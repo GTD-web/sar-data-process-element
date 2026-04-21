@@ -1,0 +1,125 @@
+/*
+ * SDPE Design System — globals.css for Lumir_SAR_Processor_GUI (Tailwind v3)
+ *
+ * renderer/styles/globals.css 를 이 파일로 교체하거나,
+ * 아래 :root / .dark 블록 + @layer base 블록만 기존 파일에 추가하세요.
+ *
+ * 값은 RGB 3채널(공백 구분) 형식 — tailwind.config.js 의 rgb(var(--X) / <alpha-value>) 와 연동되어
+ * bg-accent/15, text-destructive/80 같은 알파 수식자가 동작합니다.
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===========================================================
+   Design Tokens
+   =========================================================== */
+
+/* Light theme (default) */
+:root {
+  --background: 255 255 255;
+  --foreground: 26 26 26;
+
+  --card: 249 250 251;
+  --card-foreground: 26 26 26;
+
+  --border: 229 231 235;
+  --muted: 243 244 246;
+  --muted-foreground: 107 114 128;
+
+  --accent: 16 185 129;
+  --accent-foreground: 255 255 255;
+
+  --destructive: 220 38 38;
+  --success: 16 185 129;
+  --warning: 217 119 6;
+
+  --sidebar: 249 250 251;
+  --sidebar-foreground: 107 114 128;
+  --sidebar-border: 229 231 235;
+  --sidebar-accent: 255 255 255;
+
+  --ring: 16 185 129;
+}
+
+/* Dark theme (적용: <html class="dark">) */
+.dark {
+  --background: 26 26 26;
+  --foreground: 245 245 245;
+
+  --card: 38 38 38;
+  --card-foreground: 245 245 245;
+
+  --border: 58 58 58;
+  --muted: 58 58 58;
+  --muted-foreground: 160 160 160;
+
+  --accent: 52 211 153;
+  --accent-foreground: 26 26 26;
+
+  --destructive: 239 68 68;
+  --success: 52 211 153;
+  --warning: 251 191 36;
+
+  --sidebar: 26 26 26;
+  --sidebar-foreground: 160 160 160;
+  --sidebar-border: 38 38 38;
+  --sidebar-accent: 38 38 38;
+
+  --ring: 52 211 153;
+}
+
+/* ===========================================================
+   Base
+   =========================================================== */
+
+@layer base {
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ===========================================================
+   Lumir 기존 유틸리티 (보존)
+   =========================================================== */
+
+@layer components {
+  .btn-blue {
+    @apply text-white font-bold px-4 py-2 rounded bg-blue-600 hover:bg-blue-500;
+  }
+}
+
+@layer utilities {
+  /* 토큰 기반 스크롤바 — 테마 자동 전환 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--border)) rgb(var(--card));
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: rgb(var(--card));
+    border-radius: 4px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: rgb(var(--border));
+    border-radius: 4px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--muted-foreground));
+  }
+
+  /* .custom-scrollbar 클래스 alias (기존 사용처 호환) */
+  .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: rgb(var(--card)); border-radius: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: rgb(var(--border)); border-radius: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgb(var(--muted-foreground)); }
+  .custom-scrollbar { scrollbar-width: thin; scrollbar-color: rgb(var(--border)) rgb(var(--card)); }
+}

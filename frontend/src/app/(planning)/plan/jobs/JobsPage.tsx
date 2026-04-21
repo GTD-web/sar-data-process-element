@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import PipelineProgressStepper from '@/components/graph/PipelineProgressStepper';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
+import PipelineExecutionTabs from '@/components/panels/PipelineExecutionTabs';
 import RightTabbedPanel from '@/components/panels/RightTabbedPanel';
 import ConsoleTab, { type ConsoleMode } from '@/components/panels/ConsoleTab';
 import ReprocessConfirmDialog from '@/components/panels/ReprocessConfirmDialog';
@@ -323,6 +324,9 @@ export default function JobsPage() {
 
       {/* Center: Canvas */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex items-center gap-3 border-b border-border px-5 py-2.5 shrink-0">
+          <PipelineExecutionTabs active="manual" counts={{ manual: filteredJobs.length }} />
+        </div>
         {selectedJob && graphSteps.length > 0 ? (
           <div ref={canvasRef} className="flex-1 relative overflow-hidden">
             <CanvasGraph
@@ -378,10 +382,10 @@ export default function JobsPage() {
         ) : (
           <div className="flex-1 relative flex items-center justify-center bg-background text-muted-foreground text-sm">
             {jobs.length === 0
-              ? '실행 기록이 없습니다'
+              ? '수동 파이프라인 실행 기록이 없습니다'
               : selectedJob && !selectedPipeline
                 ? '선택된 작업의 파이프라인을 찾을 수 없습니다'
-                : '좌측에서 실행 작업을 선택하세요'}
+                : '좌측에서 수동 파이프라인 실행을 선택하세요'}
           </div>
         )}
 

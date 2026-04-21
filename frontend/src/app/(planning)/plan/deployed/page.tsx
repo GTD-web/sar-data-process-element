@@ -1,5 +1,10 @@
-import DeployedPipelinesPage from './DeployedPipelinesPage';
+import { Suspense } from 'react';
+import PipelineExecutionManagementPage from './PipelineExecutionManagementPage';
 
 export default function Page() {
-  return <DeployedPipelinesPage />;
+  return (
+    <Suspense>
+      <PipelineExecutionManagementPage />
+    </Suspense>
+  );
 }

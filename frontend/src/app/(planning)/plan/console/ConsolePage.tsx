@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import PipelineProgressStepper from '@/components/graph/PipelineProgressStepper';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
+import PipelineManagementTabs from '@/components/panels/PipelineManagementTabs';
 import RightTabbedPanel from '@/components/panels/RightTabbedPanel';
 import ConsoleTab, { type ConsoleMode } from '@/components/panels/ConsoleTab';
 import { useMockRole } from '@/components/auth/RolePreviewSelect';
@@ -906,6 +907,9 @@ export default function ConsolePage() {
 
       {/* Center: Canvas */}
       <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex items-center gap-3 border-b border-border px-5 py-2.5 shrink-0">
+            <PipelineManagementTabs active="pipelines" counts={{ pipelines: pipelines.length }} />
+          </div>
           {graphSteps.length > 0 ? (
             <div ref={canvasRef} className="flex-1 relative overflow-hidden">
               <CanvasGraph

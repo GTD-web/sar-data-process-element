@@ -1,5 +1,10 @@
-import DeployedPipelinesPage from '@/app/(planning)/plan/deployed/DeployedPipelinesPage';
+import { Suspense } from 'react';
+import PipelineExecutionManagementPage from '@/app/(planning)/plan/deployed/PipelineExecutionManagementPage';
 
 export default function Page() {
-  return <DeployedPipelinesPage />;
+  return (
+    <Suspense>
+      <PipelineExecutionManagementPage />
+    </Suspense>
+  );
 }

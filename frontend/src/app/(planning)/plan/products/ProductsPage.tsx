@@ -573,7 +573,7 @@ export default function ProductsPage() {
           <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
             <div className="flex items-center gap-2">
               <Package className="w-4 h-4 text-accent" />
-              <h1 className="text-sm font-semibold text-foreground">제품</h1>
+              <h1 className="text-sm font-semibold text-foreground">Production 목록</h1>
               <span className="text-[10px] text-muted-foreground font-mono">{totalCount}건</span>
             </div>
           </div>

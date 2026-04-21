@@ -10,11 +10,12 @@ import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSel
 import PasswordChangeModal from '@/components/auth/PasswordChangeModal';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import { toast } from '@/components/ui/Toast';
+import { useTheme } from '@/lib/theme';
 import {
   Activity, GitBranch, Plus, PanelLeftClose, PanelLeftOpen,
   Settings, User, Bell, Trash2, ChevronDown, Briefcase,
-  LayoutDashboard, Layers, Archive, SlidersHorizontal, Package, FileText,
-  Users as UsersIcon, KeyRound, LogOut, Radio,
+  LayoutDashboard, Layers, Archive, Package, FileText,
+  Users as UsersIcon, KeyRound, LogOut, Radio, Sun, Moon,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -88,6 +89,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
   const profileRef = useRef<HTMLDivElement>(null);
   const [mockRole, setMockRole] = useMockRole();
   const service = usePipelineService();
+  const { theme, toggle: toggleTheme } = useTheme();
   const canSeeUsers = mockRole === 'Administrator';
   const mockUsername = mockRole === 'Administrator' ? 'admin' : 'operator-01';
 
@@ -116,19 +118,16 @@ export default function LeftSidebar(props: LeftSidebarProps) {
   const activeJobCount = jobsPl?.jobs.filter((j) => j.status === 'ASSIGNED' || j.status === 'CREATED').length ?? 0;
 
   const navItems: { id: NonNullable<LeftSidebarBaseProps['activePage']>; icon: React.ElementType; label: string; href: string; adminOnly?: boolean }[] = [
-    { id: 'home', icon: LayoutDashboard, label: '오버뷰', href: base },
-    { id: 'console', icon: GitBranch, label: '파이프라인', href: `${base}/console` },
-    { id: 'deployed', icon: Radio, label: '배포 파이프라인 목록', href: `${base}/deployed` },
-    { id: 'jobs', icon: Briefcase, label: '실행 작업', href: `${base}/jobs` },
-    { id: 'profiles', icon: SlidersHorizontal, label: '처리 프로파일', href: `${base}/profiles` },
-    { id: 'products', icon: Package, label: '제품', href: `${base}/products` },
-    { id: 'queues', icon: Layers, label: '큐 모니터링', href: `${base}/queues` },
+    { id: 'home', icon: LayoutDashboard, label: '대시보드', href: base },
+    { id: 'console', icon: GitBranch, label: '파이프라인 관리', href: `${base}/console` },
+    { id: 'products', icon: Package, label: 'Production 목록', href: `${base}/products` },
+    { id: 'queues', icon: Layers, label: '시스템 운영 모니터링', href: `${base}/queues` },
     { id: 'alerts', icon: Bell, label: '알림', href: `${base}/alerts` },
     { id: 'audit', icon: FileText, label: '감사 로그', href: `${base}/audit`, adminOnly: true },
     { id: 'users', icon: UsersIcon, label: '사용자 관리', href: `${base}/users`, adminOnly: true },
-    { id: 'archive', icon: Archive, label: '아카이브', href: `${base}/archive` },
   ];
   const visibleNavItems = navItems.filter((item) => !item.adminOnly || canSeeUsers);
+  const executionActive = activePage === 'deployed' || activePage === 'jobs';
   const jobStatusLabels: Record<JobStatus, string> = {
     CREATED: '대기',
     ASSIGNED: '실행 중',
@@ -171,20 +170,44 @@ export default function LeftSidebar(props: LeftSidebarProps) {
 
       {collapsed ? (
         /* ── Collapsed icons ── */
-        <div className="flex-1 flex flex-col items-center py-2 gap-1">
-          {visibleNavItems.map((item) => (
-            <a
-              key={item.id}
-              href={item.href}
-              className={cn(
-                'p-2 rounded-md transition-colors',
-                activePage === item.id ? 'bg-accent/10 text-accent' : 'hover:bg-muted/50 text-muted-foreground',
-              )}
-              title={item.label}
-            >
-              <item.icon className="w-4 h-4" />
-            </a>
-          ))}
+        <div className="flex-1 min-h-0 flex flex-col items-center py-2">
+          <div className="flex-1 flex flex-col items-center gap-1">
+            {visibleNavItems.map((item) => (
+              <div key={item.id} className="contents">
+                <a
+                  href={item.href}
+                  className={cn(
+                    'p-2 rounded-md transition-colors',
+                    activePage === item.id ? 'bg-accent/10 text-accent' : 'hover:bg-muted/50 text-muted-foreground',
+                  )}
+                  title={item.label}
+                >
+                  <item.icon className="w-4 h-4" />
+                </a>
+                {item.id === 'console' && (
+                  <a
+                    href={`${base}/deployed?tab=auto`}
+                    className={cn(
+                      'p-2 rounded-md transition-colors',
+                      executionActive ? 'bg-accent/10 text-accent' : 'hover:bg-muted/50 text-muted-foreground',
+                    )}
+                    title="파이프라인 실행 관리"
+                  >
+                    <Radio className="w-4 h-4" />
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="p-2 rounded-md text-muted-foreground hover:bg-muted/50 transition-colors"
+            title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
+            aria-label="테마 전환"
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
         </div>
       ) : (
         /* ── Expanded content ── */
@@ -192,19 +215,36 @@ export default function LeftSidebar(props: LeftSidebarProps) {
           {/* Navigation */}
           <div className="px-2 py-2 border-b border-border space-y-0.5">
             {visibleNavItems.map((item) => (
-              <a
-                key={item.id}
-                href={item.href}
-                className={cn(
-                  'flex items-center gap-2 px-2 py-1.5 rounded-md text-[11px] font-medium transition-colors',
-                  activePage === item.id
-                    ? 'bg-accent/10 text-accent'
-                    : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground',
+              <div key={item.id}>
+                <a
+                  href={item.href}
+                  className={cn(
+                    'flex items-center gap-2 px-2 py-1.5 rounded-md text-[11px] font-medium transition-colors',
+                    activePage === item.id
+                      ? 'bg-accent/10 text-accent'
+                      : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground',
+                  )}
+                >
+                  <item.icon className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span className="leading-4 break-words">{item.label}</span>
+                </a>
+                {item.id === 'console' && (
+                  <div className="pt-1">
+                    <a
+                      href={`${base}/deployed?tab=auto`}
+                      className={cn(
+                        'flex items-center gap-2 px-2 py-1.5 rounded-md text-[11px] font-medium transition-colors',
+                        executionActive
+                          ? 'bg-accent/10 text-accent'
+                          : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground',
+                      )}
+                    >
+                      <Radio className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span className="leading-4 break-words">파이프라인 실행 관리</span>
+                    </a>
+                  </div>
                 )}
-              >
-                <item.icon className="w-3.5 h-3.5 flex-shrink-0" />
-                <span className="leading-4 break-words">{item.label}</span>
-              </a>
+              </div>
             ))}
           </div>
 
@@ -268,7 +308,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
               >
                 <ChevronDown className={cn('w-3 h-3 transition-transform', !pipelineJobsOpen && '-rotate-90')} />
                 <Briefcase className="w-3 h-3" />
-                <span className="flex-1 text-left">실행 작업</span>
+                <span className="flex-1 text-left">수동 파이프라인</span>
                 <span className="text-[9px] font-mono font-normal normal-case">{consolePl.pipelineJobs.length}</span>
               </button>
               {pipelineJobsOpen && (
@@ -305,7 +345,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
             </div>
           )}
 
-          {/* ── Jobs mode: 실행 작업 섹션만 ── */}
+          {/* ── Jobs mode: 수동 파이프라인 섹션만 ── */}
           {isJobs && jobsPl && (
             <div className="flex-1 min-h-0 flex flex-col">
               <button
@@ -314,7 +354,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
               >
                 <ChevronDown className={cn('w-3 h-3 transition-transform', !jobsOpen && '-rotate-90')} />
                 <Briefcase className="w-3 h-3" />
-                <span className="flex-1 text-left">실행 작업</span>
+                <span className="flex-1 text-left">수동 파이프라인</span>
                 {activeJobCount > 0 && (
                   <span className="px-1 rounded-full text-[9px] bg-accent/15 text-accent font-normal normal-case">{activeJobCount}</span>
                 )}
@@ -512,7 +552,28 @@ export default function LeftSidebar(props: LeftSidebarProps) {
               </div>
             )}
           </div>
-          <div className="px-2 text-[9px] text-muted-foreground">v0.1.0 · Mock</div>
+          <div className="flex items-center justify-between gap-2 px-2">
+            <span className="text-[9px] text-muted-foreground">v0.1.0 · Mock</span>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] text-muted-foreground hover:bg-muted/30 hover:text-foreground transition-colors"
+              title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
+              aria-label="테마 전환"
+            >
+              {theme === 'dark' ? (
+                <>
+                  <Sun className="w-3 h-3" />
+                  <span>라이트</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-3 h-3" />
+                  <span>다크</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       )}
 
