@@ -117,15 +117,12 @@ export default function SettingsPage() {
 
       <main className="flex-1 min-w-0 overflow-y-auto">
         <div className="min-h-full px-8 py-7">
-          <header className="flex items-center justify-between gap-4 border-b border-border pb-5">
+          <header className="flex items-center justify-between gap-4 border-b border-border pb-4">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <Settings className="w-4 h-4 text-accent" />
                 <h1 className="text-lg font-bold text-foreground">설정</h1>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                계정과 운영 콘솔 표시 방식을 조정합니다.
-              </p>
             </div>
             <div className="flex items-center gap-2">
               <button

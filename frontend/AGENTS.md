@@ -36,3 +36,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - `page.tsx` 에서 Provider 를 직접 주입하지 않는다 — `layout.tsx` 가 담당한다.
 - 서비스 구현체를 컴포넌트에 직접 import하지 않는다 — Context 를 통해 주입한다.
 - `(planning)` 과 `(current)` 에서 같은 URL path 로 page.tsx 를 만들지 않는다.
+
+## Post-change Deployment
+
+- `frontend/` 변경 작업이 끝나면 최종 응답 전에 다음 명령을 실행해 프론트엔드 컨테이너를 재배포한다. 사용자가 명시적으로 하지 말라고 한 경우만 생략한다.
+- `docker rm -f sdpe-frontend 2>nul & docker build -t sdpe-frontend:latest "C:\Users\USER\dev\sar-data-process-element\frontend" && docker run -d --name sdpe-frontend -p 3010:3000 sdpe-frontend:latest`

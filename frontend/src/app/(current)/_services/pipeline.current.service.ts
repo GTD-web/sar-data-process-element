@@ -20,6 +20,7 @@ import type {
   PipelineDefinition,
   ProcessingProfile,
   Product,
+  RawDataSummary,
   QueueHealth,
   SarStage,
   ServiceResponse,
@@ -51,6 +52,30 @@ export const pipelineCurrentService: IPipelineUIService = {
   async 대시보드_통계를_조회한다(): Promise<ServiceResponseWithData<DashboardStats>> {
     const res = await fetch(`${API_BASE}/dashboard/stats`);
     return handleResponse(res, '대시보드 통계 조회 실패');
+  },
+
+  async 원시데이터_목록을_조회한다(params?: {
+    satelliteId?: string;
+    mode?: string;
+    mapped?: boolean;
+    limit?: number;
+  }): Promise<ServiceResponseWithData<PaginatedResponse<RawDataSummary>>> {
+    const query = new URLSearchParams();
+    if (params?.satelliteId) query.set('satelliteId', params.satelliteId);
+    if (params?.mode) query.set('mode', params.mode);
+    if (params?.mapped !== undefined) query.set('mapped', String(params.mapped));
+    if (params?.limit) query.set('limit', String(params.limit));
+    const res = await fetch(`${API_BASE}/raw-data?${query}`);
+    return handleResponse(res, '원시 데이터 목록 조회 실패');
+  },
+
+  async 원시데이터_파이프라인을_매핑한다(rawDataId: string, pipelineId: string | null): Promise<ServiceResponseWithData<RawDataSummary>> {
+    const res = await fetch(`${API_BASE}/raw-data/${rawDataId}/mapping`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pipelineId }),
+    });
+    return handleResponse(res, '원시 데이터 매핑 실패');
   },
 
   async Job_목록을_조회한다(params?: {

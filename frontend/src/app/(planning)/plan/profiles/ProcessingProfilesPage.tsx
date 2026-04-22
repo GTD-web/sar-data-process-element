@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import PipelineManagementTabs from '@/components/panels/PipelineManagementTabs';
@@ -10,7 +10,7 @@ import type { PipelineDefinition, ProcessingProfile } from '@/types/pipeline';
 import { POLARIZATION_OPTIONS } from '@/types/pipeline';
 import { cn, formatKST } from '@/lib/utils';
 import {
-  Plus, Pencil, Trash2, X, Search, GitBranch,
+  Plus, Pencil, Trash2, X, Search, GitBranch, ArrowUp, ArrowDown, ArrowUpDown,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -20,6 +20,22 @@ import {
 const SATELLITES = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'];
 const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+const PROFILE_TABLE_COLUMNS = [
+  { id: 'name', label: '이름', align: 'left' },
+  { id: 'satelliteId', label: '위성', align: 'left' },
+  { id: 'mode', label: '모드', align: 'left' },
+  { id: 'polarization', label: '편파', align: 'left' },
+  { id: 'priority', label: '우선순위', align: 'center' },
+  { id: 'references', label: '참조 파이프라인', align: 'center' },
+  { id: 'createdAt', label: '생성일', align: 'left' },
+] as const;
+
+type ProfileSortKey = (typeof PROFILE_TABLE_COLUMNS)[number]['id'];
+
+function SortIcon({ active, order }: { active: boolean; order: 'asc' | 'desc' }) {
+  if (!active) return <ArrowUpDown className="w-3 h-3 opacity-30" />;
+  return order === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />;
+}
 
 interface ReferencingPipelineInfo {
   id: string;
@@ -580,7 +596,7 @@ export default function ProcessingProfilesPage() {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-3 border-b border-border shrink-0">
+        <div className="flex items-center gap-3 px-5 py-2.5 border-b border-border shrink-0">
           <PipelineManagementTabs active="profiles" counts={{ profiles: filtered.length }} />
         </div>
 

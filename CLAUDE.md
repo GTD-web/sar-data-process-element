@@ -51,3 +51,8 @@ frontend/                        # Next.js 프론트엔드 (별도 CLAUDE.md 참
 GitHub Actions (`ci.yml`): Node 20 + Python 3.11
 - TS: build → lint → test → test:e2e
 - Python: ruff check → ruff format --check → mypy
+
+## 작업 종료 규칙
+
+- `frontend/` 아래 변경이 포함된 작업을 마치면, 최종 응답 전에 아래 명령으로 프론트엔드 Docker 이미지를 재빌드하고 컨테이너를 재배포한다. 사용자가 명시적으로 제외하라고 한 경우만 예외다.
+- `docker rm -f sdpe-frontend 2>nul & docker build -t sdpe-frontend:latest "C:\Users\USER\dev\sar-data-process-element\frontend" && docker run -d --name sdpe-frontend -p 3010:3000 sdpe-frontend:latest`

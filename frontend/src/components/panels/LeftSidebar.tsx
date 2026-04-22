@@ -14,7 +14,7 @@ import { useTheme } from '@/lib/theme';
 import {
   Activity, GitBranch, Plus, PanelLeftClose, PanelLeftOpen,
   Settings, User, Bell, Trash2, ChevronDown, Briefcase,
-  LayoutDashboard, Layers, Archive, Package, FileText,
+  LayoutDashboard, Layers, Archive, Package, FileText, Antenna,
   Users as UsersIcon, KeyRound, LogOut, Radio, Sun, Moon,
 } from 'lucide-react';
 
@@ -26,7 +26,7 @@ interface LeftSidebarBaseProps {
   collapsed: boolean;
   onToggle: () => void;
   /** 현재 활성 페이지 (nav highlight용) */
-  activePage?: 'home' | 'console' | 'deployed' | 'jobs' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit' | 'users' | 'settings';
+  activePage?: 'home' | 'raw-data' | 'console' | 'deployed' | 'jobs' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit' | 'users' | 'settings';
 }
 
 interface LeftSidebarConsoleProps extends LeftSidebarBaseProps {
@@ -119,6 +119,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
 
   const navItems: { id: NonNullable<LeftSidebarBaseProps['activePage']>; icon: React.ElementType; label: string; href: string; adminOnly?: boolean }[] = [
     { id: 'home', icon: LayoutDashboard, label: '대시보드', href: base },
+    { id: 'raw-data', icon: Antenna, label: 'Raw Data 목록', href: `${base}/raw-data` },
     { id: 'console', icon: GitBranch, label: '파이프라인 관리', href: `${base}/console` },
     { id: 'products', icon: Package, label: 'Production 목록', href: `${base}/products` },
     { id: 'queues', icon: Layers, label: '시스템 운영 모니터링', href: `${base}/queues` },
@@ -330,12 +331,11 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                         )}
                       >
                         <div className="flex items-center justify-between gap-1">
-                          <span className="text-[10px] font-mono font-semibold truncate">{job.jobId}</span>
+                          <span className="text-[10px] font-mono font-semibold truncate">{job.sceneId}</span>
                           <JobStatusBadge status={job.status} retryCount={job.retryCount} />
                         </div>
                         <div className="flex items-center justify-between text-[9px] text-muted-foreground mt-0.5">
-                          <span className="truncate">{job.sceneId}</span>
-                          <span className="shrink-0">{formatRelativeTime(job.updatedAt)}</span>
+                          <span className="truncate">{formatRelativeTime(job.updatedAt)}</span>
                         </div>
                       </button>
                     ))
@@ -405,12 +405,11 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                           )}
                         >
                           <div className="flex items-center justify-between gap-1">
-                            <span className="text-[10px] font-mono font-semibold truncate">{job.jobId}</span>
+                            <span className="text-[10px] font-mono font-semibold truncate">{job.sceneId}</span>
                             <JobStatusBadge status={job.status} retryCount={job.retryCount} />
                           </div>
                           <div className="flex items-center justify-between text-[9px] text-muted-foreground mt-0.5">
-                            <span className="truncate">{job.sceneId}</span>
-                            <span className="shrink-0">{formatRelativeTime(job.updatedAt)}</span>
+                            <span className="truncate">{formatRelativeTime(job.updatedAt)}</span>
                           </div>
                         </button>
                       ))}

@@ -77,17 +77,29 @@ export default function JobsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+  const basePath = pathname.startsWith('/current') ? '/current' : '/plan';
+  const manualJobsPath = `${basePath}/jobs`;
+  const isLegacyManualExecutionRoute = pathname === `${basePath}/deployed` && searchParams.get('tab') === 'manual';
 
   const updateJobIdParam = useCallback((jobId: string | null) => {
     const params = new URLSearchParams(searchParams.toString());
+    params.delete('tab');
     if (jobId) {
       params.set('jobId', jobId);
     } else {
       params.delete('jobId');
     }
     const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname);
-  }, [searchParams, router, pathname]);
+    router.replace(qs ? `${manualJobsPath}?${qs}` : manualJobsPath);
+  }, [searchParams, router, manualJobsPath]);
+
+  useEffect(() => {
+    if (!isLegacyManualExecutionRoute) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('tab');
+    const qs = params.toString();
+    router.replace(qs ? `${manualJobsPath}?${qs}` : manualJobsPath);
+  }, [isLegacyManualExecutionRoute, searchParams, router, manualJobsPath]);
 
   // --- Data ---
   const [jobs, setJobs] = useState<JobSummary[]>([]);

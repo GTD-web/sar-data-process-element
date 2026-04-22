@@ -15,6 +15,8 @@ import type {
   Product,
   ProductQuality,
   ProductStatus,
+  RawDataStatus,
+  RawDataSummary,
   QueueHealth,
   QueueMessage,
   QueueDeadLetter,
@@ -74,6 +76,11 @@ const SCENE_IDS = [
 ];
 
 const SATELLITE_IDS = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'];
+const SATELLITE_SHORT_NAMES: Record<string, string> = {
+  'Lumir-X1': 'X1',
+  'Lumir-X2': 'X2',
+  'Lumir-X3': 'X3',
+};
 const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
 
 const MOCK_PROCESSING_PROFILES: ProcessingProfile[] = SATELLITE_IDS.flatMap((sat) => [
@@ -176,6 +183,37 @@ const MULTI_LEVEL_BRANCH_EDGES: BranchedEdge[] = [
   // fan-in
   { source: 7, target: 10 },
   { source: 8, target: 10 },
+  { source: 9, target: 10 },
+];
+
+/**
+ * §5.1 확장 샘플: 다중 레벨 생성 중 L2A/L2B 저장 연결을 의도적으로 제거한 커스텀 저장 파이프라인.
+ * 기본적으로는 L2A/L2B/L3 세 결과를 모두 저장할 수 있지만, 운영자가 두 출력 저장선을 끊고
+ * L3만 카탈로그로 넘기도록 구성할 수 있음을 보여주는 UI 검증용 샘플.
+ */
+const MULTI_LEVEL_CUSTOM_OUTPUT_STEPS: StepDef[] = [
+  TRIGGER_STEP,                          // 1
+  JOB_INIT_STEP,                         // 2
+  { kind: 'SAR', sarStage: 'L0' },       // 3
+  { kind: 'SAR', sarStage: 'L1A' },      // 4
+  { kind: 'SAR', sarStage: 'L1B' },      // 5
+  { kind: 'SAR', sarStage: 'L1C' },      // 6
+  { kind: 'SAR', sarStage: 'L2A' },      // 7
+  { kind: 'SAR', sarStage: 'L2B' },      // 8
+  { kind: 'SAR', sarStage: 'L3' },       // 9
+  CATALOG_STEP,                          // 10
+];
+const MULTI_LEVEL_CUSTOM_OUTPUT_EDGES: BranchedEdge[] = [
+  { source: 1, target: 2 },
+  { source: 2, target: 3 },
+  { source: 3, target: 4 },
+  { source: 4, target: 5 },
+  { source: 5, target: 6 },
+  // 생성은 병렬로 유지
+  { source: 6, target: 7 },
+  { source: 6, target: 8 },
+  { source: 6, target: 9 },
+  // 저장선은 L3만 유지하고 L2A/L2B는 의도적으로 끊어 커스텀 구성 사례를 표현
   { source: 9, target: 10 },
 ];
 
@@ -353,6 +391,12 @@ function generateJobs(count: number, pipelines: PipelineDefinition[]): JobDetail
     const runningStep = steps.find((s) => s.status === 'RUNNING' || s.status === 'FAILED');
     const acqStart = randomDate(7);
     const acqEnd = new Date(new Date(acqStart).getTime() + 120000).toISOString();
+    const rawDataName = formatRawDataTitle(
+      satelliteId,
+      acqStart,
+      34.95 + ((idx * 0.18324) % 3.6),
+      126.14 + ((idx * 0.21437) % 3.8),
+    );
 
     // 파이프라인에 FILE_INPUT이 있으면 부분 재처리
     const isPartial = pipelineStepDefs.some((s) => s.kind === 'FILE_INPUT');
@@ -391,7 +435,7 @@ function generateJobs(count: number, pipelines: PipelineDefinition[]): JobDetail
       receivedAt: new Date(new Date(acqEnd).getTime() + 300000).toISOString(),
       satelliteId,
       mode,
-      rawDataPath: `/mnt/nas/sdpe/raw/${SCENE_IDS[idx % SCENE_IDS.length]}.raw`,
+      rawDataPath: `/mnt/nas/sdpe/raw/${satelliteId}/${mode.toLowerCase()}/${rawDataName}`,
       processingProfile,
       priority: 3 + Math.floor(Math.random() * 5),
       triggerSource,
@@ -604,10 +648,12 @@ function generateProducts(jobs: JobDetail[]): Product[] {
 
       const baseLat = 35 + Math.random() * 3;
       const baseLon = 126 + Math.random() * 3;
+      const rawDataName = job.rawDataPath.split('/').pop() ?? `${job.sceneId}.raw`;
 
       products.push({
         id: `PROD-${job.jobId}-${level}`,
         sceneId: job.sceneId,
+        rawDataName,
         jobId: job.jobId,
         level,
         satelliteId: job.satelliteId,
@@ -633,6 +679,61 @@ function generateProducts(jobs: JobDetail[]): Product[] {
   }
 
   return products.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+function formatRawDataTitle(satelliteId: string, capturedAt: string, latitude: number, longitude: number): string {
+  const shortName = SATELLITE_SHORT_NAMES[satelliteId] ?? satelliteId.replace('Lumir-', '');
+  const ts = new Date(capturedAt);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const datePart = `${ts.getUTCFullYear()}${pad(ts.getUTCMonth() + 1)}${pad(ts.getUTCDate())}`;
+  const timePart = `${pad(ts.getUTCHours())}${pad(ts.getUTCMinutes())}${pad(ts.getUTCSeconds())}`;
+  const latPart = latitude.toFixed(6).replace('.', '-');
+  const lonPart = longitude.toFixed(6).replace('.', '-');
+  return `${shortName}_${datePart}_${timePart}_${latPart}_${lonPart}`;
+}
+
+function generateRawData(pipelines: PipelineDefinition[]): RawDataSummary[] {
+  const now = Date.now();
+  return Array.from({ length: 24 }, (_, idx) => {
+    const satelliteId = SATELLITE_IDS[idx % SATELLITE_IDS.length];
+    const mode = MODES[idx % MODES.length];
+    const polarization = mode === 'ScanSAR' ? 'VV' : idx % 2 === 0 ? 'HH+HV' : 'HH';
+    const recentOffsetsMinutes = [6, 18, 42, 95, 160, 245, 390, 560];
+    const capturedAt = idx < recentOffsetsMinutes.length
+      ? new Date(now - recentOffsetsMinutes[idx] * 60_000 - (12 + idx * 3) * 60_000).toISOString()
+      : new Date(Date.UTC(2026, 3, 12 + (idx % 9), 8 + (idx % 10), 10 + (idx * 3) % 50, 24 + idx)).toISOString();
+    const receivedAt = idx < recentOffsetsMinutes.length
+      ? new Date(now - recentOffsetsMinutes[idx] * 60_000).toISOString()
+      : new Date(new Date(capturedAt).getTime() + (8 + (idx % 6)) * 60_000).toISOString();
+    const latitude = 34.95 + (idx * 0.18324) % 3.6;
+    const longitude = 126.14 + (idx * 0.21437) % 3.8;
+    const preferredPipeline = pipelines.find((pipeline) => (
+      !pipeline.archived &&
+      pipeline.satelliteId === satelliteId &&
+      pipeline.mode === mode &&
+      !pipeline.name.includes('부분 재처리')
+    )) ?? null;
+    const mapped = idx % 5 !== 0 && preferredPipeline;
+    const status: RawDataStatus = mapped ? (idx % 4 === 0 ? 'READY' : 'MAPPED') : (idx % 7 === 0 ? 'HOLD' : 'RECEIVED');
+
+    return {
+      id: `RAW-${String(idx + 1).padStart(4, '0')}`,
+      title: formatRawDataTitle(satelliteId, capturedAt, latitude, longitude),
+      satelliteId,
+      mode,
+      polarization,
+      capturedAt,
+      receivedAt,
+      latitude,
+      longitude,
+      footprintKm: 22 + (idx % 6) * 4.5,
+      fileSizeBytes: 18_000_000_000 + idx * 630_000_000,
+      status,
+      rawDataPath: `/mnt/nas/sdpe/raw/${satelliteId}/${mode.toLowerCase()}/${formatRawDataTitle(satelliteId, capturedAt, latitude, longitude)}.dat`,
+      mappedPipelineId: mapped ? preferredPipeline.id : null,
+      mappedPipelineName: mapped ? preferredPipeline.name : null,
+    };
+  }).sort((a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime());
 }
 
 const QUEUE_NAMES = [
@@ -892,6 +993,13 @@ function generatePipelines(): PipelineDefinition[] {
       '2026-03-20T09:00:00Z',
     ),
     buildBranchedPipeline(
+      'PL-LX1-Branched-MultiLevel-CustomOutput-Stripmap',
+      'Lumir-X1 다중 레벨 커스텀 저장 구성 (L2A/L2B 저장 해제)',
+      'Lumir-X1', 'Stripmap',
+      MULTI_LEVEL_CUSTOM_OUTPUT_STEPS, MULTI_LEVEL_CUSTOM_OUTPUT_EDGES,
+      '2026-03-22T09:00:00Z',
+    ),
+    buildBranchedPipeline(
       'PL-LX2-Branched-DualPol-Stripmap',
       'Lumir-X2 편파 병렬 처리 [ICD TBD 가정: 채널별 파일]',
       'Lumir-X2', 'Stripmap',
@@ -1058,6 +1166,7 @@ function simulateJobExecution(job: JobDetail) {
 // =============================================================================
 
 class MockPipelineUIService implements IPipelineUIService {
+  private rawData: RawDataSummary[];
   private jobs: JobDetail[];
   private alerts: Alert[];
   private auditEvents: AuditEvent[];
@@ -1071,6 +1180,7 @@ class MockPipelineUIService implements IPipelineUIService {
   constructor() {
     this.pipelines = generatePipelines();
     this.activationRules = generateActivationRules(this.pipelines);
+    this.rawData = generateRawData(this.pipelines);
     this.jobs = generateJobs(50, this.pipelines);
     this.alerts = generateAlerts(this.jobs);
     this.auditEvents = generateAuditEvents(this.jobs);
@@ -1108,6 +1218,54 @@ class MockPipelineUIService implements IPipelineUIService {
         ),
         unacknowledgedAlerts: this.alerts.filter((a) => !a.acknowledged).length,
       },
+    };
+  }
+
+  async 원시데이터_목록을_조회한다(params?: {
+    satelliteId?: string;
+    mode?: string;
+    mapped?: boolean;
+    limit?: number;
+  }): Promise<ServiceResponseWithData<PaginatedResponse<RawDataSummary>>> {
+    let filtered = [...this.rawData];
+    if (params?.satelliteId) filtered = filtered.filter((item) => item.satelliteId === params.satelliteId);
+    if (params?.mode) filtered = filtered.filter((item) => item.mode === params.mode);
+    if (params?.mapped !== undefined) {
+      filtered = filtered.filter((item) => params.mapped ? !!item.mappedPipelineId : !item.mappedPipelineId);
+    }
+    const limit = params?.limit ?? filtered.length;
+    return {
+      success: true,
+      message: 'OK',
+      data: {
+        items: filtered.slice(0, limit).map((item) => ({ ...item })),
+        total: filtered.length,
+      },
+    };
+  }
+
+  async 원시데이터_파이프라인을_매핑한다(rawDataId: string, pipelineId: string | null): Promise<ServiceResponseWithData<RawDataSummary>> {
+    const rawData = this.rawData.find((item) => item.id === rawDataId);
+    if (!rawData) return { success: false, message: '원시 데이터를 찾을 수 없습니다' };
+
+    if (pipelineId === null) {
+      rawData.mappedPipelineId = null;
+      rawData.mappedPipelineName = null;
+      rawData.status = 'RECEIVED';
+      return { success: true, message: '파이프라인 매핑을 해제했습니다', data: { ...rawData } };
+    }
+
+    const pipeline = this.pipelines.find((item) => item.id === pipelineId && !item.archived);
+    if (!pipeline) return { success: false, message: '매핑할 파이프라인을 찾을 수 없습니다' };
+
+    rawData.mappedPipelineId = pipeline.id;
+    rawData.mappedPipelineName = pipeline.name;
+    rawData.status = 'MAPPED';
+
+    return {
+      success: true,
+      message: `원시 데이터를 "${pipeline.name}"에 연결했습니다`,
+      data: { ...rawData },
     };
   }
 

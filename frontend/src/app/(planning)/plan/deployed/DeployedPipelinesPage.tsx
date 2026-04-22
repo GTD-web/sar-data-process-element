@@ -1,20 +1,32 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Activity, GitBranch, GripVertical, ServerCog, Unplug, ExternalLink, TerminalSquare, X } from 'lucide-react';
+import { Activity, ChevronDown, ChevronUp, GitBranch, GripVertical, ServerCog, Unplug, ExternalLink, TerminalSquare, X } from 'lucide-react';
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import PipelineExecutionTabs from '@/components/panels/PipelineExecutionTabs';
 import { useMockRole } from '@/components/auth/RolePreviewSelect';
 import PipelineUndeployConfirmDialog from '@/components/panels/PipelineUndeployConfirmDialog';
 import { toast } from '@/components/ui/Toast';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
-import type { ExecutionLog, JobSummary, LogLevel, PipelineActivationRule, PipelineDefinition } from '@/types/pipeline';
+import type { ExecutionLog, JobSummary, LogLevel, PipelineActivationRule, PipelineDefinition, PipelineStep } from '@/types/pipeline';
 import {
   PIPELINE_EVENT_TYPE_LABELS,
   PRODUCT_LEVEL_LABELS,
+  SAR_STAGE_TO_CSC,
+  SAR_STAGE_TO_LEVEL,
   TRIGGER_SOURCE_LABELS,
 } from '@/types/pipeline';
+
+const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-56 items-center justify-center rounded-xl border border-border bg-background/50 text-sm text-muted-foreground">
+      파이프라인 UI 불러오는 중...
+    </div>
+  ),
+});
 
 function ruleConditions(rule: PipelineActivationRule): string[] {
   return [
@@ -62,6 +74,27 @@ const MIN_CONTENT_WIDTH = 940;
 const DEPLOYMENT_TABLE_WIDTH = 1042;
 const DEPLOYMENT_TABLE_GRID = '180px 135px 185px 125px 210px 115px';
 
+function toPreviewSteps(pipeline: PipelineDefinition): PipelineStep[] {
+  return pipeline.steps.map((step) => ({
+    order: step.order,
+    kind: step.kind,
+    sarStage: step.sarStage,
+    inputLevel: step.inputLevel,
+    targetCsc: step.kind === 'SAR' && step.sarStage
+      ? SAR_STAGE_TO_CSC[step.sarStage]
+      : step.kind === 'JOB_INIT'
+        ? 'CSC-08'
+        : step.kind === 'CATALOG' || step.kind === 'THUMBNAIL'
+          ? 'CSC-07'
+          : 'CSC-02',
+    productLevel: step.kind === 'SAR' && step.sarStage
+      ? SAR_STAGE_TO_LEVEL[step.sarStage]
+      : step.inputLevel ?? 'LEVEL_0',
+    status: 'PENDING',
+    enabledTasks: step.enabledTasks,
+  }));
+}
+
 export default function DeployedPipelinesPage() {
   const service = usePipelineService();
   const router = useRouter();
@@ -74,6 +107,7 @@ export default function DeployedPipelinesPage() {
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
   const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
+  const [expandedRuleId, setExpandedRuleId] = useState<string | null>(null);
   const [undeployTarget, setUndeployTarget] = useState<PipelineDefinition | null>(null);
   const [savingPipelineId, setSavingPipelineId] = useState<string | null>(null);
   const [logPanelWidth, setLogPanelWidth] = useState(DEFAULT_LOG_PANEL_WIDTH);
@@ -164,6 +198,11 @@ export default function DeployedPipelinesPage() {
   const handleOpenPipeline = useCallback((pipelineId: string) => {
     router.push(`${base}/console?pipelineId=${encodeURIComponent(pipelineId)}`);
   }, [router, base]);
+
+  const handleRowClick = useCallback((ruleId: string) => {
+    setSelectedRuleId(ruleId);
+    setExpandedRuleId((prev) => (prev === ruleId ? null : ruleId));
+  }, []);
 
   const handleResizePointerDown = useCallback((event: React.PointerEvent) => {
     event.preventDefault();
@@ -283,80 +322,115 @@ export default function DeployedPipelinesPage() {
                     const pipeline = pipelineById.get(rule.pipelineId);
                     const conditions = ruleConditions(rule);
                     const hasDuplicateRoute = duplicateRouteKeys.has(routeKey(rule));
+                    const previewSteps = pipeline ? toPreviewSteps(pipeline) : [];
+                    const expanded = expandedRuleId === rule.id;
                     return (
-                      <div
-                        key={rule.id}
-                        onClick={() => setSelectedRuleId(rule.id)}
-                        className="relative grid gap-3 px-4 py-3 items-center cursor-pointer whitespace-nowrap group"
-                        style={{ gridTemplateColumns: DEPLOYMENT_TABLE_GRID }}
-                      >
-                      <div className={`absolute inset-0 transition-colors pointer-events-none ${
-                        selectedRule?.id === rule.id ? 'bg-accent/10' : 'group-hover:bg-muted/20'
-                      }`} />
-                      <div className="relative min-w-0">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="h-2 w-2 rounded-full bg-success shadow-[0_0_12px_rgba(52,211,153,0.7)]" />
-                          <span className="text-[10px] font-mono text-foreground truncate">{rule.sourceQueue}</span>
-                        </div>
-                        <p className="mt-1 text-[10px] text-muted-foreground truncate">pgmq message source</p>
-                      </div>
-
-                      <div className="relative min-w-0">
-                        <p className="text-xs font-medium text-foreground truncate">{PIPELINE_EVENT_TYPE_LABELS[rule.eventType]}</p>
-                        <p className="mt-1 text-[10px] text-muted-foreground truncate">{rule.eventType}</p>
-                      </div>
-
-                      <div className="relative flex gap-1.5 overflow-hidden">
-                        {conditions.map((condition) => (
-                          <span key={condition} className="rounded bg-muted/55 px-1.5 py-0.5 text-[10px] text-foreground truncate shrink-0 max-w-[72px]">
-                            {condition}
-                          </span>
-                        ))}
-                      </div>
-
-                      <span className="relative rounded border border-border px-1.5 py-0.5 text-[10px] text-accent truncate max-w-[125px]">
-                        {TRIGGER_SOURCE_LABELS[rule.triggerSource]}
-                      </span>
-
-                      <div className="relative min-w-0">
-                        <p className="text-sm font-semibold text-foreground truncate">
-                          {pipeline?.name ?? rule.pipelineId}
-                        </p>
-                        <p className="mt-1 text-[11px] text-muted-foreground truncate">
-                          {hasDuplicateRoute
-                            ? '중복 라우트 확인 필요'
-                            : pipeline ? `${pipeline.satelliteId} · ${pipeline.mode}` : `deployed ${formatDate(rule.deployedAt)}`}
-                        </p>
-                      </div>
-
-                      <div className="relative flex justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleOpenPipeline(rule.pipelineId);
-                          }}
-                          className="flex items-center gap-1 rounded-md border border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors cursor-pointer"
+                      <div key={rule.id}>
+                        <div
+                          onClick={() => handleRowClick(rule.id)}
+                          className="relative grid gap-3 px-4 py-3 items-center cursor-pointer whitespace-nowrap group"
+                          style={{ gridTemplateColumns: DEPLOYMENT_TABLE_GRID }}
                         >
-                          <ExternalLink className="w-3 h-3" />
-                          콘솔
-                        </button>
-                        {canManage && (
-                          <button
-                            type="button"
-                            disabled={savingPipelineId === rule.pipelineId}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              const pipeline = pipelineById.get(rule.pipelineId);
-                              if (pipeline) setUndeployTarget(pipeline);
-                            }}
-                            className="flex items-center gap-1 rounded-md border border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
-                          >
-                            <Unplug className="w-3 h-3" />
-                            해제
-                          </button>
+                          <div className={`absolute inset-0 transition-colors pointer-events-none ${
+                            selectedRule?.id === rule.id ? 'bg-accent/10' : 'group-hover:bg-muted/20'
+                          }`} />
+                          <div className="relative min-w-0">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="h-2 w-2 rounded-full bg-success shadow-[0_0_12px_rgba(52,211,153,0.7)]" />
+                              <span className="text-[10px] font-mono text-foreground truncate">{rule.sourceQueue}</span>
+                            </div>
+                            <p className="mt-1 text-[10px] text-muted-foreground truncate">pgmq message source</p>
+                          </div>
+
+                          <div className="relative min-w-0">
+                            <p className="text-xs font-medium text-foreground truncate">{PIPELINE_EVENT_TYPE_LABELS[rule.eventType]}</p>
+                            <p className="mt-1 text-[10px] text-muted-foreground truncate">{rule.eventType}</p>
+                          </div>
+
+                          <div className="relative flex gap-1.5 overflow-hidden">
+                            {conditions.map((condition) => (
+                              <span key={condition} className="rounded bg-muted/55 px-1.5 py-0.5 text-[10px] text-foreground truncate shrink-0 max-w-[72px]">
+                                {condition}
+                              </span>
+                            ))}
+                          </div>
+
+                          <span className="relative rounded border border-border px-1.5 py-0.5 text-[10px] text-accent truncate max-w-[125px]">
+                            {TRIGGER_SOURCE_LABELS[rule.triggerSource]}
+                          </span>
+
+                          <div className="relative min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-semibold text-foreground truncate">
+                                {pipeline?.name ?? rule.pipelineId}
+                              </p>
+                              {expanded ? <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                            </div>
+                            <p className="mt-1 text-[11px] text-muted-foreground truncate">
+                              {hasDuplicateRoute
+                                ? '중복 라우트 확인 필요'
+                                : pipeline ? `${pipeline.satelliteId} · ${pipeline.mode}` : `deployed ${formatDate(rule.deployedAt)}`}
+                            </p>
+                          </div>
+
+                          <div className="relative flex justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleOpenPipeline(rule.pipelineId);
+                              }}
+                              className="flex items-center gap-1 rounded-md border border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors cursor-pointer"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              콘솔
+                            </button>
+                            {canManage && (
+                              <button
+                                type="button"
+                                disabled={savingPipelineId === rule.pipelineId}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  const pipeline = pipelineById.get(rule.pipelineId);
+                                  if (pipeline) setUndeployTarget(pipeline);
+                                }}
+                                className="flex items-center gap-1 rounded-md border border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                              >
+                                <Unplug className="w-3 h-3" />
+                                해제
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {expanded && pipeline && (
+                          <div className="border-t border-border bg-muted/15 px-4 py-4">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-semibold text-foreground">연결된 파이프라인 UI</div>
+                                <div className="mt-1 text-[11px] text-muted-foreground">{pipeline.name}</div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleOpenPipeline(pipeline.id);
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-foreground transition-colors hover:bg-muted/40"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                파이프라인 조회하기
+                              </button>
+                            </div>
+                            <div className="deployed-preview-flow h-64 overflow-hidden rounded-xl border border-border bg-card">
+                              <CanvasGraph
+                                pipelineId={`deployed-preview-${pipeline.id}`}
+                                steps={previewSteps}
+                                pipelineEdges={pipeline.edges}
+                                editable={false}
+                              />
+                            </div>
+                          </div>
                         )}
-                      </div>
                       </div>
                     );
                   })}
@@ -448,6 +522,12 @@ export default function DeployedPipelinesPage() {
           onCancel={() => setUndeployTarget(null)}
         />
       )}
+      <style jsx global>{`
+        .deployed-preview-flow .react-flow__controls,
+        .deployed-preview-flow .react-flow__minimap {
+          display: none !important;
+        }
+      `}</style>
     </div>
   );
 }

@@ -1,0 +1,733 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { usePathname, useRouter } from 'next/navigation';
+import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
+import LeftSidebar from '@/components/panels/LeftSidebar';
+import { toast } from '@/components/ui/Toast';
+import { cn, formatKST, formatRelativeTime } from '@/lib/utils';
+import {
+} from '@/types/pipeline';
+import type { PipelineDefinition, PipelineStep, RawDataStatus, RawDataSummary } from '@/types/pipeline';
+import {
+  Antenna,
+  CheckCircle2,
+  Database,
+  Link2,
+  MapPin,
+  Play,
+  RadioTower,
+  Search,
+  Unlink2,
+  Workflow,
+  X,
+} from 'lucide-react';
+
+const SATELLITES = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'];
+const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
+
+const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
+  ssr: false,
+  loading: () => (
+    <div className="mt-3 flex h-52 items-center justify-center rounded-xl border border-border bg-background/50 text-sm text-muted-foreground">
+      파이프라인 미리보기 불러오는 중...
+    </div>
+  ),
+});
+
+function formatFileSize(bytes: number): string {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(unitIndex >= 3 ? 1 : 0)} ${units[unitIndex]}`;
+}
+
+function RawDataStatusBadge({ status }: { status: RawDataStatus }) {
+  const tone = {
+    RECEIVED: 'bg-muted text-muted-foreground',
+    MAPPED: 'bg-accent/15 text-accent',
+    READY: 'bg-success/15 text-success',
+    HOLD: 'bg-destructive/15 text-destructive',
+  }[status];
+  const label = {
+    RECEIVED: '수신됨',
+    MAPPED: '매핑됨',
+    READY: '준비 완료',
+    HOLD: '보류',
+  }[status];
+
+  return <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold', tone)}>{label}</span>;
+}
+
+function SummaryCard({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: string | number;
+  icon: React.ElementType;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+        <span className="rounded-md bg-accent/10 p-1 text-accent">
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+        {label}
+      </div>
+      <div className="mt-2 font-mono text-xl font-bold text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function isRawDataCompatiblePipeline(pipeline: PipelineDefinition): boolean {
+  return pipeline.steps[0]?.kind === 'TRIGGER';
+}
+
+function PipelineMiniPreview({ pipeline }: { pipeline: PipelineDefinition | null }) {
+  if (!pipeline) {
+    return (
+      <div className="mt-3 rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+        미리볼 파이프라인을 선택하면 여기서 처리 흐름을 확인할 수 있습니다.
+      </div>
+    );
+  }
+
+  const previewSteps: PipelineStep[] = pipeline.steps.map((step) => ({
+    order: step.order,
+    kind: step.kind,
+    sarStage: step.sarStage,
+    inputLevel: step.inputLevel,
+    targetCsc: step.kind === 'JOB_INIT'
+      ? 'CSC-08'
+      : step.kind === 'CATALOG' || step.kind === 'THUMBNAIL'
+        ? 'CSC-07'
+        : step.kind === 'TRIGGER' || step.kind === 'FILE_INPUT'
+          ? 'CSC-02'
+          : 'CSC-03',
+    productLevel: step.inputLevel ?? 'LEVEL_0',
+    status: 'PENDING',
+    enabledTasks: step.enabledTasks,
+  }));
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-border bg-card">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="min-w-0 px-3 pt-3">
+          <div className="truncate text-sm font-semibold text-foreground">{pipeline.name}</div>
+          <div className="mt-0.5 text-[10px] text-muted-foreground">{pipeline.satelliteId} · {pipeline.mode}</div>
+        </div>
+        <div className="px-3 pt-3">
+          <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-mono text-muted-foreground">
+            {pipeline.steps.length} steps
+          </span>
+        </div>
+      </div>
+      <div className="raw-preview-flow h-60 border-t border-border bg-background/40">
+        <CanvasGraph
+          pipelineId={`raw-preview-${pipeline.id}`}
+          steps={previewSteps}
+          pipelineEdges={pipeline.edges}
+          editable={false}
+        />
+      </div>
+      <div className="border-t border-border bg-card px-3 py-2">
+        <div className="text-[10px] text-muted-foreground">
+          현재 선택된 파이프라인의 처리 흐름 미리보기입니다.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmClearDialog({
+  open,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55">
+      <div className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-2xl">
+        <h3 className="text-sm font-semibold text-foreground">파이프라인 연결 해제</h3>
+        <p className="mt-2 text-sm text-muted-foreground">정말 해제하시겠습니까?</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" onClick={onCancel} className="rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/30">
+            취소
+          </button>
+          <button type="button" onClick={onConfirm} className="rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-white transition-colors hover:brightness-110">
+            해제
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MappingPanel({
+  rawData,
+  pipelines,
+  selectedPipelineId,
+  saving,
+  executing,
+  onSelectPipeline,
+  onSave,
+  onClear,
+  onExecute,
+  onClose,
+}: {
+  rawData: RawDataSummary;
+  pipelines: PipelineDefinition[];
+  selectedPipelineId: string;
+  saving: boolean;
+  executing: boolean;
+  onSelectPipeline: (pipelineId: string) => void;
+  onSave: () => void;
+  onClear: () => void;
+  onExecute: () => void;
+  onClose: () => void;
+}) {
+  const pathname = usePathname();
+  const base = pathname.startsWith('/current') ? '/current' : '/plan';
+  const selectablePipelines = pipelines.filter(isRawDataCompatiblePipeline);
+  const recommended = selectablePipelines.filter((pipeline) => pipeline.satelliteId === rawData.satelliteId && pipeline.mode === rawData.mode);
+  const activePipeline = selectablePipelines.find((pipeline) => pipeline.id === (selectedPipelineId || rawData.mappedPipelineId)) ?? null;
+
+  return (
+    <div className="h-full flex flex-col border-l border-border bg-card">
+      <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Antenna className="h-4 w-4 shrink-0 text-accent" />
+            <h2 className="truncate text-sm font-semibold text-foreground">{rawData.title}</h2>
+          </div>
+          <div className="mt-1 text-[11px] text-muted-foreground">{rawData.rawDataPath}</div>
+        </div>
+        <button type="button" onClick={onClose} className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="grid grid-cols-2 gap-2">
+          <DetailStat label="위성" value={rawData.satelliteId} />
+          <DetailStat label="모드" value={rawData.mode} />
+          <DetailStat label="편파" value={rawData.polarization} />
+          <DetailStat label="상태" value={<RawDataStatusBadge status={rawData.status} />} />
+          <DetailStat label="촬영 시각" value={formatKST(rawData.capturedAt)} />
+          <DetailStat label="수신 시각" value={formatKST(rawData.receivedAt)} />
+          <DetailStat label="좌표" value={`${rawData.latitude.toFixed(4)}, ${rawData.longitude.toFixed(4)}`} />
+          <DetailStat label="원시 파일 크기" value={formatFileSize(rawData.fileSizeBytes)} />
+        </div>
+
+        <section className="mt-5 rounded-xl border border-border bg-background/50 p-4">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <Link2 className="h-3.5 w-3.5" />
+            Pipeline Mapping
+          </div>
+          <div className="mt-3 rounded-lg border border-border bg-card px-3 py-2">
+            <div className="text-[10px] text-muted-foreground">현재 연결</div>
+            <div className="mt-1 text-sm font-semibold text-foreground">
+              {rawData.mappedPipelineName ?? '아직 연결된 파이프라인이 없습니다'}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <label className="mb-1 block text-[11px] font-medium text-muted-foreground">연결할 파이프라인</label>
+            <select
+              value={selectedPipelineId}
+              onChange={(e) => onSelectPipeline(e.target.value)}
+              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+            >
+              <option value="">파이프라인 선택</option>
+              {recommended.length > 0 && (
+                <optgroup label="추천">
+                  {recommended.map((pipeline) => (
+                    <option key={pipeline.id} value={pipeline.id}>{pipeline.name}</option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label="전체">
+                {selectablePipelines.map((pipeline) => (
+                  <option key={pipeline.id} value={pipeline.id}>
+                    {pipeline.name} ({pipeline.satelliteId} · {pipeline.mode})
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
+
+          <div className="mt-4">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              <Workflow className="h-3.5 w-3.5" />
+              Pipeline Flow
+            </div>
+            <PipelineMiniPreview pipeline={activePipeline} />
+          </div>
+
+        </section>
+
+        <section className="mt-5 rounded-xl border border-border bg-background/50 p-4">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <MapPin className="h-3.5 w-3.5" />
+            Coverage
+          </div>
+          <div className="mt-3 rounded-lg border border-dashed border-border px-3 py-3 text-sm text-foreground">
+            관측 중심 좌표는 <span className="font-mono">{rawData.latitude.toFixed(4)}</span>, <span className="font-mono">{rawData.longitude.toFixed(4)}</span> 이고,
+            예상 footprint는 약 <span className="font-mono">{rawData.footprintKm.toFixed(1)} km</span> 입니다.
+          </div>
+        </section>
+      </div>
+
+      <div className="flex gap-2 border-t border-border px-4 py-3">
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={!selectedPipelineId || selectedPipelineId === rawData.mappedPipelineId || saving}
+          className={cn(
+            'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+            !selectedPipelineId || selectedPipelineId === rawData.mappedPipelineId || saving
+              ? 'cursor-not-allowed bg-muted text-muted-foreground'
+              : 'bg-accent text-background hover:bg-accent/90',
+          )}
+        >
+          {saving ? '저장 중...' : '파이프라인 연결 저장'}
+        </button>
+        <button
+          type="button"
+          onClick={onExecute}
+          disabled={saving || executing || !selectedPipelineId}
+          className={cn(
+            'rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+            saving || executing || !selectedPipelineId
+              ? 'cursor-not-allowed bg-muted text-muted-foreground'
+              : 'bg-accent/12 text-accent hover:bg-accent/18',
+          )}
+        >
+          <span className="inline-flex items-center gap-1.5">
+            <Play className="h-3.5 w-3.5" />
+            {executing ? '실행 중...' : '연결 후 실행'}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={onClear}
+          disabled={!rawData.mappedPipelineId || saving}
+          className={cn(
+            'rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
+            !rawData.mappedPipelineId || saving
+              ? 'cursor-not-allowed border-border text-muted-foreground/50'
+              : 'border-border text-foreground hover:bg-muted/30',
+          )}
+        >
+          연결 해제
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DetailStat({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="mt-1 text-sm font-medium text-foreground">{value}</div>
+    </div>
+  );
+}
+
+export default function RawDataPage() {
+  const service = usePipelineService();
+  const router = useRouter();
+  const pathname = usePathname();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [rawData, setRawData] = useState<RawDataSummary[]>([]);
+  const [pipelines, setPipelines] = useState<PipelineDefinition[]>([]);
+  const [selectedRawData, setSelectedRawData] = useState<RawDataSummary | null>(null);
+  const [mappingPipelineId, setMappingPipelineId] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [panelMounted, setPanelMounted] = useState(false);
+  const [panelAnimating, setPanelAnimating] = useState(false);
+  const [search, setSearch] = useState('');
+  const [satelliteFilter, setSatelliteFilter] = useState('');
+  const [modeFilter, setModeFilter] = useState('');
+  const [mappingFilter, setMappingFilter] = useState<'all' | 'mapped' | 'unmapped'>('all');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(20);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const panelItemRef = useRef<RawDataSummary | null>(null);
+  const basePath = pathname.startsWith('/current') ? '/current' : '/plan';
+
+  const loadData = useCallback(async () => {
+    const [rawRes, pipelineRes] = await Promise.all([
+      service.원시데이터_목록을_조회한다({ limit: 200 }),
+      service.파이프라인_목록을_조회한다(),
+    ]);
+    if (rawRes.data) setRawData(rawRes.data.items);
+    if (pipelineRes.data) setPipelines(pipelineRes.data);
+  }, [service]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    setMappingPipelineId(selectedRawData?.mappedPipelineId ?? '');
+  }, [selectedRawData]);
+
+  const filteredRawData = useMemo(() => {
+    return rawData.filter((item) => {
+      const matchesSearch = search.trim() === '' || item.title.toLowerCase().includes(search.toLowerCase()) || item.rawDataPath.toLowerCase().includes(search.toLowerCase());
+      const matchesSatellite = satelliteFilter === '' || item.satelliteId === satelliteFilter;
+      const matchesMode = modeFilter === '' || item.mode === modeFilter;
+      const matchesMapping = mappingFilter === 'all' || (mappingFilter === 'mapped' ? !!item.mappedPipelineId : !item.mappedPipelineId);
+      return matchesSearch && matchesSatellite && matchesMode && matchesMapping;
+    });
+  }, [mappingFilter, modeFilter, rawData, satelliteFilter, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRawData.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageItems = filteredRawData.slice(pageStart, pageStart + pageSize);
+  const mappedCount = rawData.filter((item) => !!item.mappedPipelineId).length;
+  const unmappedCount = rawData.filter((item) => !item.mappedPipelineId).length;
+  const readyCount = rawData.filter((item) => item.status === 'READY').length;
+
+  function openPanel(item: RawDataSummary) {
+    panelItemRef.current = item;
+    setSelectedRawData(item);
+    setPanelMounted(true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => setPanelAnimating(true));
+    });
+  }
+
+  function closePanel() {
+    setPanelAnimating(false);
+    setTimeout(() => {
+      setPanelMounted(false);
+      setSelectedRawData(null);
+      panelItemRef.current = null;
+    }, 180);
+  }
+
+  async function handleSaveMapping() {
+    if (!selectedRawData || !mappingPipelineId) return;
+    setSaving(true);
+    const res = await service.원시데이터_파이프라인을_매핑한다(selectedRawData.id, mappingPipelineId);
+    setSaving(false);
+    if (!res.success || !res.data) {
+      toast.error(res.message);
+      return;
+    }
+    setRawData((prev) => prev.map((item) => item.id === res.data?.id ? res.data : item));
+    setSelectedRawData(res.data);
+    toast.success(res.message);
+  }
+
+  async function handleExecutePipeline() {
+    if (!selectedRawData || !mappingPipelineId || executing) return;
+    setExecuting(true);
+
+    let targetPipelineId = mappingPipelineId;
+    if (selectedRawData.mappedPipelineId !== mappingPipelineId) {
+      setSaving(true);
+      const saveRes = await service.원시데이터_파이프라인을_매핑한다(selectedRawData.id, mappingPipelineId);
+      setSaving(false);
+      if (!saveRes.success || !saveRes.data) {
+        setExecuting(false);
+        toast.error(saveRes.message);
+        return;
+      }
+      setRawData((prev) => prev.map((item) => item.id === saveRes.data?.id ? saveRes.data : item));
+      setSelectedRawData(saveRes.data);
+      targetPipelineId = saveRes.data.mappedPipelineId ?? mappingPipelineId;
+      toast.success('파이프라인 연결을 저장했습니다');
+    }
+
+    const execRes = await service.파이프라인을_실행한다(targetPipelineId);
+    if (!execRes.success || !execRes.data) {
+      setExecuting(false);
+      toast.error(execRes.message);
+      return;
+    }
+    setExecuting(false);
+    const jobId = execRes.data.jobId;
+    toast.custom((toastId) => (
+      <div className="w-[360px] rounded-lg border border-success/40 bg-card text-foreground shadow-xl">
+        <div className="flex items-start gap-2 px-3 py-2.5">
+          <span className="mt-0.5 rounded-md bg-success/10 p-1 text-success">
+            <CheckCircle2 className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-semibold text-foreground">{jobId} 실행이 시작되었습니다</div>
+            <div className="mt-2 border-t border-border pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  toast.dismiss(toastId);
+                  router.push(`${basePath}/jobs?jobId=${encodeURIComponent(jobId)}`);
+                }}
+                className="inline-flex w-full items-center justify-center rounded-md bg-accent px-3 py-2 text-[11px] font-medium text-background transition-colors hover:bg-accent/90"
+              >
+                현재 실행중인 파이프라인 보기
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    ), { duration: 6000 });
+  }
+
+  async function handleClearMapping() {
+    if (!selectedRawData) return;
+    setSaving(true);
+    const res = await service.원시데이터_파이프라인을_매핑한다(selectedRawData.id, null);
+    setSaving(false);
+    if (!res.success || !res.data) {
+      toast.error(res.message);
+      return;
+    }
+    setRawData((prev) => prev.map((item) => item.id === res.data?.id ? res.data : item));
+    setSelectedRawData(res.data);
+    setClearDialogOpen(false);
+    toast.success(res.message);
+  }
+
+  return (
+    <div className="h-full flex">
+      <LeftSidebar
+        mode="nav"
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed((value) => !value)}
+        activePage="raw-data"
+      />
+
+      <div className="relative flex-1 overflow-hidden">
+        <div className="flex h-full overflow-hidden">
+          <div className="flex-1 flex flex-col overflow-hidden">
+          <header className="border-b border-border bg-card px-6 py-3">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="min-w-0">
+                <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
+                  <RadioTower className="h-3.5 w-3.5" />
+                  Reception Intake
+                </div>
+                <h1 className="text-xl font-bold text-foreground">Raw Data 목록</h1>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <SummaryCard label="수신 원시 데이터" value={rawData.length} icon={Database} />
+                <SummaryCard label="매핑 완료" value={mappedCount} icon={Link2} />
+                <SummaryCard label="미매핑" value={unmappedCount} icon={Unlink2} />
+                <SummaryCard label="준비 완료" value={readyCount} icon={CheckCircle2} />
+              </div>
+            </div>
+          </header>
+
+          <div className="border-b border-border bg-card px-6 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Raw data title / path 검색"
+                  className="w-72 rounded-lg border border-border bg-background pl-8 pr-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+              </div>
+              <select
+                value={satelliteFilter}
+                onChange={(e) => {
+                  setSatelliteFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                <option value="">전체 위성</option>
+                {SATELLITES.map((satellite) => (
+                  <option key={satellite} value={satellite}>{satellite}</option>
+                ))}
+              </select>
+              <select
+                value={modeFilter}
+                onChange={(e) => {
+                  setModeFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                <option value="">전체 모드</option>
+                {MODES.map((mode) => (
+                  <option key={mode} value={mode}>{mode}</option>
+                ))}
+              </select>
+              <select
+                value={mappingFilter}
+                onChange={(e) => {
+                  setMappingFilter(e.target.value as 'all' | 'mapped' | 'unmapped');
+                  setPage(1);
+                }}
+                className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                <option value="all">전체 매핑 상태</option>
+                <option value="mapped">매핑됨</option>
+                <option value="unmapped">미매핑</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-auto bg-background">
+            <table className="w-full min-w-[1160px]">
+              <thead className="sticky top-0 z-10 bg-card">
+                <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  <th className="px-6 py-3 text-left whitespace-nowrap">Raw Data</th>
+                  <th className="px-3 py-3 text-left whitespace-nowrap">위성 / 모드</th>
+                  <th className="px-3 py-3 text-left whitespace-nowrap">촬영 시각</th>
+                  <th className="px-3 py-3 text-left whitespace-nowrap">좌표</th>
+                  <th className="px-3 py-3 text-left whitespace-nowrap">원시 파일</th>
+                  <th className="px-3 py-3 text-left whitespace-nowrap">연결 파이프라인</th>
+                  <th className="px-3 py-3 text-center whitespace-nowrap">상태</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageItems.map((item) => (
+                  <tr
+                    key={item.id}
+                    onClick={() => openPanel(item)}
+                    className={cn(
+                      'cursor-pointer border-b border-border/60 transition-colors',
+                      selectedRawData?.id === item.id ? 'bg-accent/5' : 'hover:bg-muted/20',
+                    )}
+                  >
+                    <td className="px-6 py-3 whitespace-nowrap">
+                      <div className="max-w-[340px] truncate font-mono text-xs font-semibold text-foreground">{item.title}</div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">{formatRelativeTime(item.receivedAt)} 수신</div>
+                    </td>
+                    <td className="px-3 py-3 text-xs text-foreground whitespace-nowrap">
+                      <div>{item.satelliteId}</div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">{item.mode} · {item.polarization}</div>
+                    </td>
+                    <td className="px-3 py-3 text-xs text-foreground whitespace-nowrap">{formatKST(item.capturedAt)}</td>
+                    <td className="px-3 py-3 text-xs text-foreground whitespace-nowrap">
+                      <div>{item.latitude.toFixed(4)}</div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">{item.longitude.toFixed(4)}</div>
+                    </td>
+                    <td className="px-3 py-3 text-xs text-foreground whitespace-nowrap">
+                      <div>{formatFileSize(item.fileSizeBytes)}</div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">{item.footprintKm.toFixed(1)} km footprint</div>
+                    </td>
+                    <td className="px-3 py-3 text-xs text-foreground whitespace-nowrap">
+                      {item.mappedPipelineName ? (
+                        <div className="max-w-[240px] truncate">{item.mappedPipelineName}</div>
+                      ) : (
+                        <span className="text-muted-foreground">미지정</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-center whitespace-nowrap">
+                      <RawDataStatusBadge status={item.status} />
+                    </td>
+                  </tr>
+                ))}
+                {pageItems.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-16 text-center text-sm text-muted-foreground">
+                      조건에 맞는 raw data가 없습니다.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 border-t border-border bg-card px-6 py-3">
+            <div className="text-[11px] text-muted-foreground">
+              {filteredRawData.length === 0 ? '0 / 0' : `${pageStart + 1}-${Math.min(pageStart + pageSize, filteredRawData.length)} / ${filteredRawData.length}`}
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number]);
+                  setPage(1);
+                }}
+                className="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>{size}개씩</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={currentPage <= 1}
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+                className="rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted/30 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                이전
+              </button>
+              <span className="min-w-14 text-center text-[11px] font-mono text-foreground">{currentPage}/{totalPages}</span>
+              <button
+                type="button"
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                className="rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted/30 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                다음
+              </button>
+            </div>
+          </div>
+          </div>
+        </div>
+
+        {panelMounted && selectedRawData && (
+          <div className="pointer-events-none absolute inset-y-0 right-0 z-20">
+            <div
+              className={cn(
+                'pointer-events-auto h-full w-[840px] overflow-hidden border-l border-border bg-card shadow-2xl transition-all duration-200 ease-out',
+                panelAnimating ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0',
+              )}
+            >
+              <MappingPanel
+                rawData={selectedRawData}
+                pipelines={pipelines}
+                selectedPipelineId={mappingPipelineId}
+                saving={saving}
+                executing={executing}
+                onSelectPipeline={setMappingPipelineId}
+                onSave={handleSaveMapping}
+                onClear={() => setClearDialogOpen(true)}
+                onExecute={handleExecutePipeline}
+                onClose={closePanel}
+              />
+            </div>
+          </div>
+        )}
+        <ConfirmClearDialog
+          open={clearDialogOpen}
+          onConfirm={handleClearMapping}
+          onCancel={() => setClearDialogOpen(false)}
+        />
+        <style jsx global>{`
+          .raw-preview-flow .react-flow__controls,
+          .raw-preview-flow .react-flow__minimap {
+            display: none !important;
+          }
+        `}</style>
+      </div>
+    </div>
+  );
+}

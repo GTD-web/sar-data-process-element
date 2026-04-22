@@ -33,9 +33,15 @@ export function JobStatusBadge({ status, retryCount }: { status: JobStatus; retr
         : JOB_STATUS_DISPLAY[status];
 
   return (
-    <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium', style.bg, style.text)}>
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1 whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium',
+        style.bg,
+        style.text,
+      )}
+    >
       <Icon className={cn('w-3 h-3', status === 'ASSIGNED' && 'animate-spin')} />
-      {label}
+      <span className="whitespace-nowrap">{label}</span>
     </span>
   );
 }

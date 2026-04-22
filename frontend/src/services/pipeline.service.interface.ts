@@ -12,6 +12,7 @@ import type {
   PipelineDefinition,
   ProcessingProfile,
   Product,
+  RawDataSummary,
   QueueHealth,
   SarStage,
   ServiceResponse,
@@ -38,6 +39,19 @@ export interface IPipelineUIService {
   // =========================================================================
 
   대시보드_통계를_조회한다(): Promise<ServiceResponseWithData<DashboardStats>>;
+
+  // =========================================================================
+  // Raw Data
+  // =========================================================================
+
+  원시데이터_목록을_조회한다(params?: {
+    satelliteId?: string;
+    mode?: string;
+    mapped?: boolean;
+    limit?: number;
+  }): Promise<ServiceResponseWithData<PaginatedResponse<RawDataSummary>>>;
+
+  원시데이터_파이프라인을_매핑한다(rawDataId: string, pipelineId: string | null): Promise<ServiceResponseWithData<RawDataSummary>>;
 
   // =========================================================================
   // Jobs

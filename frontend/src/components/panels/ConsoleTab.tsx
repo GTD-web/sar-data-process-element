@@ -13,7 +13,7 @@ import { formatKST } from '@/lib/utils';
 export type ConsoleMode =
   | { type: 'idle' }
   | { type: 'node'; step: PipelineStepDefinition }
-  | { type: 'addStep'; afterOrder: number; beforeOrder?: number }
+  | { type: 'addStep'; afterOrder: number; beforeOrder?: number; asSeparateStart?: boolean }
   | { type: 'job'; job: JobDetail }
   | { type: 'pipelineProps'; pipeline: PipelineDefinition }
   | { type: 'trigger'; receivedAt: string; rawDataPath: string }
@@ -67,6 +67,7 @@ export default function ConsoleTab({
       <AddStepPanel
         insertAfterOrder={mode.afterOrder}
         insertBeforeOrder={mode.beforeOrder}
+        asSeparateStart={mode.asSeparateStart}
         onSelect={onConfirmAddStep}
       />
     );

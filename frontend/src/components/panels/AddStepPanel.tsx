@@ -34,11 +34,14 @@ const STEP_OPTIONS: StepOption[] = [
 interface AddStepPanelProps {
   insertAfterOrder: number;
   insertBeforeOrder?: number;
+  asSeparateStart?: boolean;
   onSelect: (afterOrder: number, kind: PipelineNodeKind, sarStage?: SarStage) => void;
 }
 
-export default function AddStepPanel({ insertAfterOrder, insertBeforeOrder, onSelect }: AddStepPanelProps) {
-  const description = insertBeforeOrder !== undefined
+export default function AddStepPanel({ insertAfterOrder, insertBeforeOrder, asSeparateStart, onSelect }: AddStepPanelProps) {
+  const description = asSeparateStart
+    ? '기존 DAG와 연결되지 않는 새로운 시작 노드를 선택하세요.'
+    : insertBeforeOrder !== undefined
     ? `단계 #${insertAfterOrder}과 #${insertBeforeOrder} 사이에 추가할 단계를 선택하세요.`
     : insertAfterOrder === 0
       ? '파이프라인 맨 앞에 추가할 단계를 선택하세요.'

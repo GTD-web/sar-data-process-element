@@ -7,9 +7,9 @@ import { cn } from '@/lib/utils';
 
 type PipelineExecutionTab = 'auto' | 'manual';
 
-const tabs: { id: PipelineExecutionTab; label: string; icon: React.ElementType; query: string }[] = [
-  { id: 'auto', label: '자동 파이프라인', icon: Radio, query: 'auto' },
-  { id: 'manual', label: '수동 파이프라인', icon: Briefcase, query: 'manual' },
+const tabs: { id: PipelineExecutionTab; label: string; icon: React.ElementType }[] = [
+  { id: 'auto', label: '자동 파이프라인', icon: Radio },
+  { id: 'manual', label: '수동 파이프라인', icon: Briefcase },
 ];
 
 export default function PipelineExecutionTabs({
@@ -21,13 +21,17 @@ export default function PipelineExecutionTabs({
 }) {
   const pathname = usePathname();
   const base = pathname.startsWith('/current') ? '/current' : '/plan';
+  const tabHref: Record<PipelineExecutionTab, string> = {
+    auto: `${base}/deployed?tab=auto`,
+    manual: `${base}/jobs`,
+  };
 
   return (
     <div className="flex items-center gap-1 rounded-md border border-border bg-background/60 p-1">
       {tabs.map((tab) => (
         <Link
           key={tab.id}
-          href={`${base}/deployed?tab=${tab.query}`}
+          href={tabHref[tab.id]}
           className={cn(
             'inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[11px] font-medium transition-colors',
             active === tab.id

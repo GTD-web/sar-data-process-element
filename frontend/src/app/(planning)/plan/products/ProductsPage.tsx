@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
@@ -14,6 +14,9 @@ import {
   Download,
   RefreshCw,
   X,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
   CheckCircle,
   XCircle,
   Image as ImageIcon,
@@ -32,6 +35,26 @@ const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
 const LEVELS: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
 const STATUSES = ['COMPLETED', 'FAILED', 'PROCESSING'];
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+const PRODUCT_TABLE_COLUMNS = [
+  { id: 'id', label: 'Product ID', align: 'left' },
+  { id: 'sceneId', label: 'Raw Data', align: 'left' },
+  { id: 'level', label: '레벨', align: 'center' },
+  { id: 'satelliteId', label: '위성', align: 'left' },
+  { id: 'mode', label: '모드', align: 'left' },
+  { id: 'status', label: '상태', align: 'center' },
+  { id: 'createdAt', label: '생성일', align: 'left' },
+] as const;
+
+type ProductSortKey = (typeof PRODUCT_TABLE_COLUMNS)[number]['id'];
+
+function getRawDataDisplayName(product: Product) {
+  return product.rawDataName ?? product.sceneId;
+}
+
+function SortIcon({ active, order }: { active: boolean; order: 'asc' | 'desc' }) {
+  if (!active) return <ArrowUpDown className="w-3 h-3 opacity-30" />;
+  return order === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />;
+}
 
 function getPageRange(current: number, total: number): (number | 'ellipsis')[] {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
@@ -195,8 +218,8 @@ function ReprocessDialog({
 
         <div className="space-y-3">
           <div>
-            <span className="text-[11px] text-muted-foreground">Scene ID</span>
-            <div className="text-xs font-mono text-foreground mt-0.5">{product.sceneId}</div>
+            <span className="text-[11px] text-muted-foreground">Raw Data</span>
+            <div className="text-xs font-mono text-foreground mt-0.5">{getRawDataDisplayName(product)}</div>
           </div>
 
           <label className="block">
@@ -274,7 +297,7 @@ function ProductDetailPanel({
       <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-foreground truncate">{product.id}</div>
-          <div className="text-xs text-muted-foreground">{product.sceneId}</div>
+          <div className="text-xs text-muted-foreground">{getRawDataDisplayName(product)}</div>
         </div>
         <button onClick={onClose} className="p-1 rounded hover:bg-muted/50 transition-colors">
           <X className="w-4 h-4 text-muted-foreground" />
@@ -494,6 +517,8 @@ export default function ProductsPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [sortBy, setSortBy] = useState<ProductSortKey>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Dialogs
   const [reprocessTarget, setReprocessTarget] = useState<Product | null>(null);
@@ -517,15 +542,31 @@ export default function ProductsPage() {
     loadData();
   }, [loadData]);
 
-  const filtered = (search
-    ? products.filter(
-        (p) =>
-          p.id.toLowerCase().includes(search.toLowerCase()) || p.sceneId.toLowerCase().includes(search.toLowerCase()),
-      )
-    : products
-  )
-    .slice()
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  const filtered = useMemo(() => {
+    const searched = search
+      ? products.filter(
+          (p) =>
+            p.id.toLowerCase().includes(search.toLowerCase()) ||
+            p.sceneId.toLowerCase().includes(search.toLowerCase()) ||
+            getRawDataDisplayName(p).toLowerCase().includes(search.toLowerCase()),
+        )
+      : products;
+
+    const sorted = searched.slice().sort((a, b) => {
+      const direction = sortOrder === 'asc' ? 1 : -1;
+      switch (sortBy) {
+        case 'createdAt':
+          return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * direction;
+        case 'level':
+          return a.level.localeCompare(b.level) * direction;
+        case 'status':
+          return a.status.localeCompare(b.status) * direction;
+        default:
+          return String(a[sortBy]).localeCompare(String(b[sortBy]), 'ko') * direction;
+      }
+    });
+    return sorted;
+  }, [products, search, sortBy, sortOrder]);
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const pageStart = (currentPage - 1) * pageSize;
@@ -535,6 +576,12 @@ export default function ProductsPage() {
     setPageSize(size);
     setPage(1);
   }, [setPage]);
+
+  const handleSort = useCallback((column: ProductSortKey) => {
+    setPage(1);
+    setSortOrder((prev) => (sortBy === column ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'));
+    setSortBy(column);
+  }, [sortBy]);
 
   async function handleDownload(product: Product) {
     const res = await service.제품_다운로드_URL을_발급한다(product.id);
@@ -588,7 +635,7 @@ export default function ProductsPage() {
                   setSearch(e.target.value);
                   setPage(1);
                 }}
-                placeholder="ID / Scene ID 검색..."
+                placeholder="ID / Raw Data 검색..."
                 className="pl-8 pr-3 py-1.5 bg-background border border-border rounded-md text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent w-52"
               />
             </div>
@@ -659,13 +706,28 @@ export default function ProductsPage() {
             <table className="w-full">
               <thead className="sticky top-0 bg-card z-10">
                 <tr className="border-b border-border text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  <th className="text-left px-5 py-2.5">Product ID</th>
-                  <th className="text-left px-3 py-2.5">Scene ID</th>
-                  <th className="text-center px-3 py-2.5">레벨</th>
-                  <th className="text-left px-3 py-2.5">위성</th>
-                  <th className="text-left px-3 py-2.5">모드</th>
-                  <th className="text-center px-3 py-2.5">상태</th>
-                  <th className="text-left px-3 py-2.5">생성일</th>
+                  {PRODUCT_TABLE_COLUMNS.map((column) => (
+                    <th
+                      key={column.id}
+                      className={cn(
+                        'px-3 py-2.5',
+                        column.align === 'center' ? 'text-center' : 'text-left',
+                        column.id === 'id' ? 'pl-5' : '',
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleSort(column.id)}
+                        className={cn(
+                          'inline-flex items-center gap-1 transition-colors hover:text-foreground',
+                          column.align === 'center' ? 'justify-center' : '',
+                        )}
+                      >
+                        <span>{column.label}</span>
+                        <SortIcon active={sortBy === column.id} order={sortOrder} />
+                      </button>
+                    </th>
+                  ))}
                   <th className="text-right px-5 py-2.5">작업</th>
                 </tr>
               </thead>
@@ -680,7 +742,7 @@ export default function ProductsPage() {
                     )}
                   >
                     <td className="px-5 py-2.5 text-xs font-mono text-foreground">{p.id}</td>
-                    <td className="px-3 py-2.5 text-xs text-foreground">{p.sceneId}</td>
+                    <td className="px-3 py-2.5 text-xs text-foreground">{getRawDataDisplayName(p)}</td>
                     <td className="px-3 py-2.5 text-center">
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-accent/10 text-accent">
                         {PRODUCT_LEVEL_LABELS[p.level]}

@@ -151,7 +151,8 @@ const ALL_EVENT_TYPES = Object.keys(EVENT_CONFIG) as AuditEventType[];
 const COLUMNS: { id: keyof AuditEvent; label: string }[] = [
   { id: 'timestamp', label: '시각' },
   { id: 'eventType', label: '이벤트' },
-  { id: 'jobId', label: 'Job' },
+  { id: 'id', label: '이벤트 ID' },
+  { id: 'operatorId', label: '실행자' },
   { id: 'detail', label: '상세' },
 ];
 
@@ -740,13 +741,10 @@ export default function AuditPage() {
                             </span>
                           </td>
                           <td className="px-4 py-2.5">
-                            <a
-                              href={`${base}/jobs?jobId=${evt.jobId}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="font-mono text-accent hover:underline"
-                            >
-                              {evt.jobId}
-                            </a>
+                            <span className="font-mono text-[11px] text-foreground">{evt.id}</span>
+                          </td>
+                          <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
+                            {evt.operatorId ?? '시스템 (자동)'}
                           </td>
                           <td className="px-4 py-2.5 text-muted-foreground truncate max-w-md">{evt.detail}</td>
                         </tr>

@@ -1,17 +1,27 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { Background, BackgroundVariant, Controls, ReactFlow, type Edge, type EdgeTypes, type Node, type NodeTypes, type ReactFlowInstance } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import dagre from 'dagre';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import { useMockRole } from '@/components/auth/RolePreviewSelect';
+import { DeletableEdge, type DeletableEdgeData } from '@/components/graph/DeletableEdge';
+import { PipelineNode, type PipelineNodeData } from '@/components/graph/PipelineNode';
 import { cn, formatRelativeTime } from '@/lib/utils';
+import * as t from '@/styles/design-tokens';
 import type {
   JobDetail,
   JobStatus,
   JobSummary,
+  PipelineEdge,
   PipelineDefinition,
   PipelineStepDefinition,
+  ProductLevel,
+  SarStage,
+  StepStatus,
 } from '@/types/pipeline';
 import {
   CSC_LABELS,
@@ -22,34 +32,32 @@ import {
 } from '@/types/pipeline';
 import {
   Activity,
-  Antenna,
   AlertTriangle,
-  Compass,
-  Cpu,
-  Crosshair,
-  Database,
-  FileInput,
   Filter,
   GitBranch,
-  HardDrive,
-  Image as ImageIcon,
   Layers,
-  Map,
-  Package,
+  RotateCcw,
   ShieldCheck,
-  SlidersHorizontal,
   XCircle,
 } from 'lucide-react';
 
 type NodeMetric = {
   order: number;
+  depth: number;
+  lane: number;
+  kind: PipelineStepDefinition['kind'];
+  sarStage?: SarStage;
+  inputLevel?: ProductLevel;
+  enabledTasks?: string[];
   label: string;
+  subLabel: string;
   target: string;
   running: number;
   failed: number;
   completed: number;
   pending: number;
   total: number;
+  currentStatus: StepStatus | 'IDLE';
   quality: 'normal' | 'running' | 'pending' | 'critical' | 'idle';
 };
 
@@ -61,11 +69,16 @@ type PipelineMetric = {
   completedJobs: number;
   latestJob?: JobDetail;
   nodeMetrics: NodeMetric[];
+  depthMetrics: DepthMetric[];
 };
 
 const ACTIVE_JOB_STATUS: JobStatus[] = ['CREATED', 'ASSIGNED'];
 const MATRIX_LABEL_COLUMN_WIDTH = 92;
 const DASHBOARD_FILTER_STORAGE_PREFIX = 'sdpe.dashboard.pipelineFilter';
+const MATRIX_NODE_COLUMN_WIDTH = 148;
+const DASHBOARD_FLOW_NODE_SIZE = 64;
+const DASHBOARD_FLOW_HEIGHT = 320;
+const DASHBOARD_FLOW_FIT_VIEW = { padding: 0.18, duration: 260 };
 
 const COMPACT_NODE_LABELS = {
   TRIGGER: 'Receive Raw Data',
@@ -80,6 +93,12 @@ const COMPACT_KIND_LABELS: Partial<Record<PipelineStepDefinition['kind'], string
   JOB_INIT: COMPACT_NODE_LABELS.JOB_INIT,
   CATALOG: COMPACT_NODE_LABELS.CATALOG,
   THUMBNAIL: COMPACT_NODE_LABELS.THUMBNAIL,
+};
+const dashboardNodeTypes: NodeTypes = {
+  pipeline: PipelineNode,
+};
+const dashboardEdgeTypes: EdgeTypes = {
+  deletable: DeletableEdge,
 };
 
 export default function HomePage() {
@@ -197,49 +216,66 @@ export default function HomePage() {
         activePage="home"
       />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="shrink-0 border-b border-border bg-card px-8 py-5">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                Quality Operations
+      <div className="flex-1 overflow-hidden bg-background">
+        <main className="h-full overflow-y-auto bg-background px-8 pb-6">
+          <header className="-mx-8 border-b border-border bg-card/95 py-3 backdrop-blur">
+            <div className="px-5 sm:px-6 xl:px-8">
+              <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-stretch">
+                <div className="flex min-w-0 items-start gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+                  <div className="rounded-xl border border-accent/20 bg-accent/10 p-2 text-accent shadow-sm">
+                    <ShieldCheck className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h1 className="text-base font-bold text-foreground">대시보드</h1>
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
+                        {currentUsername}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+                      <span className="rounded-full bg-muted/70 px-2 py-0.5">실행 파이프라인 {executedPipelines.length}</span>
+                      <span className="rounded-full bg-muted/70 px-2 py-0.5">활성 필터 {filterSummary}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:w-fit xl:justify-self-end">
+                  <KpiCard className="xl:w-[174px]" label="실행 파이프라인" value={executedPipelines.length} icon={GitBranch} tone="accent" />
+                  <KpiCard className="xl:w-[174px]" label="실행 중 Job" value={totalRunning} icon={Activity} tone="accent" />
+                  <KpiCard className="xl:w-[174px]" label="실패 Job" value={totalFailed} icon={XCircle} tone={totalFailed > 0 ? 'danger' : 'muted'} />
+                  <KpiCard className="xl:w-[174px]" label="노드 실패" value={failedNodes} icon={AlertTriangle} tone={failedNodes > 0 ? 'danger' : 'muted'} />
+                </div>
               </div>
-              <h1 className="text-xl font-bold text-foreground">대시보드</h1>
-              <p className="mt-1 text-xs text-muted-foreground">
-                실행된 파이프라인과 노드별 실행 중·실패 현황을 한 화면에서 확인합니다
-              </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <KpiCard label="실행 파이프라인" value={executedPipelines.length} icon={GitBranch} tone="accent" />
-              <KpiCard label="실행 중 Job" value={totalRunning} icon={Activity} tone="accent" />
-              <KpiCard label="실패 Job" value={totalFailed} icon={XCircle} tone={totalFailed > 0 ? 'danger' : 'muted'} />
-              <KpiCard label="노드 실패" value={failedNodes} icon={AlertTriangle} tone={failedNodes > 0 ? 'danger' : 'muted'} />
-            </div>
-          </div>
-        </header>
+          </header>
 
-        <main className="min-h-0 flex-1 overflow-y-auto bg-background px-8 py-6">
           <section>
-            <div className="mb-3 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-foreground">품질 현황 매트릭스</h2>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  {currentUsername} 사용자 필터 기준으로 파이프라인별 노드 상태를 집계합니다
-                </p>
-              </div>
-              <div className="flex flex-col items-start gap-2 xl:items-end">
-                <PipelineFilterPanel
-                  pipelines={pipelines}
-                  filterMode={filterMode}
-                  selectedPipelineIds={selectedPipelineSet}
-                  filterSummary={filterSummary}
-                  username={currentUsername}
-                  onModeChange={handleFilterModeChange}
-                  onTogglePipeline={handlePipelineFilterToggle}
-                  onSelectAll={handleSelectAllPipelines}
-                  onClear={handleClearPipelineSelection}
-                />
+            <div className="sticky top-0 z-20 -mx-8 bg-background/95 px-8 pt-3 pb-5 backdrop-blur-sm">
+              <div className="grid gap-3 rounded-2xl border border-border bg-card/95 px-4 py-2.5 shadow-sm xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="rounded-xl bg-accent/10 p-1.5 text-accent">
+                    <Layers className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-semibold text-foreground">품질 현황 매트릭스</h2>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                      <span className="rounded-full bg-muted px-2 py-1 font-mono">{dashboard.length} visible</span>
+                      <span className="rounded-full bg-muted px-2 py-1 font-mono">{pipelines.length} total</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col items-start gap-2 xl:items-end xl:justify-self-end">
+                  <PipelineFilterPanel
+                    pipelines={pipelines}
+                    filterMode={filterMode}
+                    selectedPipelineIds={selectedPipelineSet}
+                    filterSummary={filterSummary}
+                    username={currentUsername}
+                    onModeChange={handleFilterModeChange}
+                    onTogglePipeline={handlePipelineFilterToggle}
+                    onSelectAll={handleSelectAllPipelines}
+                    onClear={handleClearPipelineSelection}
+                  />
+                </div>
               </div>
             </div>
 
@@ -266,6 +302,9 @@ function buildPipelineMetrics(pipelines: PipelineDefinition[], jobs: JobDetail[]
     const pipelineJobs = jobs
       .filter((job) => job.pipelineId === pipeline.id)
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    const latestJob = pipelineJobs[0];
+    const topology = buildStepTopology(pipeline.steps, pipeline.edges);
+    const depthMetrics = buildDepthMetrics(pipeline.steps, pipelineJobs, topology);
 
     return {
       pipeline,
@@ -273,38 +312,221 @@ function buildPipelineMetrics(pipelines: PipelineDefinition[], jobs: JobDetail[]
       runningJobs: pipelineJobs.filter((job) => ACTIVE_JOB_STATUS.includes(job.status)).length,
       failedJobs: pipelineJobs.filter((job) => job.status === 'FAILED').length,
       completedJobs: pipelineJobs.filter((job) => job.status === 'COMPLETED').length,
-      latestJob: pipelineJobs[0],
-      nodeMetrics: pipeline.steps.map((step) => buildNodeMetric(step, pipelineJobs)),
+      latestJob,
+      nodeMetrics: pipeline.steps.map((step) => buildNodeMetric(step, pipelineJobs, latestJob, topology)),
+      depthMetrics,
     };
   });
 }
 
-function buildNodeMetric(step: PipelineStepDefinition, jobs: JobDetail[]): NodeMetric {
+function buildNodeMetric(
+  step: PipelineStepDefinition,
+  jobs: JobDetail[],
+  latestJob: JobDetail | undefined,
+  topology: StepTopology,
+): NodeMetric {
   const stepRuns = jobs.map((job) => job.steps.find((s) => s.order === step.order)).filter(Boolean);
   const running = stepRuns.filter((s) => s?.status === 'RUNNING').length;
   const failed = stepRuns.filter((s) => s?.status === 'FAILED').length;
   const completed = stepRuns.filter((s) => s?.status === 'COMPLETED').length;
   const pending = stepRuns.filter((s) => s?.status === 'PENDING').length;
+  const currentStatus = latestJob?.steps.find((s) => s.order === step.order)?.status ?? 'IDLE';
   const quality: NodeMetric['quality'] =
-    stepRuns.length === 0 ? 'idle' : failed > 0 ? 'critical' : running > 0 ? 'running' : pending > 0 ? 'pending' : 'normal';
+    currentStatus === 'IDLE'
+      ? 'idle'
+      : currentStatus === 'FAILED'
+        ? 'critical'
+        : currentStatus === 'RUNNING'
+          ? 'running'
+          : currentStatus === 'PENDING' || currentStatus === 'CANCELED' || currentStatus === 'SKIPPED'
+            ? 'pending'
+            : 'normal';
+
+  const { label, subLabel } = getStepPresentation(step);
 
   return {
     order: step.order,
-    label: getStepLabel(step),
+    depth: topology.depthByOrder.get(step.order) ?? 0,
+    lane: topology.laneByOrder.get(step.order) ?? 0,
+    kind: step.kind,
+    sarStage: step.sarStage,
+    inputLevel: step.inputLevel,
+    enabledTasks: step.enabledTasks,
+    label,
+    subLabel,
     target: getStepTarget(step),
     running,
     failed,
     completed,
     pending,
     total: stepRuns.length,
+    currentStatus,
     quality,
   };
 }
 
-function getStepLabel(step: PipelineStepDefinition): string {
-  if (step.kind === 'SAR' && step.sarStage) return SAR_STAGE_LABELS[step.sarStage];
-  if (step.kind === 'FILE_INPUT' && step.inputLevel) return `Import ${PRODUCT_LEVEL_LABELS[step.inputLevel]} Product`;
-  return COMPACT_KIND_LABELS[step.kind] ?? step.kind;
+function summarizeDepthStatus(statuses: StepStatus[]): 'RUNNING' | 'FAILED' | 'COMPLETED' | 'PENDING' {
+  if (statuses.some((status) => status === 'FAILED')) return 'FAILED';
+  if (statuses.some((status) => status === 'RUNNING')) return 'RUNNING';
+  if (statuses.every((status) => status === 'COMPLETED')) return 'COMPLETED';
+  return 'PENDING';
+}
+
+function buildDepthMetrics(
+  steps: PipelineStepDefinition[],
+  jobs: JobDetail[],
+  topology: StepTopology,
+): DepthMetric[] {
+  const stepOrdersByDepth = new Map<number, number[]>();
+
+  steps.forEach((step) => {
+    const depth = topology.depthByOrder.get(step.order) ?? 0;
+    const bucket = stepOrdersByDepth.get(depth) ?? [];
+    bucket.push(step.order);
+    stepOrdersByDepth.set(depth, bucket);
+  });
+
+  return Array.from(stepOrdersByDepth.entries())
+    .sort(([left], [right]) => left - right)
+    .map(([depth, stepOrders]) => {
+      const metric: DepthMetric = {
+        depth,
+        running: 0,
+        failed: 0,
+        completed: 0,
+        pending: 0,
+        total: jobs.length,
+      };
+
+      jobs.forEach((job) => {
+        const statuses = stepOrders.map((order) => job.steps.find((step) => step.order === order)?.status ?? 'PENDING');
+        const depthStatus = summarizeDepthStatus(statuses);
+
+        if (depthStatus === 'FAILED') metric.failed += 1;
+        else if (depthStatus === 'RUNNING') metric.running += 1;
+        else if (depthStatus === 'COMPLETED') metric.completed += 1;
+        else metric.pending += 1;
+      });
+
+      return metric;
+    });
+}
+
+function getMatrixStageLabel(node: NodeMetric): string {
+  if (node.sarStage) return node.sarStage;
+  if (node.kind === 'TRIGGER') return 'TRIGGER';
+  if (node.kind === 'FILE_INPUT') {
+    if (node.inputLevel === 'LEVEL_0') return 'L0 INPUT';
+    if (node.inputLevel === 'LEVEL_1') return 'L1 INPUT';
+    if (node.inputLevel === 'LEVEL_2') return 'L2 INPUT';
+    return 'FILE_INPUT';
+  }
+  if (node.kind === 'JOB_INIT') return 'JOB_INIT';
+  if (node.kind === 'CATALOG') return 'CATALOG';
+  if (node.kind === 'THUMBNAIL') return 'QUICKLOOK';
+  return node.kind;
+}
+
+function getLaneQualifier(node: NodeMetric): string {
+  return `Path ${String.fromCharCode(65 + (node.lane % 26))}`;
+}
+
+function getMatrixQualifier(node: NodeMetric): string | null {
+  if (node.enabledTasks && node.enabledTasks.length === 1) {
+    const task = node.enabledTasks[0].toLowerCase();
+    if (task.includes('hh')) return 'HH';
+    if (task.includes('hv')) return 'HV';
+    if (task.includes('vv')) return 'VV';
+    if (task.includes('vh')) return 'VH';
+    if (task.includes('thumbnail') || task.includes('quicklook')) return 'Quick-look';
+    if (task.includes('scene')) return 'Scene';
+    if (task.includes('application') || task.includes('app')) return 'App';
+    if (task.includes('map')) return 'Map';
+    return node.enabledTasks[0].replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+
+  if (node.kind === 'FILE_INPUT' && node.inputLevel) {
+    return PRODUCT_LEVEL_LABELS[node.inputLevel];
+  }
+
+  return null;
+}
+
+function buildMatrixDepthGroups(nodeMetrics: NodeMetric[], depthMetrics: DepthMetric[]): MatrixDepthGroup[] {
+  const grouped = new Map<number, NodeMetric[]>();
+  const depthMetricMap = new Map(depthMetrics.map((metric) => [metric.depth, metric]));
+
+  nodeMetrics.forEach((node) => {
+    const bucket = grouped.get(node.depth) ?? [];
+    bucket.push(node);
+    grouped.set(node.depth, bucket);
+  });
+
+  return Array.from(grouped.entries())
+    .sort(([left], [right]) => left - right)
+    .map(([depth, nodes]) => {
+      const orderedNodes = nodes.slice().sort((left, right) => left.lane - right.lane || left.order - right.order);
+      const stageCounts = new Map<string, number>();
+
+      orderedNodes.forEach((node) => {
+        const stageLabel = getMatrixStageLabel(node);
+        stageCounts.set(stageLabel, (stageCounts.get(stageLabel) ?? 0) + 1);
+      });
+
+      const columns = orderedNodes.map<MatrixColumn>((node) => {
+        const stageLabel = getMatrixStageLabel(node);
+        const duplicateStage = (stageCounts.get(stageLabel) ?? 0) > 1;
+        const qualifier = getMatrixQualifier(node) ?? (duplicateStage ? getLaneQualifier(node) : null);
+        return {
+          key: `depth-${depth}-node-${node.order}`,
+          header: qualifier ? `${stageLabel} · ${qualifier}` : stageLabel,
+          subtitle: node.label,
+          target: node.target,
+          metric: node,
+        };
+      });
+
+      return {
+        depth,
+        title: columns.length > 1 ? `단계 ${depth + 1} (${columns.length}개 분기)` : `단계 ${depth + 1}`,
+        subtitle: '',
+        columns,
+        aggregate: depthMetricMap.get(depth) ?? {
+          depth,
+          running: 0,
+          failed: 0,
+          completed: 0,
+          pending: 0,
+          total: 0,
+        },
+      };
+    });
+}
+
+function getStepPresentation(step: PipelineStepDefinition): { label: string; subLabel: string } {
+  if (step.kind === 'TRIGGER') {
+    return { label: '원시 데이터 수신 트리거', subLabel: 'EI-01 · RAW_DATA_RECEIVED' };
+  }
+  if (step.kind === 'FILE_INPUT') {
+    const levelStr = step.inputLevel === 'LEVEL_0' ? 'L0' : step.inputLevel === 'LEVEL_1' ? 'L1' : step.inputLevel === 'LEVEL_2' ? 'L2' : 'L?';
+    return { label: `${levelStr} 결과 입력`, subLabel: 'SI-07 · 부분 재처리' };
+  }
+  if (step.kind === 'JOB_INIT') {
+    return { label: '작업 초기화', subLabel: 'CSU-08.02 · 프로파일 선택' };
+  }
+  if (step.kind === 'CATALOG') {
+    return { label: '카탈로그 등록', subLabel: 'CSC-07 · 등록' };
+  }
+  if (step.kind === 'THUMBNAIL') {
+    return { label: 'Quick-look 생성', subLabel: 'CSU-07.06 · 조기 미리보기' };
+  }
+  if (step.kind === 'SAR' && step.sarStage) {
+    return {
+      label: SAR_STAGE_LABELS[step.sarStage],
+      subLabel: `${step.sarStage} · ${PRODUCT_LEVEL_LABELS[SAR_STAGE_TO_LEVEL[step.sarStage]]}`,
+    };
+  }
+  return { label: COMPACT_KIND_LABELS[step.kind] ?? step.kind, subLabel: '—' };
 }
 
 function getStepTarget(step: PipelineStepDefinition): string {
@@ -323,20 +545,150 @@ function getStepTarget(step: PipelineStepDefinition): string {
   return `${csc} ${level}`.trim();
 }
 
-function getNodeIcon(node: NodeMetric): React.ElementType {
-  if (node.label === 'Raw' && node.target.startsWith('CSC-02')) return Antenna;
-  if (node.label.endsWith('Input')) return FileInput;
-  if (node.label === 'Init') return SlidersHorizontal;
-  if (node.label === 'Catalog') return Database;
-  if (node.label === 'Quicklook') return ImageIcon;
-  if (node.label.startsWith('L0')) return HardDrive;
-  if (node.label.startsWith('L1A')) return Cpu;
-  if (node.label.startsWith('L1B')) return Layers;
-  if (node.label.startsWith('L1C')) return Compass;
-  if (node.label.startsWith('L2A')) return Map;
-  if (node.label.startsWith('L2B')) return Crosshair;
-  if (node.label.startsWith('L3')) return Package;
-  return HardDrive;
+type FlowPosition = { x: number; y: number };
+type StepTopology = {
+  depthByOrder: Map<number, number>;
+  rowByOrder: Map<number, number>;
+  laneByOrder: Map<number, number>;
+};
+type DepthMetric = {
+  depth: number;
+  running: number;
+  failed: number;
+  completed: number;
+  pending: number;
+  total: number;
+};
+type MatrixColumn = {
+  key: string;
+  header: string;
+  subtitle: string;
+  target: string;
+  metric: NodeMetric;
+};
+type MatrixDepthGroup = {
+  depth: number;
+  title: string;
+  subtitle: string;
+  columns: MatrixColumn[];
+  aggregate: DepthMetric;
+};
+
+function buildStepTopology(steps: PipelineStepDefinition[], edges: PipelineEdge[]): StepTopology {
+  const incoming = new Map<number, number[]>();
+  const outgoing = new Map<number, number[]>();
+  const depthByOrder = new Map<number, number>();
+  const rowHints = new Map<number, number[]>();
+
+  for (const step of steps) {
+    incoming.set(step.order, []);
+    outgoing.set(step.order, []);
+  }
+
+  for (const edge of edges) {
+    incoming.get(edge.target)?.push(edge.source);
+    outgoing.get(edge.source)?.push(edge.target);
+  }
+
+  const heads = steps
+    .filter((step) => (incoming.get(step.order)?.length ?? 0) === 0)
+    .map((step) => step.order)
+    .sort((a, b) => a - b);
+
+  const queue = [...heads];
+  for (const head of heads) depthByOrder.set(head, 0);
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const nextDepth = depthByOrder.get(current) ?? 0;
+    for (const target of outgoing.get(current) ?? []) {
+      const candidate = nextDepth + 1;
+      if ((depthByOrder.get(target) ?? -1) < candidate) depthByOrder.set(target, candidate);
+      queue.push(target);
+    }
+  }
+
+  const pushRowHint = (order: number, row: number) => {
+    const bucket = rowHints.get(order) ?? [];
+    bucket.push(row);
+    rowHints.set(order, bucket);
+  };
+
+  const visit = (order: number, row: number, trail: Set<number>) => {
+    if (trail.has(order)) return;
+    pushRowHint(order, row);
+    const children = (outgoing.get(order) ?? []).slice().sort((a, b) => a - b);
+    const nextTrail = new Set(trail);
+    nextTrail.add(order);
+    children.forEach((child, index) => visit(child, row + (children.length === 1 ? 0 : index), nextTrail));
+  };
+
+  heads.forEach((head, index) => visit(head, index * 2, new Set<number>()));
+
+  const rowByOrder = new Map<number, number>();
+  const laneByOrder = new Map<number, number>();
+  const rowsByDepth = new Map<number, { order: number; row: number }[]>();
+
+  for (const step of steps) {
+    const hints = rowHints.get(step.order) ?? [0];
+    const avgRow = hints.reduce((sum, value) => sum + value, 0) / hints.length;
+    rowByOrder.set(step.order, avgRow);
+    const depth = depthByOrder.get(step.order) ?? 0;
+    const bucket = rowsByDepth.get(depth) ?? [];
+    bucket.push({ order: step.order, row: avgRow });
+    rowsByDepth.set(depth, bucket);
+  }
+
+  rowsByDepth.forEach((entries) => {
+    entries
+      .slice()
+      .sort((a, b) => a.row - b.row || a.order - b.order)
+      .forEach((entry, index) => laneByOrder.set(entry.order, index));
+  });
+
+  return { depthByOrder, rowByOrder, laneByOrder };
+}
+
+function layoutPipelineFlow(steps: PipelineStepDefinition[], edges: PipelineEdge[]): Map<number, FlowPosition> {
+  const graph = new dagre.graphlib.Graph();
+  graph.setDefaultEdgeLabel(() => ({}));
+  graph.setGraph({
+    rankdir: 'LR',
+    nodesep: 120,
+    ranksep: 200,
+    marginx: 24,
+    marginy: 24,
+  });
+  const positions = new Map<number, FlowPosition>();
+
+  steps
+    .slice()
+    .sort((left, right) => left.order - right.order)
+    .forEach((step) => {
+      graph.setNode(`s-${step.order}`, { width: DASHBOARD_FLOW_NODE_SIZE, height: DASHBOARD_FLOW_NODE_SIZE });
+    });
+
+  edges
+    .slice()
+    .sort((left, right) => left.source - right.source || left.target - right.target)
+    .forEach((edge) => {
+      graph.setEdge(`s-${edge.source}`, `s-${edge.target}`);
+    });
+
+  dagre.layout(graph);
+
+  steps.forEach((step) => {
+    const position = graph.node(`s-${step.order}`);
+    if (position) {
+      positions.set(step.order, {
+        x: position.x - DASHBOARD_FLOW_NODE_SIZE / 2,
+        y: position.y - DASHBOARD_FLOW_NODE_SIZE / 2,
+      });
+      return;
+    }
+    positions.set(step.order, { x: step.order * 260, y: 0 });
+  });
+
+  return positions;
 }
 
 function summaryToDetail(job: JobSummary): JobDetail {
@@ -353,11 +705,13 @@ function summaryToDetail(job: JobSummary): JobDetail {
 }
 
 function KpiCard({
+  className,
   label,
   value,
   icon: Icon,
   tone,
 }: {
+  className?: string;
   label: string;
   value: string | number;
   icon: React.ElementType;
@@ -370,16 +724,16 @@ function KpiCard({
   }[tone];
 
   return (
-    <div className="min-w-32 rounded-lg border border-border bg-background/45 px-3 py-2.5">
-      <div className="mb-1 flex items-center gap-1.5">
-        <span className={cn('rounded-md p-1', toneClass)}>
-          <Icon className="h-3.5 w-3.5" />
+    <div className={cn('h-full w-full min-w-28 rounded-xl border border-border bg-background px-2.5 py-2.5 shadow-sm', className)}>
+      <div className="mb-1.5 flex items-center gap-1.5">
+        <span className={cn('rounded-md p-0.5', toneClass)}>
+          <Icon className="h-3.25 w-3.25" />
         </span>
-        <span className="text-[10px] text-muted-foreground">{label}</span>
+        <span className="text-[9px] font-medium text-muted-foreground">{label}</span>
       </div>
       <div className="flex items-end justify-between gap-2">
-        <div className="font-mono text-lg font-bold text-foreground">{value}</div>
-        <div className="pb-0.5 text-[9px] font-medium text-muted-foreground/75">전체 기준</div>
+        <div className="font-mono text-base font-bold text-foreground">{value}</div>
+        <div className="pb-0.5 text-[9px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">live</div>
       </div>
     </div>
   );
@@ -523,12 +877,39 @@ function PipelineQualityCard({ item, basePath }: { item: PipelineMetric; basePat
   const hasFailure = item.failedJobs > 0 || item.nodeMetrics.some((node) => node.failed > 0);
   const runningLabel = `${item.runningJobs} 실행 중`;
   const failureLabel = `${item.failedJobs} 실패`;
-  const nodeGridStyle = {
-    gridTemplateColumns: `repeat(${Math.max(item.nodeMetrics.length, 1)}, minmax(116px, 1fr))`,
-  };
-  const matrixGridStyle = {
-    gridTemplateColumns: `${MATRIX_LABEL_COLUMN_WIDTH}px repeat(${Math.max(item.nodeMetrics.length, 1)}, minmax(116px, 1fr))`,
-  };
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [availableWidth, setAvailableWidth] = useState(0);
+  const matrixGroups = useMemo(
+    () => buildMatrixDepthGroups(item.nodeMetrics, item.depthMetrics),
+    [item.depthMetrics, item.nodeMetrics],
+  );
+  const matrixColumns = useMemo(() => matrixGroups.flatMap((group) => group.columns), [matrixGroups]);
+  const baseMatrixWidth = useMemo(
+    () => Math.max(760, MATRIX_LABEL_COLUMN_WIDTH + matrixColumns.length * MATRIX_NODE_COLUMN_WIDTH),
+    [matrixColumns.length],
+  );
+  const matrixWidth = Math.max(baseMatrixWidth, availableWidth);
+  const columnWidth = Math.max(
+    MATRIX_NODE_COLUMN_WIDTH,
+    (matrixWidth - MATRIX_LABEL_COLUMN_WIDTH) / Math.max(matrixColumns.length, 1),
+  );
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+
+    const syncWidth = () => {
+      setAvailableWidth(element.clientWidth > 0 ? element.clientWidth - 32 : 0);
+    };
+
+    syncWidth();
+
+    const observer = new ResizeObserver(() => {
+      syncWidth();
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <article className="overflow-hidden rounded-lg border border-border bg-card">
@@ -559,45 +940,85 @@ function PipelineQualityCard({ item, basePath }: { item: PipelineMetric; basePat
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <div className="min-w-[760px] px-4 py-4">
-          <div className="grid items-start gap-0" style={matrixGridStyle}>
-            <div aria-hidden="true" />
-            <div className="grid items-start" style={{ ...nodeGridStyle, gridColumn: '2 / -1' }}>
-              {item.nodeMetrics.map((node, index) => (
-                <PipelineNodeColumn
-                  key={`flow-${node.order}`}
-                  node={node}
-                  first={index === 0}
-                  last={index === item.nodeMetrics.length - 1}
-                />
-              ))}
-            </div>
-          </div>
+      <div ref={containerRef} className="overflow-x-auto">
+        <div className="px-4 py-4" style={{ width: matrixWidth }}>
+          <PipelineFlowDiagram
+            pipeline={item.pipeline}
+            nodeMetrics={item.nodeMetrics}
+            width={matrixWidth}
+          />
 
           <div className="mt-4 overflow-hidden rounded-lg border border-border">
-            <div className="grid bg-muted/25" style={matrixGridStyle}>
-              <div className="border-r border-border px-3 py-2">
-                <div className="font-mono text-[10px] font-bold text-foreground">STATUS</div>
-                <div className="mt-0.5 text-[10px] text-muted-foreground">count</div>
-              </div>
-              {item.nodeMetrics.map((node) => (
-                <div
-                  key={`head-${node.order}`}
-                  className="border-r border-border px-3 py-2 last:border-r-0"
-                >
-                  <div className="font-mono text-[10px] font-bold text-foreground">노드 {node.order}</div>
-                  <div className="mt-0.5 truncate text-[10px] text-muted-foreground" title={node.label}>
-                    {node.target}
-                  </div>
-                </div>
-              ))}
+            <div className="border-b border-border bg-muted/15 px-3 py-2 text-[10px] leading-relaxed text-muted-foreground">
+              분기 단계의 헤더는 해당 단계를 구성하는 노드 설명입니다. 아래 `Running / Failed / Done / Pending` 수치는 같은 단계에 속한 노드를 묶은 단계 단위 집계로 계산합니다.
             </div>
-
-            <MetricMatrixRow label="Running" tone="accent" values={item.nodeMetrics.map((node) => node.running)} gridStyle={matrixGridStyle} />
-            <MetricMatrixRow label="Failed" tone="danger" values={item.nodeMetrics.map((node) => node.failed)} gridStyle={matrixGridStyle} />
-            <MetricMatrixRow label="Done" tone="success" values={item.nodeMetrics.map((node) => node.completed)} gridStyle={matrixGridStyle} />
-            <MetricMatrixRow label="Pending" tone="muted" values={item.nodeMetrics.map((node) => node.pending)} gridStyle={matrixGridStyle} />
+            <table className="w-full border-collapse table-fixed text-[11px]">
+              <thead className="bg-muted/25">
+                <tr className="border-b border-border">
+                  <th
+                    rowSpan={2}
+                    className="border-r border-border px-3 py-2 text-left align-top"
+                    style={{ width: MATRIX_LABEL_COLUMN_WIDTH }}
+                  >
+                    <div className="font-mono text-[10px] font-bold text-foreground">STATUS</div>
+                    <div className="mt-0.5 text-[10px] text-muted-foreground">count</div>
+                  </th>
+                  {matrixGroups.map((group) => (
+                    <th
+                      key={`depth-group-${group.depth}`}
+                      colSpan={group.columns.length}
+                      className="border-r border-border px-3 py-2 text-left last:border-r-0"
+                    >
+                      <div className="font-mono text-[10px] font-bold text-foreground">{group.title}</div>
+                      {group.subtitle ? <div className="mt-0.5 text-[10px] text-muted-foreground">{group.subtitle}</div> : null}
+                    </th>
+                  ))}
+                </tr>
+                <tr className="border-b border-border">
+                  {matrixGroups.flatMap((group) => group.columns.map((column) => (
+                    <th
+                      key={column.key}
+                      className="border-r border-border px-3 py-2 text-left align-top last:border-r-0"
+                      style={{ minWidth: columnWidth, width: columnWidth }}
+                    >
+                      <div className="font-mono text-[10px] font-bold text-foreground">{column.header}</div>
+                      <div className="mt-0.5 truncate text-[10px] text-muted-foreground" title={column.subtitle}>
+                        {column.subtitle}
+                      </div>
+                      <div className="mt-0.5 truncate text-[10px] text-muted-foreground/85" title={column.target}>
+                        {column.target}
+                      </div>
+                    </th>
+                  )))}
+                </tr>
+              </thead>
+              <tbody>
+                <MetricMatrixRow
+                  label="Running"
+                  tone="accent"
+                  groups={matrixGroups}
+                  valueSelector={(group) => group.aggregate.running}
+                />
+                <MetricMatrixRow
+                  label="Failed"
+                  tone="danger"
+                  groups={matrixGroups}
+                  valueSelector={(group) => group.aggregate.failed}
+                />
+                <MetricMatrixRow
+                  label="Done"
+                  tone="success"
+                  groups={matrixGroups}
+                  valueSelector={(group) => group.aggregate.completed}
+                />
+                <MetricMatrixRow
+                  label="Pending"
+                  tone="muted"
+                  groups={matrixGroups}
+                  valueSelector={(group) => group.aggregate.pending}
+                />
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -605,77 +1026,124 @@ function PipelineQualityCard({ item, basePath }: { item: PipelineMetric; basePat
   );
 }
 
-function PipelineNodeColumn({ node, first, last }: { node: NodeMetric; first: boolean; last: boolean }) {
-  const NodeIcon = getNodeIcon(node);
-  const statusLabel = {
-    normal: '정상',
-    running: '진행 중',
-    pending: '대기 중',
-    critical: '장애',
-    idle: '대기',
-  }[node.quality];
+function PipelineFlowDiagram({
+  pipeline,
+  nodeMetrics,
+  width,
+}: {
+  pipeline: PipelineDefinition;
+  nodeMetrics: NodeMetric[];
+  width: number;
+}) {
+  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null);
+  const positions = useMemo(() => layoutPipelineFlow(pipeline.steps, pipeline.edges), [pipeline.edges, pipeline.steps]);
+  const nodeByOrder = useMemo(() => new Map(nodeMetrics.map((node) => [node.order, node])), [nodeMetrics]);
+  const handleResetViewport = useCallback(() => {
+    flowInstance?.fitView(DASHBOARD_FLOW_FIT_VIEW);
+  }, [flowInstance]);
+  const nodes = useMemo<Node[]>(() => (
+    pipeline.steps.map((step) => {
+      const metric = nodeByOrder.get(step.order);
+      const position = positions.get(step.order) ?? { x: step.order * 170, y: 20 };
+      return {
+        id: `dashboard-step-${step.order}`,
+        type: 'pipeline',
+        position,
+        draggable: false,
+        selectable: false,
+        data: {
+          kind: step.kind,
+          sarStage: step.sarStage,
+          inputLevel: step.inputLevel,
+          status: metric?.currentStatus === 'IDLE' ? 'PENDING' : (metric?.currentStatus ?? 'PENDING'),
+          order: step.order,
+          enabledTasks: step.enabledTasks,
+          editable: false,
+          isLeaf: !pipeline.edges.some((edge) => edge.source === step.order),
+          isHead: !pipeline.edges.some((edge) => edge.target === step.order),
+          enabled: !step.disabled,
+          isJobMode: true,
+        } satisfies PipelineNodeData,
+      };
+    })
+  ), [nodeByOrder, pipeline.edges, pipeline.steps, positions]);
+  const edges = useMemo<Edge<DeletableEdgeData>[]>(() => (
+    pipeline.edges.map((edge) => {
+      const sourceMetric = nodeByOrder.get(edge.source);
+      const targetMetric = nodeByOrder.get(edge.target);
+      const sourceStatus = sourceMetric?.currentStatus ?? 'IDLE';
+      const targetStatus = targetMetric?.currentStatus ?? 'IDLE';
+      const dimmed = sourceStatus === 'FAILED' || targetStatus === 'PENDING' || targetStatus === 'CANCELED' || targetStatus === 'SKIPPED';
+      const stroke = dimmed
+        ? t.nodeDefault
+        : sourceStatus === 'COMPLETED'
+          ? t.edgeSuccess
+          : targetStatus === 'RUNNING'
+            ? t.accent
+            : t.edge;
+      return {
+        id: `dashboard-edge-${edge.source}-${edge.target}`,
+        source: `dashboard-step-${edge.source}`,
+        target: `dashboard-step-${edge.target}`,
+        type: 'deletable',
+        animated: targetStatus === 'RUNNING',
+        selectable: false,
+        data: {
+          stroke,
+          strokeWidth: 2.2,
+          animated: targetStatus === 'RUNNING',
+          editable: false,
+          markerVariant: 'outline',
+          markerBackground: 'var(--background)',
+          sourceOrder: edge.source,
+          targetOrder: edge.target,
+        },
+      };
+    })
+  ), [nodeByOrder, pipeline.edges]);
 
   return (
-    <div className="relative min-h-36 px-2">
-      {!first && <div className="absolute left-0 top-8 h-px w-1/2 bg-border" />}
-      {!last && <div className="absolute right-0 top-8 h-px w-1/2 bg-border" />}
-      <div
-        className={cn(
-          'node-icon-box relative z-10 mx-auto flex h-16 w-16 items-center justify-center rounded-xl border-2 bg-card shadow-sm',
-          node.quality === 'critical'
-            ? 'border-destructive'
-            : node.quality === 'running'
-              ? 'border-accent'
-              : node.quality === 'pending'
-                ? 'border-muted-foreground/30'
-              : node.quality === 'normal'
-                ? 'border-accent/70'
-                : 'border-muted-foreground/30',
-        )}
-        style={{
-          boxShadow: node.quality === 'critical'
-            ? '0 0 16px rgba(239, 68, 68, 0.25)'
-            : node.quality === 'running'
-              ? '0 0 20px rgba(52, 211, 153, 0.25)'
-              : node.quality === 'pending'
-                ? 'none'
-              : node.quality === 'normal'
-                ? '0 0 14px rgba(52, 211, 153, 0.18)'
-                : 'none',
-        }}
+    <div className="relative overflow-hidden rounded-xl border border-border bg-background/65" style={{ width }}>
+      <button
+        type="button"
+        onClick={handleResetViewport}
+        className="absolute right-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-md border border-border bg-card/92 px-2.5 py-1.5 text-[10px] font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted/70 hover:text-foreground"
+        aria-label="처음 파이프라인 보기로 돌아가기"
       >
-        <NodeIcon className={cn(
-          'h-7 w-7',
-          node.quality === 'critical'
-            ? 'text-destructive'
-            : node.quality === 'idle'
-              ? 'text-muted-foreground/45'
-              : node.quality === 'pending'
-                ? 'text-muted-foreground/60'
-              : 'text-accent',
-        )} />
-      </div>
-      <div className="mt-2 text-center">
-        <div className="line-clamp-2 min-h-8 text-[11px] font-semibold leading-4 text-foreground" title={node.label}>
-          {node.label}
-        </div>
-        <div className="mt-1 text-[10px] text-muted-foreground" title={CSC_LABELS[node.target.split(' ')[0] as keyof typeof CSC_LABELS] ?? node.target}>
-          {node.target}
-        </div>
-        <span className={cn(
-          'mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold',
-          node.quality === 'critical'
-            ? 'bg-destructive/10 text-destructive'
-            : node.quality === 'running'
-              ? 'bg-accent/10 text-accent'
-              : node.quality === 'pending'
-                ? 'bg-muted text-muted-foreground'
-              : node.quality === 'normal'
-                ? 'bg-success/10 text-success'
-                : 'bg-muted text-muted-foreground',
-        )}>
-          {statusLabel}
-        </span>
+        <RotateCcw className="h-3.5 w-3.5" />
+        처음 보기
+      </button>
+      <div style={{ height: DASHBOARD_FLOW_HEIGHT }}>
+        <ReactFlow
+          key={`dashboard-flow-${pipeline.id}-${Math.round(width)}`}
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={dashboardNodeTypes}
+          edgeTypes={dashboardEdgeTypes}
+          fitView
+          fitViewOptions={DASHBOARD_FLOW_FIT_VIEW}
+          onInit={setFlowInstance}
+          panOnDrag
+          zoomOnScroll
+          zoomOnPinch
+          zoomOnDoubleClick={false}
+          preventScrolling
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          minZoom={0.2}
+          maxZoom={4}
+          proOptions={{ hideAttribution: true }}
+          className="bg-transparent"
+        >
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color={t.canvasDot} />
+          <Controls
+            showInteractive={false}
+            position="bottom-left"
+            fitViewOptions={DASHBOARD_FLOW_FIT_VIEW}
+            className="!bg-card/92 !border-border !shadow-lg [&>button]:!bg-muted [&>button]:!border-border [&>button]:!text-foreground"
+          />
+        </ReactFlow>
       </div>
     </div>
   );
@@ -683,14 +1151,14 @@ function PipelineNodeColumn({ node, first, last }: { node: NodeMetric; first: bo
 
 function MetricMatrixRow({
   label,
-  values,
+  groups,
   tone,
-  gridStyle,
+  valueSelector,
 }: {
   label: string;
-  values: number[];
+  groups: MatrixDepthGroup[];
   tone: 'success' | 'accent' | 'danger' | 'muted';
-  gridStyle: React.CSSProperties;
+  valueSelector: (group: MatrixDepthGroup) => number;
 }) {
   const textClass = {
     success: 'text-success',
@@ -700,18 +1168,27 @@ function MetricMatrixRow({
   }[tone];
 
   return (
-    <div className="grid border-t border-border" style={gridStyle}>
-      <div className="flex min-h-12 items-center border-r border-border px-3 py-2">
+    <tr className="border-t border-border">
+      <td className="min-h-12 border-r border-border px-3 py-2 align-middle" style={{ width: MATRIX_LABEL_COLUMN_WIDTH }}>
         <span className={cn('text-[11px] font-semibold', textClass)}>{label}</span>
-      </div>
-      {values.map((value, index) => (
-        <div key={`${label}-${index}`} className="min-h-12 border-r border-border px-3 py-2 last:border-r-0">
-          <div className={cn('font-mono text-lg font-bold', value > 0 ? textClass : 'text-muted-foreground/45')}>
-            {value}
-          </div>
-        </div>
-      ))}
-    </div>
+      </td>
+      {groups.map((group) => {
+        const value = valueSelector(group);
+        return (
+          <td
+            key={`${label}-depth-${group.depth}`}
+            colSpan={group.columns.length}
+            className="min-h-12 border-r border-border px-3 py-2 align-middle last:border-r-0"
+          >
+            <div>
+            <div className={cn('font-mono text-lg font-bold', value > 0 ? textClass : 'text-muted-foreground/45')}>
+              {value}
+            </div>
+            </div>
+          </td>
+        );
+      })}
+    </tr>
   );
 }
 

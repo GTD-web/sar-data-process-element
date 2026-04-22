@@ -23,7 +23,7 @@ import PipelineArchiveConfirmDialog from '@/components/panels/PipelineArchiveCon
 import PipelineEditDialog from '@/components/panels/PipelineEditDialog';
 import PipelineUndeployConfirmDialog from '@/components/panels/PipelineUndeployConfirmDialog';
 import { toast } from '@/components/ui/Toast';
-import { FlaskConical, Plus, GitBranch, Pencil, Check, X, SlidersHorizontal, Radio, ServerCog, UploadCloud } from 'lucide-react';
+import { FlaskConical, Plus, GitBranch, Pencil, Check, X, SlidersHorizontal, Radio, ServerCog, UploadCloud, Info } from 'lucide-react';
 import type {
   PipelineDefinition,
   PipelineStepDefinition,
@@ -161,29 +161,70 @@ function PipelineActivationPanel({
   deploying: boolean;
   onSetDeployment: (active: boolean) => void;
 }) {
+  const [openTooltipId, setOpenTooltipId] = useState<string | null>(null);
   const activeRules = rules.filter((rule) => rule.active);
   const visibleRules = activeRules.length > 0 ? activeRules : rules;
   const deployed = activeRules.length > 0;
+  const summaryText = deployed
+    ? '현재 운영 이벤트와 연결되어 자동 실행됩니다.'
+    : '아직 운영 이벤트와 연결되지 않았습니다.';
+  const headerTooltip = deployed
+    ? '배포된 경우에만 pgmq 이벤트와 매칭되며, 조건이 맞는 원시 데이터 이벤트가 들어오면 이 파이프라인이 자동 기동됩니다.'
+    : '배포 전에는 운영 이벤트가 들어와도 이 파이프라인은 자동으로 기동되지 않습니다.';
+
+  const toggleTooltip = (id: string) => {
+    setOpenTooltipId((prev) => (prev === id ? null : id));
+  };
 
   return (
-    <div className="absolute top-14 left-3 z-10 w-[440px] max-w-[calc(100%-1.5rem)] rounded-lg border border-border bg-card/88 backdrop-blur-sm shadow-lg overflow-hidden">
-      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border/70">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-accent/10 text-accent">
-            <Radio className="w-3.5 h-3.5" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold text-foreground leading-tight">파이프라인 배포</p>
-            <p className="text-[10px] text-muted-foreground truncate">
-              배포된 경우에만 pgmq 이벤트와 매칭됩니다
-            </p>
+    <div className="absolute top-14 left-3 z-10 w-[440px] max-w-[calc(100%-1.5rem)] overflow-visible rounded-xl border border-border/80 bg-card/92 shadow-[0_14px_40px_rgba(15,23,42,0.14)] backdrop-blur-sm">
+      <div className="border-b border-border/70 px-3 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <span className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg border ${
+              deployed
+                ? 'border-success/20 bg-success/10 text-success'
+                : 'border-border bg-muted/35 text-muted-foreground'
+            }`}>
+              <Radio className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 space-y-1">
+              <div className="flex items-center gap-2">
+                <p className="text-[11px] font-semibold leading-tight text-foreground">파이프라인 배포</p>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                  deployed ? 'bg-success/10 text-success' : 'bg-muted/60 text-muted-foreground'
+                }`}>
+                  {deployed ? 'DEPLOYED' : 'DRAFT'}
+                </span>
+              </div>
+              <p className="text-[10px] leading-relaxed text-muted-foreground">{summaryText}</p>
+            </div>
+          </div>
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => toggleTooltip('summary')}
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors ${
+                openTooltipId === 'summary'
+                  ? 'border-accent/40 bg-accent/10 text-accent'
+                  : 'border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+              }`}
+              title="배포 설명 보기"
+              aria-label="배포 설명 보기"
+              aria-expanded={openTooltipId === 'summary'}
+            >
+              <Info className="h-3.5 w-3.5" />
+            </button>
+            {openTooltipId === 'summary' && (
+              <div
+                role="tooltip"
+                className="absolute right-0 top-9 z-20 w-[260px] rounded-md border border-border bg-card px-3 py-2 text-left text-[10px] leading-relaxed text-foreground shadow-xl"
+              >
+                {headerTooltip}
+              </div>
+            )}
           </div>
         </div>
-        <span className={`shrink-0 rounded px-2 py-1 text-[10px] font-semibold ${
-          deployed ? 'bg-success/10 text-success' : 'bg-muted/60 text-muted-foreground'
-        }`}>
-          {deployed ? 'DEPLOYED' : 'DRAFT'}
-        </span>
       </div>
 
       <div className="divide-y divide-border/60">
@@ -198,21 +239,53 @@ function PipelineActivationPanel({
             rule.match.polarization,
             rule.match.inputLevel ? PRODUCT_LEVEL_LABELS[rule.match.inputLevel] : undefined,
           ].filter((condition): condition is string => typeof condition === 'string' && condition.length > 0);
+          const tooltipId = `rule:${rule.id}`;
 
           return (
-            <div key={rule.id} className="px-3 py-2.5">
-              <div className="flex items-center gap-2 min-w-0">
-                <ServerCog className="w-3.5 h-3.5 text-accent shrink-0" />
-                <span className="text-xs font-semibold text-foreground truncate">
-                  {PIPELINE_EVENT_TYPE_LABELS[rule.eventType]}
-                </span>
-                <span className="text-[10px] text-muted-foreground">→</span>
-                <span className="text-[10px] font-medium text-accent shrink-0">
-                  {TRIGGER_SOURCE_LABELS[rule.triggerSource]}
-                </span>
+            <div key={rule.id} className="px-3 py-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <ServerCog className="h-3.5 w-3.5 shrink-0 text-accent" />
+                    <span className="truncate text-xs font-semibold text-foreground">
+                      {PIPELINE_EVENT_TYPE_LABELS[rule.eventType]}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">→</span>
+                    <span className="shrink-0 text-[10px] font-medium text-accent">
+                      {TRIGGER_SOURCE_LABELS[rule.triggerSource]}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[10px] text-muted-foreground">{rule.sourceQueue}</div>
+                </div>
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => toggleTooltip(tooltipId)}
+                    className={`inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors ${
+                      openTooltipId === tooltipId
+                        ? 'border-accent/40 bg-accent/10 text-accent'
+                        : 'border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground'
+                    }`}
+                    title="규칙 설명 보기"
+                    aria-label="규칙 설명 보기"
+                    aria-expanded={openTooltipId === tooltipId}
+                  >
+                    <Info className="h-3 w-3" />
+                  </button>
+                  {openTooltipId === tooltipId && (
+                    <div
+                      role="tooltip"
+                      className="absolute right-0 top-8 z-20 w-[250px] rounded-md border border-border bg-card px-3 py-2 text-left text-[10px] leading-relaxed text-foreground shadow-xl"
+                    >
+                      {deployed
+                        ? rule.description
+                        : '아직 배포되지 않았습니다. 배포 전에는 운영 이벤트가 들어와도 이 DAG는 자동 기동되지 않습니다.'}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                <span className="rounded bg-background/70 border border-border px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
+                <span className="rounded border border-border bg-background/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
                   {rule.sourceQueue}
                 </span>
                 {conditions.map((condition) => (
@@ -221,32 +294,27 @@ function PipelineActivationPanel({
                   </span>
                 ))}
               </div>
-              <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-                {deployed
-                  ? rule.description
-                  : '아직 배포되지 않았습니다. 배포 전에는 운영 이벤트가 들어와도 이 DAG는 자동 기동되지 않습니다.'}
-              </p>
             </div>
           );
         })}
       </div>
 
-      <div className="flex items-center justify-between gap-3 px-3 py-2.5 border-t border-border/70">
-        <p className="text-[10px] leading-relaxed text-muted-foreground">
-          {deployed ? '현재 운영 이벤트에 연결되어 있습니다.' : '운영 이벤트에 연결하려면 배포하세요.'}
-        </p>
+      <div className="flex items-center justify-between gap-3 border-t border-border/70 bg-muted/15 px-3 py-2.5">
+        <div className="text-[10px] leading-relaxed text-muted-foreground">
+          {deployed ? '자동 실행 연결이 활성화되어 있습니다.' : '배포 후 자동 실행 연결이 활성화됩니다.'}
+        </div>
         {canManage && visibleRules.length > 0 && (
           <button
             type="button"
             disabled={deploying}
             onClick={() => onSetDeployment(!deployed)}
-            className={`shrink-0 flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-50 ${
+            className={`shrink-0 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-50 ${
               deployed
-                ? 'border border-border text-muted-foreground hover:bg-muted/50'
+                ? 'border border-destructive/25 bg-destructive/10 text-destructive hover:bg-destructive/15'
                 : 'bg-accent text-accent-foreground hover:brightness-110'
             }`}
           >
-            <UploadCloud className="w-3.5 h-3.5" />
+            <UploadCloud className="h-3.5 w-3.5" />
             {deployed ? '배포 해제' : '배포'}
           </button>
         )}
@@ -618,6 +686,7 @@ export default function ConsolePage() {
       setSelectedJob(res.data);
       setActiveStepOrder(null);
       setConsoleMode({ type: 'job', job: res.data });
+      setRightCollapsed(false);
       updateJobIdParam(jobId);
     } else {
       toast.error(res.message);
@@ -646,10 +715,15 @@ export default function ConsolePage() {
       ];
       const newOrder = newSteps.length;
       const beforeOrder = consoleMode.type === 'addStep' ? consoleMode.beforeOrder : undefined;
+      const asSeparateStart = consoleMode.type === 'addStep' ? consoleMode.asSeparateStart === true : false;
       let newEdges = [...selectedPipeline.edges];
-      if (beforeOrder !== undefined) {
-        newEdges = newEdges.filter((e) => !(e.source === afterOrder && e.target === beforeOrder));
-        newEdges.push({ source: afterOrder, target: newOrder });
+      if (asSeparateStart) {
+        // 우상단 + 버튼은 기존 DAG와 분리된 새로운 시작 노드를 만든다.
+      } else if (beforeOrder !== undefined) {
+        if (afterOrder > 0) {
+          newEdges = newEdges.filter((e) => !(e.source === afterOrder && e.target === beforeOrder));
+          newEdges.push({ source: afterOrder, target: newOrder });
+        }
         newEdges.push({ source: newOrder, target: beforeOrder });
       } else {
         if (afterOrder > 0) {
@@ -860,8 +934,7 @@ export default function ConsolePage() {
 
   const handleOpenNodesPanel = useCallback(() => {
     if (!selectedPipeline || selectedPipeline.steps.length === 0) return;
-    const lastOrder = Math.max(...selectedPipeline.steps.map((s) => s.order));
-    setConsoleMode({ type: 'addStep', afterOrder: lastOrder });
+    setConsoleMode({ type: 'addStep', afterOrder: 0, asSeparateStart: true });
     setRightCollapsed(false);
   }, [selectedPipeline]);
 

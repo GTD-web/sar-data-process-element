@@ -36,6 +36,15 @@ const edgeTypes: EdgeTypes = {
 const NODE_WIDTH = 64;
 const NODE_HEIGHT = 64;
 
+function getStepIdentity(step: Pick<PipelineStep, 'kind' | 'sarStage' | 'inputLevel' | 'parentOrder'>) {
+  return [
+    step.kind ?? 'UNKNOWN',
+    step.sarStage ?? '-',
+    step.inputLevel ?? '-',
+    step.parentOrder ?? '-',
+  ].join('|');
+}
+
 /** Per-node radial glow — each node gets its own soft halo so the background lights up evenly */
 function CanvasGlow({ completionRatio }: { completionRatio: number }) {
   const nodesFromStore = useStore((s) => s.nodes);
@@ -263,6 +272,7 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
   const [syncedPipelineId, setSyncedPipelineId] = useState<string | null | undefined>(null);
   const stepsKey = useMemo(() => steps.map((s) => s.order).sort((a, b) => a - b).join(','), [steps]);
   const [syncedStepsKey, setSyncedStepsKey] = useState<string>('');
+  const prevStepsRef = useRef<PipelineStep[]>(steps);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const edgeLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -280,8 +290,32 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
     setSyncedStepsKey(stepsKey);
     setPositions((prev) => {
       const next = prev.size === 0 ? computeInitialPositions(steps, pipelineEdges) : new Map(prev);
+      const previousSteps = prevStepsRef.current;
+      const reusablePositions = new Map<string, { x: number; y: number }[]>();
+
+      for (const prevStep of previousSteps) {
+        const identity = getStepIdentity(prevStep);
+        const position = prev.get(prevStep.order);
+        if (position) {
+          const bucket = reusablePositions.get(identity) ?? [];
+          bucket.push(position);
+          reusablePositions.set(identity, bucket);
+        }
+      }
+
+      const currentIdentityCounts = new Map<string, number>();
       for (const step of steps) {
+        const identity = getStepIdentity(step);
+        const occurrence = currentIdentityCounts.get(identity) ?? 0;
+        currentIdentityCounts.set(identity, occurrence + 1);
+
         if (!next.has(step.order)) {
+          const reusedPosition = reusablePositions.get(identity)?.[occurrence];
+          if (reusedPosition) {
+            next.set(step.order, reusedPosition);
+            continue;
+          }
+
           const inEdge = pipelineEdges.find((e) => e.target === step.order);
           const outEdge = pipelineEdges.find((e) => e.source === step.order);
           const srcPos = inEdge ? next.get(inEdge.source) : null;
@@ -293,8 +327,13 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
             const siblings = pipelineEdges.filter((e) => e.source === inEdge!.source);
             const branchIdx = siblings.findIndex((e) => e.target === step.order);
             next.set(step.order, { x: srcPos.x + 200, y: srcPos.y + branchIdx * 130 });
+          } else if (tgtPos) {
+            next.set(step.order, { x: tgtPos.x - 200, y: tgtPos.y });
           } else {
-            next.set(step.order, { x: step.order * 200, y: 0 });
+            const existing = Array.from(next.values());
+            const leftmostX = existing.length > 0 ? Math.min(...existing.map((pos) => pos.x)) : 0;
+            const lowestY = existing.length > 0 ? Math.max(...existing.map((pos) => pos.y)) : 0;
+            next.set(step.order, { x: leftmostX, y: lowestY + 160 });
           }
         }
       }
@@ -304,6 +343,10 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
       return next;
     });
   }
+
+  useEffect(() => {
+    prevStepsRef.current = steps;
+  }, [steps]);
 
   const clearLeaveTimer = useCallback(() => {
     if (edgeLeaveTimerRef.current) {

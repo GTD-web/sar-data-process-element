@@ -55,6 +55,7 @@ export type TriggerSource = 'PIPELINE_AUTO' | 'MANUAL_REQUEST' | 'PARTIAL_REPROC
 export type LogLevel = 'INFO' | 'WARN' | 'ERROR';
 
 export type PipelineEventType = 'RAW_DATA_RECEIVED' | 'PARTIAL_REPROCESS_REQUESTED' | 'PRODUCT_REPROCESS_REQUESTED';
+export type RawDataStatus = 'RECEIVED' | 'MAPPED' | 'READY' | 'HOLD';
 
 // --- Domain Interfaces ---
 
@@ -139,6 +140,24 @@ export interface JobDetail extends JobSummary {
   processingProfile?: ProcessingProfileSummary;
   priority?: number;
   triggerSource?: TriggerSource;
+}
+
+export interface RawDataSummary {
+  id: string;
+  title: string;
+  satelliteId: string;
+  mode: string;
+  polarization: string;
+  capturedAt: string;
+  receivedAt: string;
+  latitude: number;
+  longitude: number;
+  footprintKm: number;
+  fileSizeBytes: number;
+  status: RawDataStatus;
+  rawDataPath: string;
+  mappedPipelineId: string | null;
+  mappedPipelineName?: string | null;
 }
 
 export interface Alert {
@@ -344,6 +363,7 @@ export interface ProductQuality {
 export interface Product {
   id: string;
   sceneId: string;
+  rawDataName?: string;
   jobId: string;
   level: ProductLevel;
   satelliteId: string;
