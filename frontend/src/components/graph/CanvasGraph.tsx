@@ -158,7 +158,10 @@ function buildNodes(
         warningReason,
         enabled: !disabledNodeOrders?.has(step.order),
         onToggleActive: isEntryNode ? undefined : onToggleNodeActive,
-        onReprocess: step.kind === 'SAR' && onReprocessStep ? onReprocessStep : undefined,
+        onReprocess:
+          step.kind === 'SAR' && onReprocessStep && (step.status === 'COMPLETED' || step.status === 'FAILED')
+            ? onReprocessStep
+            : undefined,
         isJobMode,
       } satisfies PipelineNodeData,
     };

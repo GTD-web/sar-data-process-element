@@ -42,21 +42,39 @@ const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
 });
 
 // ---------------------------------------------------------------------------
-// Canvas Overlay: Job Info Badge (Scene ID + 위성·모드)
+// Canvas Overlay: Pipeline Title Badge
 // ---------------------------------------------------------------------------
 
-function JobNameBadge({ job, pipelineName, archived }: { job: JobDetail; pipelineName?: string; archived?: boolean }) {
+function JobNameBadge({
+  jobId,
+  pipelineName,
+  satelliteId,
+  mode,
+  archived,
+}: {
+  jobId: string;
+  pipelineName: string;
+  satelliteId?: string;
+  mode?: string;
+  archived?: boolean;
+}) {
   return (
     <div className="absolute top-3 left-3 z-10">
-      <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-card/80 backdrop-blur-sm border border-border shadow-sm">
-        <GitBranch className="w-3.5 h-3.5 text-accent shrink-0" />
-        <span className="text-xs font-semibold text-foreground font-mono">{job.jobId}</span>
-        <span className="text-[10px] text-muted-foreground">
-          {job.sceneId} · {job.satelliteId} · {job.mode}
-        </span>
-        {pipelineName && (
-          <span className="text-[10px] text-muted-foreground/70 border-l border-border pl-2">{pipelineName}</span>
-        )}
+      <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-card/80 backdrop-blur-sm border border-border shadow-sm">
+        <GitBranch className="w-3.5 h-3.5 text-accent shrink-0 self-start mt-0.5" />
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="text-xs font-semibold text-foreground truncate">{pipelineName}</div>
+            <span className="shrink-0 rounded border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
+              {jobId}
+            </span>
+          </div>
+          {(satelliteId || mode) && (
+            <div className="text-[10px] text-muted-foreground truncate">
+              {[satelliteId, mode].filter(Boolean).join(' · ')}
+            </div>
+          )}
+        </div>
         {archived && (
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground">
             <Archive className="w-3 h-3" />
@@ -312,6 +330,7 @@ export default function JobsPage() {
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((v) => !v)}
         activePage="jobs"
+        pipelines={pipelines}
         jobs={pagedJobs}
         selectedJobId={selectedJob?.jobId ?? null}
         onSelectJob={handleSelectJob}
@@ -351,8 +370,10 @@ export default function JobsPage() {
               isJobMode
             />
             <JobNameBadge
-              job={selectedJob}
-              pipelineName={selectedPipeline?.name}
+              jobId={selectedJob.jobId}
+              pipelineName={selectedPipeline?.name ?? '파이프라인 미확인'}
+              satelliteId={selectedJob.satelliteId}
+              mode={selectedJob.mode}
               archived={selectedPipeline?.archived}
             />
 

@@ -43,9 +43,15 @@ export default function JobDetailPanel({ job, onReprocess, onPartialReprocess, o
     onPartialReprocess(sarStage);
   };
 
-  const availableStages: SarStage[] = job.steps
-    .filter((s) => s.kind === 'SAR' && s.sarStage !== undefined)
-    .map((s) => s.sarStage!);
+  const availableStages = Array.from(
+    new Set(
+      job.steps
+        .filter((s) => s.kind === 'SAR' && s.sarStage !== undefined)
+        .filter((s) => job.status !== 'FAILED' || s.status === 'COMPLETED' || s.status === 'FAILED')
+        .map((s) => s.sarStage!),
+    ),
+  );
+  const canPartialReprocess = availableStages.length > 0;
 
   // 전체 재처리 설명 문구: 파이프라인이 FILE_INPUT으로 시작하면 해당 레벨 이후만 재실행,
   // TRIGGER로 시작하면 L0부터 재실행
@@ -94,14 +100,22 @@ export default function JobDetailPanel({ job, onReprocess, onPartialReprocess, o
                   <div className="font-medium">전체 재처리</div>
                   <div className="text-muted-foreground text-[10px]">{fullReprocessDesc}</div>
                 </button>
-                <div className="h-px bg-border" />
-                <button
-                  onClick={handleOpenPartialDialog}
-                  className="w-full px-3 py-2 text-left text-xs text-foreground hover:bg-muted/50 transition-colors"
-                >
-                  <div className="font-medium">부분 재처리</div>
-                  <div className="text-muted-foreground text-[10px]">특정 스테이지부터 재실행</div>
-                </button>
+                {canPartialReprocess && (
+                  <>
+                    <div className="h-px bg-border" />
+                    <button
+                      onClick={handleOpenPartialDialog}
+                      className="w-full px-3 py-2 text-left text-xs text-foreground hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="font-medium">부분 재처리</div>
+                      <div className="text-muted-foreground text-[10px]">
+                        {job.status === 'FAILED'
+                          ? '실패 지점까지 도달한 스테이지부터 재실행'
+                          : '특정 스테이지부터 재실행'}
+                      </div>
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -287,6 +301,11 @@ function PartialReprocessDialog({
         </div>
         <div className="p-4 space-y-4">
           <p className="text-xs text-muted-foreground">선택한 스테이지부터 이후 단계를 재실행합니다.</p>
+          {availableStages.length > 0 && (
+            <div className="rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
+              선택 가능 범위: {availableStages.map((stage) => `${stage} · ${SAR_STAGE_LABELS[stage]}`).join(', ')}
+            </div>
+          )}
           <div className="flex items-start gap-2 p-2.5 rounded-md bg-muted/30 border border-border/50 text-[11px] text-muted-foreground">
             <span className="flex-shrink-0 mt-0.5">ℹ</span>
             <span>재처리 완료 후 카탈로그 노드가 신규 버전을 등록합니다. 기존 산출물은 아카이빙되고 최신 버전이 PUBLISHED 상태로 전환됩니다.</span>

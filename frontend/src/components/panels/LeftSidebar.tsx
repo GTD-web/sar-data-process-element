@@ -44,6 +44,7 @@ interface LeftSidebarConsoleProps extends LeftSidebarBaseProps {
 
 interface LeftSidebarJobsProps extends LeftSidebarBaseProps {
   mode: 'jobs';
+  pipelines: PipelineDefinition[];
   jobs: JobSummary[];
   selectedJobId: string | null;
   onSelectJob: (jobId: string) => void;
@@ -116,6 +117,9 @@ export default function LeftSidebar(props: LeftSidebarProps) {
   const jobsPl = isJobs ? (props as LeftSidebarJobsProps) : null;
   const navProps = isNav ? (props as LeftSidebarNavProps) : null;
   const activeJobCount = jobsPl?.jobs.filter((j) => j.status === 'ASSIGNED' || j.status === 'CREATED').length ?? 0;
+  const pipelineNameById = new Map(
+    (isConsole ? consolePl?.pipelines ?? [] : jobsPl?.pipelines ?? []).map((pipeline) => [pipeline.id, pipeline.name]),
+  );
 
   const navItems: { id: NonNullable<LeftSidebarBaseProps['activePage']>; icon: React.ElementType; label: string; href: string; adminOnly?: boolean }[] = [
     { id: 'home', icon: LayoutDashboard, label: '대시보드', href: base },
@@ -331,8 +335,13 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                         )}
                       >
                         <div className="flex items-center justify-between gap-1">
-                          <span className="text-[10px] font-mono font-semibold truncate">{job.sceneId}</span>
+                          <span className="text-[10px] font-semibold truncate text-foreground">
+                            {pipelineNameById.get(job.pipelineId) ?? '파이프라인 미확인'}
+                          </span>
                           <JobStatusBadge status={job.status} retryCount={job.retryCount} />
+                        </div>
+                        <div className="flex items-center justify-between text-[9px] text-muted-foreground mt-0.5">
+                          <span className="truncate font-mono">{job.jobId}</span>
                         </div>
                         <div className="flex items-center justify-between text-[9px] text-muted-foreground mt-0.5">
                           <span className="truncate">{formatRelativeTime(job.updatedAt)}</span>
@@ -405,8 +414,13 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                           )}
                         >
                           <div className="flex items-center justify-between gap-1">
-                            <span className="text-[10px] font-mono font-semibold truncate">{job.sceneId}</span>
+                            <span className="text-[10px] font-semibold truncate text-foreground">
+                              {pipelineNameById.get(job.pipelineId) ?? '파이프라인 미확인'}
+                            </span>
                             <JobStatusBadge status={job.status} retryCount={job.retryCount} />
+                          </div>
+                          <div className="flex items-center justify-between text-[9px] text-muted-foreground mt-0.5">
+                            <span className="truncate font-mono">{job.jobId}</span>
                           </div>
                           <div className="flex items-center justify-between text-[9px] text-muted-foreground mt-0.5">
                             <span className="truncate">{formatRelativeTime(job.updatedAt)}</span>

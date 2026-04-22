@@ -1081,6 +1081,7 @@ function PipelineFlowDiagram({
           : targetStatus === 'RUNNING'
             ? t.accent
             : t.edge;
+      const markerVariant = !dimmed && (sourceStatus === 'COMPLETED' || targetStatus === 'RUNNING') ? 'solid' : 'outline';
       return {
         id: `dashboard-edge-${edge.source}-${edge.target}`,
         source: `dashboard-step-${edge.source}`,
@@ -1093,7 +1094,7 @@ function PipelineFlowDiagram({
           strokeWidth: 2.2,
           animated: targetStatus === 'RUNNING',
           editable: false,
-          markerVariant: 'outline',
+          markerVariant,
           markerBackground: 'var(--background)',
           sourceOrder: edge.source,
           targetOrder: edge.target,
