@@ -4,6 +4,7 @@ import type {
   AuditEventType,
   CreatePipelineData,
   DashboardStats,
+  Hdf5FileSummary,
   ExecutionLog,
   JobDetail,
   JobSummary,
@@ -52,6 +53,12 @@ export interface IPipelineUIService {
   }): Promise<ServiceResponseWithData<PaginatedResponse<RawDataSummary>>>;
 
   원시데이터_파이프라인을_매핑한다(rawDataId: string, pipelineId: string | null): Promise<ServiceResponseWithData<RawDataSummary>>;
+
+  HDF5_애트리뷰트_목록을_조회한다(params?: {
+    rawDataId?: string;
+  }): Promise<ServiceResponseWithData<Hdf5FileSummary[]>>;
+
+  HDF5_파일을_업로드한다(file: File): Promise<ServiceResponseWithData<Hdf5FileSummary>>;
 
   // =========================================================================
   // Jobs

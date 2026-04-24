@@ -13,6 +13,7 @@ import type {
   CreatePipelineData,
   DashboardStats,
   ExecutionLog,
+  Hdf5FileSummary,
   JobDetail,
   JobSummary,
   PaginatedResponse,
@@ -28,6 +29,7 @@ import type {
   UpdatePipelineData,
 } from '@/types/pipeline';
 import { SAR_STAGE_TO_CSC, SAR_STAGE_TO_LEVEL } from '@/types/pipeline';
+import { mockPipelineService } from '@/app/(planning)/_services/pipeline.mock';
 import type {
   CreateUserRequest,
   Session,
@@ -76,6 +78,37 @@ export const pipelineCurrentService: IPipelineUIService = {
       body: JSON.stringify({ pipelineId }),
     });
     return handleResponse(res, '원시 데이터 매핑 실패');
+  },
+
+  async HDF5_애트리뷰트_목록을_조회한다(params?: {
+    rawDataId?: string;
+  }): Promise<ServiceResponseWithData<Hdf5FileSummary[]>> {
+    const query = new URLSearchParams();
+    if (params?.rawDataId) query.set('rawDataId', params.rawDataId);
+    try {
+      const res = await fetch(`${API_BASE}/hdf5-attributes?${query}`);
+      if (res.ok) return handleResponse(res, 'HDF5 애트리뷰트 조회 실패');
+    } catch {
+      // 백엔드 미구현 환경에서는 mock fallback으로 페이지를 유지한다.
+    }
+    return mockPipelineService.HDF5_애트리뷰트_목록을_조회한다(params);
+  },
+
+  async HDF5_파일을_업로드한다(file: File): Promise<ServiceResponseWithData<Hdf5FileSummary>> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch(`${API_BASE}/hdf5-attributes/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (res.ok) return handleResponse(res, 'HDF5 파일 업로드 실패');
+    } catch {
+      // 백엔드 미구현 환경에서는 mock fallback으로 업로드 UX를 유지한다.
+    }
+
+    return mockPipelineService.HDF5_파일을_업로드한다(file);
   },
 
   async Job_목록을_조회한다(params?: {

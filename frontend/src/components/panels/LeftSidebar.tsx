@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { formatRelativeTime } from '@/lib/utils';
@@ -12,9 +13,9 @@ import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-c
 import { toast } from '@/components/ui/Toast';
 import { useTheme } from '@/lib/theme';
 import {
-  Activity, GitBranch, Plus, PanelLeftClose, PanelLeftOpen,
+  GitBranch, Plus, PanelLeftClose, PanelLeftOpen,
   Settings, User, Bell, Trash2, ChevronDown, Briefcase,
-  LayoutDashboard, Layers, Archive, Package, FileText, Antenna,
+  LayoutDashboard, Layers, Archive, Package, FileText, Antenna, Database,
   Users as UsersIcon, KeyRound, LogOut, Radio, Sun, Moon,
 } from 'lucide-react';
 
@@ -26,7 +27,7 @@ interface LeftSidebarBaseProps {
   collapsed: boolean;
   onToggle: () => void;
   /** 현재 활성 페이지 (nav highlight용) */
-  activePage?: 'home' | 'raw-data' | 'console' | 'deployed' | 'jobs' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit' | 'users' | 'settings';
+  activePage?: 'home' | 'raw-data' | 'hdf5-attributes' | 'console' | 'deployed' | 'jobs' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit' | 'users' | 'settings';
 }
 
 interface LeftSidebarConsoleProps extends LeftSidebarBaseProps {
@@ -124,6 +125,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
   const navItems: { id: NonNullable<LeftSidebarBaseProps['activePage']>; icon: React.ElementType; label: string; href: string; adminOnly?: boolean }[] = [
     { id: 'home', icon: LayoutDashboard, label: '대시보드', href: base },
     { id: 'raw-data', icon: Antenna, label: 'Raw Data 목록', href: `${base}/raw-data` },
+    { id: 'hdf5-attributes', icon: Database, label: 'HDF5 애트리뷰트', href: `${base}/hdf5-attributes` },
     { id: 'console', icon: GitBranch, label: '파이프라인 관리', href: `${base}/console` },
     { id: 'products', icon: Package, label: 'Production 목록', href: `${base}/products` },
     { id: 'queues', icon: Layers, label: '시스템 운영 모니터링', href: `${base}/queues` },
@@ -152,13 +154,38 @@ export default function LeftSidebar(props: LeftSidebarProps) {
       {/* Header */}
       <div className="h-11 flex items-center gap-1.5 px-2 border-b border-border flex-shrink-0">
         {collapsed ? (
-          <button onClick={onToggle} className="mx-auto p-1.5 rounded-md hover:bg-muted/50 transition-colors">
-            <PanelLeftOpen className="w-4 h-4 text-muted-foreground" />
-          </button>
+          <div className="mx-auto flex flex-col items-center gap-0.5">
+            <a
+              href={base}
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-border/70 bg-background/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+              title="SDPE DAG"
+            >
+              <Image
+                src="/u_logo.png"
+                alt="SDPE"
+                width={18}
+                height={18}
+                className="h-[18px] w-[18px] object-contain"
+                priority
+              />
+            </a>
+            <button onClick={onToggle} className="p-1 rounded-md hover:bg-muted/50 transition-colors" title="사이드바 열기">
+              <PanelLeftOpen className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+          </div>
         ) : (
           <>
-            <a href={base} className="flex items-center gap-1.5 flex-1 min-w-0">
-              <Activity className="w-5 h-5 text-accent flex-shrink-0" />
+            <a href={base} className="flex items-center gap-2 flex-1 min-w-0">
+              <span className="flex h-7 w-7 items-center justify-center rounded-md border border-border/70 bg-background/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                <Image
+                  src="/u_logo.png"
+                  alt="SDPE"
+                  width={18}
+                  height={18}
+                  className="h-[18px] w-[18px] object-contain"
+                  priority
+                />
+              </span>
               <span className="text-xs font-bold text-foreground tracking-tight truncate">SDPE DAG</span>
             </a>
             {isConsole && consolePl && consolePl.canManagePipelines !== false && (

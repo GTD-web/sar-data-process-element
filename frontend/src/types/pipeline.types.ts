@@ -56,6 +56,7 @@ export type LogLevel = 'INFO' | 'WARN' | 'ERROR';
 
 export type PipelineEventType = 'RAW_DATA_RECEIVED' | 'PARTIAL_REPROCESS_REQUESTED' | 'PRODUCT_REPROCESS_REQUESTED';
 export type RawDataStatus = 'RECEIVED' | 'MAPPED' | 'READY' | 'HOLD';
+export type Hdf5NodeType = 'file' | 'group' | 'dataset';
 
 // --- Domain Interfaces ---
 
@@ -158,6 +159,42 @@ export interface RawDataSummary {
   rawDataPath: string;
   mappedPipelineId: string | null;
   mappedPipelineName?: string | null;
+}
+
+export interface Hdf5AttributeEntry {
+  name: string;
+  type: string;
+  arraySize: string;
+  value: string | number | boolean | string[] | number[];
+  variableName?: string;
+  description?: string;
+}
+
+export interface Hdf5NodeSummary {
+  path: string;
+  name: string;
+  type: Hdf5NodeType;
+  depth: number;
+  attributeCount: number;
+  childCount: number;
+  dtype?: string;
+  shape?: number[];
+}
+
+export interface Hdf5FileSummary {
+  id: string;
+  rawDataId: string;
+  title: string;
+  fileName: string;
+  satelliteId: string;
+  mode: string;
+  receivedAt: string;
+  capturedAt: string;
+  fileSizeBytes: number;
+  rootGroups: string[];
+  nodes: Hdf5NodeSummary[];
+  attributes: Record<string, Hdf5AttributeEntry[]>;
+  notes: string[];
 }
 
 export interface Alert {

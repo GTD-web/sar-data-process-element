@@ -1036,6 +1036,7 @@ function PipelineFlowDiagram({
   width: number;
 }) {
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null);
+  const graphScope = useMemo(() => `dashboard-${pipeline.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`, [pipeline.id]);
   const positions = useMemo(() => layoutPipelineFlow(pipeline.steps, pipeline.edges), [pipeline.edges, pipeline.steps]);
   const nodeByOrder = useMemo(() => new Map(nodeMetrics.map((node) => [node.order, node])), [nodeMetrics]);
   const disabledOrders = useMemo(
@@ -1087,9 +1088,10 @@ function PipelineFlowDiagram({
           : targetStatus === 'RUNNING'
             ? t.accent
             : t.edge;
-      const markerVariant = !dimmed && (sourceStatus === 'COMPLETED' || targetStatus === 'RUNNING') ? 'solid' : 'outline';
+      const markerVariant = dimmed ? 'outline' : 'solid';
+      const edgeId = `${graphScope}-edge-${edge.source}-${edge.target}`;
       return {
-        id: `dashboard-edge-${edge.source}-${edge.target}`,
+        id: edgeId,
         source: `dashboard-step-${edge.source}`,
         target: `dashboard-step-${edge.target}`,
         type: 'deletable',
@@ -1104,10 +1106,11 @@ function PipelineFlowDiagram({
           markerBackground: 'var(--background)',
           sourceOrder: edge.source,
           targetOrder: edge.target,
+          markerId: `arrow-${edgeId}`,
         },
       };
     })
-  ), [disabledOrders, nodeByOrder, pipeline.edges]);
+  ), [disabledOrders, graphScope, nodeByOrder, pipeline.edges]);
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-border bg-background/65" style={{ width }}>

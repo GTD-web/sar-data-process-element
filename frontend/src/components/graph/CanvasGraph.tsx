@@ -36,6 +36,10 @@ const edgeTypes: EdgeTypes = {
 const NODE_WIDTH = 64;
 const NODE_HEIGHT = 64;
 
+function sanitizeGraphScope(scope?: string | null) {
+  return scope?.replace(/[^a-zA-Z0-9_-]/g, '-') ?? 'graph';
+}
+
 function getStepIdentity(step: Pick<PipelineStep, 'kind' | 'sarStage' | 'inputLevel' | 'parentOrder'>) {
   return [
     step.kind ?? 'UNKNOWN',
@@ -171,6 +175,7 @@ function buildNodes(
 function buildEdges(
   steps: PipelineStep[],
   pipelineEdges: PipelineEdge[],
+  graphScope: string,
   editable: boolean,
   onDeleteEdge?: (sourceOrder: number, targetOrder: number) => void,
   onInsertNode?: (afterOrder: number, beforeOrder?: number) => void,
@@ -194,7 +199,8 @@ function buildEdges(
     const stroke = dimmed
       ? t.edgeMuted
       : completed ? t.edgeSuccess : running ? t.accent : t.edge;
-    const edgeId = `e-${source}-${target}`;
+    const markerVariant = dimmed ? 'outline' : 'solid';
+    const edgeId = `${graphScope}-e-${source}-${target}`;
     // Use custom marker ID so arrow size stays fixed on hover (markerUnits=userSpaceOnUse)
     const markerId = `arrow-${edgeId}`;
     return {
@@ -207,6 +213,8 @@ function buildEdges(
       markerEnd: `url(#${markerId})`,
       data: {
         stroke, strokeWidth: 2, animated: running, editable,
+        markerVariant,
+        markerBackground: 'var(--background)',
         sourceOrder: source, targetOrder: target,
         markerId,
         onDelete: onDeleteEdge,
@@ -271,6 +279,7 @@ interface CanvasGraphProps {
 }
 
 export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable = false, onNodeClick, onDeleteNode, onAddNode, onConnect: onConnectProp, onDeleteEdge, onTrigger, jobInitWarningReason, focusEntryTrigger = 0, onNodeOpenDetail, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode }: CanvasGraphProps) {
+  const graphScope = useMemo(() => sanitizeGraphScope(pipelineId), [pipelineId]);
   // 노드 위치는 드래그로 누적되는 사용자 편집 상태이므로 state로 유지.
   // 파이프라인 전환·스텝 추가/삭제 시에는 React 권장 "렌더 중 상태 조정" 패턴으로
   // prop 변화를 감지해 한 번만 재동기화한다.
@@ -371,7 +380,7 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
 
   // Build nodes and edges WITHOUT hover dependency
   const pipelineNodes = buildNodes(steps, pipelineEdges, positions, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode);
-  const allEdges = buildEdges(steps, pipelineEdges, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave, isJobMode, disabledNodeOrders);
+  const allEdges = buildEdges(steps, pipelineEdges, graphScope, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave, isJobMode, disabledNodeOrders);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(pipelineNodes);
   const [edges, setEdges] = useEdgesState(allEdges);
@@ -381,9 +390,9 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
   // setNodes를 다시 호출할 필요 없음 (effect는 최신 positions를 closure로 캡처).
   useEffect(() => {
     setNodes(buildNodes(steps, pipelineEdges, positions, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode));
-    setEdges(buildEdges(steps, pipelineEdges, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave, isJobMode, disabledNodeOrders));
+    setEdges(buildEdges(steps, pipelineEdges, graphScope, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave, isJobMode, disabledNodeOrders));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [steps, pipelineEdges, editable, onDeleteNode, onAddNode, onDeleteEdge, onTrigger, jobInitWarningReason, clearLeaveTimer, scheduleLeave, setNodes, setEdges, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode]);
+  }, [steps, pipelineEdges, graphScope, editable, onDeleteNode, onAddNode, onDeleteEdge, onTrigger, jobInitWarningReason, clearLeaveTimer, scheduleLeave, setNodes, setEdges, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode]);
 
   const onInit = useCallback((instance: { fitView: () => void }) => {
     setTimeout(() => instance.fitView(), 100);

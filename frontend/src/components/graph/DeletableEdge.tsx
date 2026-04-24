@@ -39,6 +39,7 @@ export function DeletableEdge({
   const markerId = data?.markerId ?? `arrow-${id}`;
   const markerVariant = data?.markerVariant ?? 'solid';
   const markerBackground = data?.markerBackground ?? 'var(--background)';
+  const effectiveMarkerVariant = hovered && editable ? 'solid' : markerVariant;
 
   // n8n-style horizontal-fixed bezier: control points extend only horizontally
   const dx = Math.abs(targetX - sourceX);
@@ -91,9 +92,9 @@ export function DeletableEdge({
         >
           <path
             d="M 0 0 L 12 6 L 0 12 Z"
-            fill={markerVariant === 'outline' ? markerBackground : currentStroke}
+            fill={effectiveMarkerVariant === 'outline' ? markerBackground : currentStroke}
             stroke={currentStroke}
-            strokeWidth={markerVariant === 'outline' ? 1.6 : 0}
+            strokeWidth={effectiveMarkerVariant === 'outline' ? 1.6 : 0}
             strokeLinejoin="round"
             style={{ transition: 'fill 0.3s ease, stroke 0.3s ease' }}
           />
