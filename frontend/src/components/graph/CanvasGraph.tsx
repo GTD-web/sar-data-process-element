@@ -177,6 +177,7 @@ function buildEdges(
   onHoverStay?: () => void,
   onHoverLeave?: () => void,
   isJobMode?: boolean,
+  disabledNodeOrders?: Set<number>,
 ): Edge[] {
   const stepMap = new Map(steps.map((s) => [s.order, s]));
   return pipelineEdges.map(({ source, target }) => {
@@ -187,9 +188,11 @@ function buildEdges(
     const srcFailed = srcStep?.status === 'FAILED';
     const tgtCanceled = tgtStep?.status === 'CANCELED';
     const tgtPendingInJob = isJobMode && tgtStep?.status === 'PENDING';
-    const dimmed = srcFailed || tgtCanceled || tgtPendingInJob;
+    const srcDisabled = disabledNodeOrders?.has(source) ?? false;
+    const tgtDisabled = disabledNodeOrders?.has(target) ?? false;
+    const dimmed = srcFailed || tgtCanceled || tgtPendingInJob || srcDisabled || tgtDisabled;
     const stroke = dimmed
-      ? t.nodeDefault
+      ? t.edgeMuted
       : completed ? t.edgeSuccess : running ? t.accent : t.edge;
     const edgeId = `e-${source}-${target}`;
     // Use custom marker ID so arrow size stays fixed on hover (markerUnits=userSpaceOnUse)
@@ -368,7 +371,7 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
 
   // Build nodes and edges WITHOUT hover dependency
   const pipelineNodes = buildNodes(steps, pipelineEdges, positions, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode);
-  const allEdges = buildEdges(steps, pipelineEdges, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave, isJobMode);
+  const allEdges = buildEdges(steps, pipelineEdges, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave, isJobMode, disabledNodeOrders);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(pipelineNodes);
   const [edges, setEdges] = useEdgesState(allEdges);
@@ -378,7 +381,7 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
   // setNodes를 다시 호출할 필요 없음 (effect는 최신 positions를 closure로 캡처).
   useEffect(() => {
     setNodes(buildNodes(steps, pipelineEdges, positions, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode));
-    setEdges(buildEdges(steps, pipelineEdges, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave, isJobMode));
+    setEdges(buildEdges(steps, pipelineEdges, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave, isJobMode, disabledNodeOrders));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [steps, pipelineEdges, editable, onDeleteNode, onAddNode, onDeleteEdge, onTrigger, jobInitWarningReason, clearLeaveTimer, scheduleLeave, setNodes, setEdges, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode]);
 

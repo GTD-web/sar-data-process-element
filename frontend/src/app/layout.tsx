@@ -1,6 +1,7 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import Toaster from '@/components/ui/Toast';
+import PwaInstallPrompt from '@/components/ui/PwaInstallPrompt';
 import './globals.css';
 
 const geistSans = Geist({
@@ -16,6 +17,18 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'SDPE DAG',
   description: 'SAR Data Processing Pipeline Operations Console',
+  applicationName: 'SDPE DAG',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'SDPE DAG',
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#0d1f45',
+  colorScheme: 'dark',
 };
 
 export default function RootLayout({
@@ -39,6 +52,7 @@ export default function RootLayout({
       <body className="h-full overflow-hidden">
         {children}
         <Toaster />
+        <PwaInstallPrompt />
       </body>
     </html>
   );

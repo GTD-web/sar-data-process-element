@@ -19,6 +19,7 @@
   --sidebar-border: #e5e7eb;
   --sidebar-accent: #ffffff;
   --ring: #10b981;
+  --graph-edge-muted: rgba(107, 114, 128, 0.3);
 }
 
 /* Dark theme (applied via <html class="dark">) */
@@ -40,6 +41,7 @@
   --sidebar-border: #262626;
   --sidebar-accent: #262626;
   --ring: #34d399;
+  --graph-edge-muted: rgba(160, 160, 160, 0.3);
 }
 
 @theme inline {

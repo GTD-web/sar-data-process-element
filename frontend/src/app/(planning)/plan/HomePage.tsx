@@ -1038,6 +1038,10 @@ function PipelineFlowDiagram({
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null);
   const positions = useMemo(() => layoutPipelineFlow(pipeline.steps, pipeline.edges), [pipeline.edges, pipeline.steps]);
   const nodeByOrder = useMemo(() => new Map(nodeMetrics.map((node) => [node.order, node])), [nodeMetrics]);
+  const disabledOrders = useMemo(
+    () => new Set(pipeline.steps.filter((step) => step.disabled).map((step) => step.order)),
+    [pipeline.steps],
+  );
   const handleResetViewport = useCallback(() => {
     flowInstance?.fitView(DASHBOARD_FLOW_FIT_VIEW);
   }, [flowInstance]);
@@ -1073,9 +1077,11 @@ function PipelineFlowDiagram({
       const targetMetric = nodeByOrder.get(edge.target);
       const sourceStatus = sourceMetric?.currentStatus ?? 'IDLE';
       const targetStatus = targetMetric?.currentStatus ?? 'IDLE';
-      const dimmed = sourceStatus === 'FAILED' || targetStatus === 'PENDING' || targetStatus === 'CANCELED' || targetStatus === 'SKIPPED';
+      const sourceDisabled = disabledOrders.has(edge.source);
+      const targetDisabled = disabledOrders.has(edge.target);
+      const dimmed = sourceDisabled || targetDisabled || sourceStatus === 'FAILED' || targetStatus === 'PENDING' || targetStatus === 'CANCELED' || targetStatus === 'SKIPPED';
       const stroke = dimmed
-        ? t.nodeDefault
+        ? t.edgeMuted
         : sourceStatus === 'COMPLETED'
           ? t.edgeSuccess
           : targetStatus === 'RUNNING'
@@ -1101,7 +1107,7 @@ function PipelineFlowDiagram({
         },
       };
     })
-  ), [nodeByOrder, pipeline.edges]);
+  ), [disabledOrders, nodeByOrder, pipeline.edges]);
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-border bg-background/65" style={{ width }}>
