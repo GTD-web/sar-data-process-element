@@ -238,7 +238,7 @@ export default function DeployedPipelinesPage() {
 
       <main className="flex-1 min-w-0 overflow-y-auto">
         <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-background px-5 py-2.5">
-          <PipelineExecutionTabs active="auto" counts={{ auto: deployedRules.length }} />
+          <PipelineExecutionTabs active="auto" counts={{ auto: deployedRules.length, manual: jobs.length }} />
         </div>
         <div className="min-h-full px-8 py-7">
           <section className="grid grid-cols-2 gap-3">
@@ -442,7 +442,7 @@ export default function DeployedPipelinesPage() {
       </main>
 
       <aside
-        className="relative border-l border-black bg-[#050807] flex flex-col overflow-hidden shadow-[-18px_0_42px_rgba(0,0,0,0.35)] shrink-0"
+        className="relative border-l border-black bg-[#050807] flex flex-col overflow-hidden shrink-0"
         style={{ width: logPanelWidth }}
       >
         <div

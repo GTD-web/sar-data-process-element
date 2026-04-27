@@ -41,9 +41,14 @@ export default function PipelineExecutionTabs({
         >
           <tab.icon className="h-3.5 w-3.5" />
           <span>{tab.label}</span>
-          {typeof counts?.[tab.id] === 'number' && (
-            <span className="font-mono text-[10px] opacity-75">{counts[tab.id]}건</span>
-          )}
+          <span
+            className={cn(
+              'rounded-full px-1.5 py-0.5 font-mono text-[10px] leading-none',
+              active === tab.id ? 'bg-background/20 text-accent-foreground' : 'bg-muted/60 text-muted-foreground',
+            )}
+          >
+            {counts?.[tab.id] ?? 0}건
+          </span>
         </Link>
       ))}
     </div>

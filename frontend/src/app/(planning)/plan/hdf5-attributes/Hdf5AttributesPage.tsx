@@ -10,14 +10,36 @@ import {
   Binary,
   ChevronDown,
   ChevronRight,
+  CheckCircle2,
   FileJson,
   Folder,
   FolderOpen,
   HardDriveDownload,
   Loader2,
   Search,
+  TriangleAlert,
   Upload,
 } from 'lucide-react';
+
+const UPLOAD_STATUS_MIN_VISIBLE_MS = 900;
+
+type UploadQueueItem = {
+  id: string;
+  fileName: string;
+  fileSizeBytes: number;
+  status: 'uploading' | 'uploaded' | 'failed';
+  message: string;
+};
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function createUploadQueueId(file: File, index: number): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${file.name}-${file.size}-${Date.now()}-${index}`;
+}
 
 function formatFileSize(bytes: number): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -83,6 +105,7 @@ export default function Hdf5AttributesPage() {
   const deferredSearch = useDeferredValue(search);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
   const [filePanelOpen, setFilePanelOpen] = useState(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -181,32 +204,71 @@ export default function Hdf5AttributesPage() {
     setFilePanelOpen(true);
 
     const uploadedFiles: Hdf5FileSummary[] = [];
+    const queuedUploads = selectedFiles.map((file, index) => ({
+      id: createUploadQueueId(file, index),
+      fileName: file.name,
+      fileSizeBytes: file.size,
+      status: 'uploading' as const,
+      message: '브라우저가 HDF5 파일을 서버로 전송하고 있습니다. 저장 완료 여부와 별개로 업로드 요청은 진행 중입니다.',
+    }));
+    setUploadQueue(queuedUploads);
 
-    for (const file of selectedFiles) {
-      const result = await service.HDF5_파일을_업로드한다(file);
-      if (!result.success || !result.data) {
-        toast.error(result.message || `"${file.name}" 업로드에 실패했습니다.`);
-        continue;
+    try {
+      for (const [index, file] of selectedFiles.entries()) {
+        const queuedUpload = queuedUploads[index];
+        const [result] = await Promise.all([
+          service.HDF5_파일을_업로드한다(file),
+          wait(UPLOAD_STATUS_MIN_VISIBLE_MS),
+        ]);
+
+        if (!result.success || !result.data) {
+          const message = result.message || '저장 확인에 실패했습니다.';
+          setUploadQueue((current) =>
+            current.map((item) =>
+              item.id === queuedUpload.id
+                ? {
+                    ...item,
+                    status: 'failed',
+                    message: `${message} 업로드 요청은 전송됐지만 파일 저장/파싱 결과를 확인하지 못했습니다.`,
+                  }
+                : item,
+            ),
+          );
+          toast.error(result.message || `"${file.name}" 업로드에 실패했습니다.`);
+          continue;
+        }
+
+        uploadedFiles.push(result.data);
+        setUploadQueue((current) =>
+          current.map((item) =>
+            item.id === queuedUpload.id
+              ? {
+                  ...item,
+                  status: 'uploaded',
+                  message: '업로드 요청이 완료되어 HDF5 목록에 반영되었습니다.',
+                }
+              : item,
+          ),
+        );
       }
-      uploadedFiles.push(result.data);
-    }
 
-    if (uploadedFiles.length > 0) {
-      const newestFile = uploadedFiles[0];
-      startTransition(() => {
-        setFiles((current) => [...uploadedFiles, ...current]);
-        setSelectedFileId(newestFile.id);
-        setSelectedNodePath(newestFile.nodes[0]?.path ?? null);
-        setSearch('');
-      });
-      toast.success(
-        uploadedFiles.length === 1
-          ? `"${uploadedFiles[0].fileName}" 파일이 추가되었습니다.`
-          : `${uploadedFiles.length}개의 HDF5 파일이 추가되었습니다.`,
-      );
+      if (uploadedFiles.length > 0) {
+        const newestFile = uploadedFiles[0];
+        startTransition(() => {
+          setFiles((current) => [...uploadedFiles, ...current]);
+          setSelectedFileId(newestFile.id);
+          setSelectedNodePath(newestFile.nodes[0]?.path ?? null);
+          setSearch('');
+        });
+        toast.success(
+          uploadedFiles.length === 1
+            ? `"${uploadedFiles[0].fileName}" 파일이 추가되었습니다.`
+            : `${uploadedFiles.length}개의 HDF5 파일이 추가되었습니다.`,
+        );
+      }
+    } finally {
+      setUploading(false);
     }
-
-    setUploading(false);
   };
 
   return (
@@ -269,6 +331,45 @@ export default function Hdf5AttributesPage() {
                   <div className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">
                     `.h5`, `.hdf5` 파일을 추가하면 왼쪽 트리에서 바로 선택할 수 있습니다.
                   </div>
+                  {uploadQueue.length > 0 && (
+                    <div className="mt-2 space-y-1.5" aria-live="polite">
+                      {uploadQueue.map((item) => (
+                        <div
+                          key={item.id}
+                          className={cn(
+                            'overflow-hidden rounded-md border bg-background px-2 py-1.5',
+                            item.status === 'uploading' && 'border-accent/35',
+                            item.status === 'uploaded' && 'border-success/35',
+                            item.status === 'failed' && 'border-destructive/35',
+                          )}
+                        >
+                          <div className="flex items-start gap-2">
+                            <div className="mt-0.5">
+                              {item.status === 'uploading' ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
+                              ) : item.status === 'uploaded' ? (
+                                <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                              ) : (
+                                <TriangleAlert className="h-3.5 w-3.5 text-destructive" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="truncate text-[10px] font-semibold text-foreground">{item.fileName}</span>
+                                <span className="shrink-0 text-[9px] text-muted-foreground">{formatFileSize(item.fileSizeBytes)}</span>
+                              </div>
+                              <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">{item.message}</p>
+                              {item.status === 'uploading' && (
+                                <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
+                                  <div className="h-full w-1/2 animate-pulse rounded-full bg-accent" />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {filePanelOpen && (
                   <div className="min-h-0 flex-1 overflow-y-auto bg-background text-foreground">

@@ -122,6 +122,7 @@ export default function JobsPage() {
   // --- Data ---
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [pipelines, setPipelines] = useState<PipelineDefinition[]>([]);
+  const [autoPipelineCount, setAutoPipelineCount] = useState(0);
   const [selectedJob, setSelectedJob] = useState<JobDetail | null>(null);
   const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
 
@@ -142,13 +143,15 @@ export default function JobsPage() {
   // --- Initial load ---
   useEffect(() => {
     (async () => {
-      const [jobsRes, plRes, archivedRes, logRes] = await Promise.all([
+      const [jobsRes, plRes, archivedRes, logRes, rulesRes] = await Promise.all([
         service.Job_목록을_조회한다({ limit: 100 }),
         service.파이프라인_목록을_조회한다(),
         service.아카이브_파이프라인_목록을_조회한다(),
         service.실행_로그를_조회한다({ limit: 300 }),
+        service.파이프라인_자동실행규칙을_조회한다(),
       ]);
       if (jobsRes.data) setJobs(jobsRes.data.items);
+      if (rulesRes.data) setAutoPipelineCount(rulesRes.data.filter((rule) => rule.active).length);
       // 활성 + 아카이브 파이프라인을 통합 — Job이 아카이브된 파이프라인을 참조해도 다이어그램을 표시할 수 있게
       const active = plRes.data ?? [];
       const archived = (archivedRes.data ?? []).map((p) => ({ ...p, archived: true }));
@@ -356,7 +359,7 @@ export default function JobsPage() {
       {/* Center: Canvas */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex items-center gap-3 border-b border-border px-5 py-2.5 shrink-0">
-          <PipelineExecutionTabs active="manual" counts={{ manual: filteredJobs.length }} />
+          <PipelineExecutionTabs active="manual" counts={{ auto: autoPipelineCount, manual: jobs.length }} />
         </div>
         {selectedJob && graphSteps.length > 0 ? (
           <div ref={canvasRef} className="flex-1 relative overflow-hidden">

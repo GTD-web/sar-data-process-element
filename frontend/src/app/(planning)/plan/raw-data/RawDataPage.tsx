@@ -12,7 +12,9 @@ import {
 import type { PipelineDefinition, PipelineStep, RawDataStatus, RawDataSummary } from '@/types/pipeline';
 import {
   Antenna,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Database,
   Link2,
   MapPin,
@@ -147,6 +149,228 @@ function PipelineMiniPreview({ pipeline }: { pipeline: PipelineDefinition | null
   );
 }
 
+function pipelineMatchesSearch(pipeline: PipelineDefinition, keyword: string): boolean {
+  if (!keyword) return true;
+  const haystack = [pipeline.name, pipeline.id, pipeline.satelliteId, pipeline.mode].join(' ').toLowerCase();
+  return haystack.includes(keyword);
+}
+
+function PipelineSearchOption({
+  pipeline,
+  selected,
+  onSelect,
+}: {
+  pipeline: PipelineDefinition;
+  selected: boolean;
+  onSelect: (pipelineId: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={selected}
+      onClick={() => onSelect(pipeline.id)}
+      className={cn(
+        'flex w-full items-start gap-2 px-3 py-2 text-left transition-colors',
+        selected ? 'bg-accent/12 text-foreground' : 'hover:bg-muted/35',
+      )}
+    >
+      <span
+        className={cn(
+          'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border',
+          selected ? 'border-accent bg-accent text-background' : 'border-border text-transparent',
+        )}
+      >
+        <Check className="h-3 w-3" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-semibold text-foreground">{pipeline.name}</span>
+        <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
+          {pipeline.satelliteId} · {pipeline.mode} · {pipeline.steps.length} steps
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function PipelineSearchSelect({
+  pipelines,
+  recommended,
+  selectedPipelineId,
+  currentPipelineId,
+  currentPipelineName,
+  onSelectPipeline,
+}: {
+  pipelines: PipelineDefinition[];
+  recommended: PipelineDefinition[];
+  selectedPipelineId: string;
+  currentPipelineId: string | null;
+  currentPipelineName: string | null;
+  onSelectPipeline: (pipelineId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const selectedPipeline = pipelines.find((pipeline) => pipeline.id === selectedPipelineId) ?? null;
+  const connectionState = selectedPipelineId
+    ? selectedPipelineId === currentPipelineId ? 'current' : 'pending'
+    : 'empty';
+  const showTransition = Boolean(currentPipelineName) && connectionState === 'pending' && selectedPipeline;
+  const showCurrentConnection = Boolean(currentPipelineName) && connectionState === 'empty';
+  const keyword = query.trim().toLowerCase();
+  const filteredRecommended = recommended.filter((pipeline) => pipelineMatchesSearch(pipeline, keyword));
+  const recommendedIds = new Set(recommended.map((pipeline) => pipeline.id));
+  const filteredPipelines = pipelines.filter((pipeline) => !recommendedIds.has(pipeline.id) && pipelineMatchesSearch(pipeline, keyword));
+  const hasResults = filteredRecommended.length > 0 || filteredPipelines.length > 0;
+
+  const selectPipeline = (pipelineId: string) => {
+    onSelectPipeline(pipelineId);
+    setQuery('');
+    setOpen(false);
+  };
+
+  return (
+    <div
+      className="relative"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className={cn(
+          'flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 text-left text-sm text-foreground transition-colors',
+          open && 'border-accent ring-1 ring-accent/35',
+        )}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="mb-1 flex items-center gap-1.5">
+            <span className="text-[10px] font-medium text-muted-foreground">파이프라인 연결</span>
+            {connectionState === 'pending' ? (
+              <>
+                <span className="rounded-full bg-accent/15 px-1.5 py-px text-[9px] font-semibold text-accent">현재 적용</span>
+                <span className="text-[10px] text-muted-foreground">-&gt;</span>
+                <span className="rounded-full bg-warning/15 px-1.5 py-px text-[9px] font-semibold text-warning">변경 예정</span>
+              </>
+            ) : (
+              <span
+                className={cn(
+                  'rounded-full px-1.5 py-px text-[9px] font-semibold',
+                  connectionState === 'current' && 'bg-accent/15 text-accent',
+                  connectionState === 'empty' && 'bg-muted text-muted-foreground',
+                )}
+              >
+                {connectionState === 'current' ? '현재 적용' : '미지정'}
+              </span>
+            )}
+          </span>
+          {showTransition ? (
+            <span className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
+              <span className="min-w-0">
+                <span className="block truncate text-[11px] font-semibold text-accent">{currentPipelineName}</span>
+                <span className="mt-0.5 block text-[9px] text-muted-foreground">현재 적용</span>
+              </span>
+              <span className="hidden text-[11px] text-muted-foreground sm:block">-&gt;</span>
+              <span className="min-w-0">
+                <span className="block truncate font-semibold text-warning">{selectedPipeline.name}</span>
+                <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
+                  {selectedPipeline.satelliteId} · {selectedPipeline.mode}
+                </span>
+              </span>
+            </span>
+          ) : selectedPipeline ? (
+            <>
+              <span className="block truncate font-semibold">{selectedPipeline.name}</span>
+              <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
+                {selectedPipeline.satelliteId} · {selectedPipeline.mode}
+              </span>
+            </>
+          ) : (
+            <span className="text-muted-foreground">파이프라인 선택</span>
+          )}
+          {showCurrentConnection && (
+            <span className="mt-1 block truncate text-[10px] text-muted-foreground">
+              현재 적용: <span className="font-semibold text-accent">{currentPipelineName}</span>
+            </span>
+          )}
+        </span>
+        <ChevronDown className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-lg border border-border bg-card shadow-xl">
+          <div className="border-b border-border p-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-8 text-xs text-foreground outline-none focus:border-accent"
+                placeholder="이름, 위성, 모드 검색"
+                autoFocus
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                  aria-label="검색어 지우기"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="max-h-72 overflow-y-auto py-1" role="listbox">
+            <button
+              type="button"
+              onClick={() => selectPipeline('')}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/35 hover:text-foreground"
+            >
+              <span className="h-4 w-4 rounded-full border border-border" />
+              파이프라인 선택 해제
+            </button>
+
+            {filteredRecommended.length > 0 && (
+              <div className="border-t border-border/70 pt-1">
+                <div className="px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-accent">추천</div>
+                {filteredRecommended.map((pipeline) => (
+                  <PipelineSearchOption
+                    key={pipeline.id}
+                    pipeline={pipeline}
+                    selected={pipeline.id === selectedPipelineId}
+                    onSelect={selectPipeline}
+                  />
+                ))}
+              </div>
+            )}
+
+            {filteredPipelines.length > 0 && (
+              <div className="border-t border-border/70 pt-1">
+                <div className="px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">전체</div>
+                {filteredPipelines.map((pipeline) => (
+                  <PipelineSearchOption
+                    key={pipeline.id}
+                    pipeline={pipeline}
+                    selected={pipeline.id === selectedPipelineId}
+                    onSelect={selectPipeline}
+                  />
+                ))}
+              </div>
+            )}
+
+            {!hasResults && (
+              <div className="px-3 py-5 text-center text-xs text-muted-foreground">검색 결과가 없습니다</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConfirmClearDialog({
   open,
   onConfirm,
@@ -236,36 +460,16 @@ function MappingPanel({
             <Link2 className="h-3.5 w-3.5" />
             Pipeline Mapping
           </div>
-          <div className="mt-3 rounded-lg border border-border bg-card px-3 py-2">
-            <div className="text-[10px] text-muted-foreground">현재 연결</div>
-            <div className="mt-1 text-sm font-semibold text-foreground">
-              {rawData.mappedPipelineName ?? '아직 연결된 파이프라인이 없습니다'}
-            </div>
-          </div>
 
-          <div className="mt-4">
-            <label className="mb-1 block text-[11px] font-medium text-muted-foreground">연결할 파이프라인</label>
-            <select
-              value={selectedPipelineId}
-              onChange={(e) => onSelectPipeline(e.target.value)}
-              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-            >
-              <option value="">파이프라인 선택</option>
-              {recommended.length > 0 && (
-                <optgroup label="추천">
-                  {recommended.map((pipeline) => (
-                    <option key={pipeline.id} value={pipeline.id}>{pipeline.name}</option>
-                  ))}
-                </optgroup>
-              )}
-              <optgroup label="전체">
-                {selectablePipelines.map((pipeline) => (
-                  <option key={pipeline.id} value={pipeline.id}>
-                    {pipeline.name} ({pipeline.satelliteId} · {pipeline.mode})
-                  </option>
-                ))}
-              </optgroup>
-            </select>
+          <div className="mt-3">
+            <PipelineSearchSelect
+              pipelines={selectablePipelines}
+              recommended={recommended}
+              selectedPipelineId={selectedPipelineId}
+              currentPipelineId={rawData.mappedPipelineId}
+              currentPipelineName={rawData.mappedPipelineName ?? null}
+              onSelectPipeline={onSelectPipeline}
+            />
           </div>
 
           <div className="mt-4">
@@ -592,13 +796,14 @@ export default function RawDataPage() {
           </div>
 
           <div className="flex-1 overflow-auto bg-background">
-            <table className="w-full min-w-[1160px]">
+            <table className="w-full min-w-[1220px]">
               <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   <th className="px-6 py-3 text-left whitespace-nowrap">Raw Data</th>
                   <th className="px-3 py-3 text-left whitespace-nowrap">위성 / 모드</th>
                   <th className="px-3 py-3 text-left whitespace-nowrap">촬영 시각</th>
-                  <th className="px-3 py-3 text-left whitespace-nowrap">좌표</th>
+                  <th className="px-3 py-3 text-left whitespace-nowrap">위도</th>
+                  <th className="px-3 py-3 text-left whitespace-nowrap">경도</th>
                   <th className="px-3 py-3 text-left whitespace-nowrap">원시 파일</th>
                   <th className="px-3 py-3 text-left whitespace-nowrap">연결 파이프라인</th>
                   <th className="px-3 py-3 text-center whitespace-nowrap">상태</th>
@@ -623,19 +828,17 @@ export default function RawDataPage() {
                       <div className="mt-1 text-[11px] text-muted-foreground">{item.mode} · {item.polarization}</div>
                     </td>
                     <td className="px-3 py-3 text-xs text-foreground whitespace-nowrap">{formatKST(item.capturedAt)}</td>
-                    <td className="px-3 py-3 text-xs text-foreground whitespace-nowrap">
-                      <div>{item.latitude.toFixed(4)}</div>
-                      <div className="mt-1 text-[11px] text-muted-foreground">{item.longitude.toFixed(4)}</div>
-                    </td>
+                    <td className="px-3 py-3 font-mono text-xs text-foreground whitespace-nowrap">{item.latitude.toFixed(4)}</td>
+                    <td className="px-3 py-3 font-mono text-xs text-foreground whitespace-nowrap">{item.longitude.toFixed(4)}</td>
                     <td className="px-3 py-3 text-xs text-foreground whitespace-nowrap">
                       <div>{formatFileSize(item.fileSizeBytes)}</div>
                       <div className="mt-1 text-[11px] text-muted-foreground">{item.footprintKm.toFixed(1)} km footprint</div>
                     </td>
-                    <td className="px-3 py-3 text-xs text-foreground whitespace-nowrap">
+                    <td className="px-3 py-3 text-xs whitespace-nowrap">
                       {item.mappedPipelineName ? (
-                        <div className="max-w-[240px] truncate">{item.mappedPipelineName}</div>
+                        <div className="max-w-[240px] truncate font-semibold text-accent">{item.mappedPipelineName}</div>
                       ) : (
-                        <span className="text-muted-foreground">미지정</span>
+                        <span className="font-semibold text-muted-foreground">미지정</span>
                       )}
                     </td>
                     <td className="px-3 py-3 text-center whitespace-nowrap">
@@ -645,7 +848,7 @@ export default function RawDataPage() {
                 ))}
                 {pageItems.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-6 py-16 text-center text-sm text-muted-foreground">
+                    <td colSpan={8} className="px-6 py-16 text-center text-sm text-muted-foreground">
                       조건에 맞는 raw data가 없습니다.
                     </td>
                   </tr>

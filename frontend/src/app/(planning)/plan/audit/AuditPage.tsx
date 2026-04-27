@@ -280,17 +280,15 @@ function StatCard({
     <button
       onClick={onClick}
       className={cn(
-        'flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left min-w-0',
+        'inline-flex min-w-0 items-center gap-1.5 rounded-full border px-2 py-1 text-left transition-all',
         active
-          ? 'border-accent bg-accent/5 ring-1 ring-accent/30'
-          : 'border-border hover:border-accent/40 hover:bg-muted/20',
+          ? 'border-accent bg-accent/10 ring-1 ring-accent/25'
+          : 'border-border bg-card hover:border-accent/40 hover:bg-muted/20',
       )}
     >
-      <Icon className={cn('w-3.5 h-3.5 shrink-0', color)} />
-      <div className="min-w-0">
-        <div className="text-sm font-semibold text-foreground tabular-nums">{count}</div>
-        <div className="text-[9px] text-muted-foreground truncate">{label}</div>
-      </div>
+      <Icon className={cn('h-3 w-3 shrink-0', color)} />
+      <span className="truncate text-[10px] font-medium text-muted-foreground">{label}</span>
+      <span className="font-mono text-[11px] font-semibold tabular-nums text-foreground">{count}</span>
     </button>
   );
 }
@@ -629,8 +627,8 @@ export default function AuditPage() {
           <>
 
         {/* Stats Cards */}
-        <div className="px-5 py-3 border-b border-border shrink-0">
-          <div className="grid grid-cols-7 gap-2">
+        <div className="px-5 py-2 border-b border-border shrink-0">
+          <div className="flex flex-wrap gap-1.5">
             {ALL_EVENT_TYPES.map((type) => (
               <StatCard
                 key={type}

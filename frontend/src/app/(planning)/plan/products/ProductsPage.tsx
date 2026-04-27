@@ -164,7 +164,7 @@ function ProductStatusBadge({ status }: { status: string }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
+        'inline-flex items-center gap-1 px-1.5 py-px rounded text-[10px] font-medium',
         styles[status] ?? 'bg-muted text-muted-foreground',
       )}
     >
@@ -516,7 +516,7 @@ export default function ProductsPage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(50);
   const [sortBy, setSortBy] = useState<ProductSortKey>('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
@@ -710,7 +710,7 @@ export default function ProductsPage() {
                     <th
                       key={column.id}
                       className={cn(
-                        'px-3 py-2.5',
+                        'px-3 py-2',
                         column.align === 'center' ? 'text-center' : 'text-left',
                         column.id === 'id' ? 'pl-5' : '',
                       )}
@@ -728,7 +728,7 @@ export default function ProductsPage() {
                       </button>
                     </th>
                   ))}
-                  <th className="text-right px-5 py-2.5">작업</th>
+                  <th className="px-5 py-2 text-right">작업</th>
                 </tr>
               </thead>
               <tbody>
@@ -741,20 +741,20 @@ export default function ProductsPage() {
                       selectedProduct?.id === p.id ? 'bg-accent/5' : 'hover:bg-muted/20',
                     )}
                   >
-                    <td className="px-5 py-2.5 text-xs font-mono text-foreground">{p.id}</td>
-                    <td className="px-3 py-2.5 text-xs text-foreground">{getRawDataDisplayName(p)}</td>
-                    <td className="px-3 py-2.5 text-center">
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-accent/10 text-accent">
+                    <td className="px-5 py-1.5 text-xs font-mono text-foreground">{p.id}</td>
+                    <td className="px-3 py-1.5 text-xs text-foreground">{getRawDataDisplayName(p)}</td>
+                    <td className="px-3 py-1.5 text-center">
+                      <span className="px-1.5 py-px rounded text-[10px] font-mono bg-accent/10 text-accent">
                         {PRODUCT_LEVEL_LABELS[p.level]}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 text-xs text-foreground">{p.satelliteId}</td>
-                    <td className="px-3 py-2.5 text-xs text-foreground">{p.mode}</td>
-                    <td className="px-3 py-2.5 text-center">
+                    <td className="px-3 py-1.5 text-xs text-foreground">{p.satelliteId}</td>
+                    <td className="px-3 py-1.5 text-xs text-foreground">{p.mode}</td>
+                    <td className="px-3 py-1.5 text-center">
                       <ProductStatusBadge status={p.status} />
                     </td>
-                    <td className="px-3 py-2.5 text-xs text-muted-foreground">{formatKST(p.createdAt)}</td>
-                    <td className="px-5 py-2.5">
+                    <td className="px-3 py-1.5 text-xs text-muted-foreground">{formatKST(p.createdAt)}</td>
+                    <td className="px-5 py-1.5">
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={(e) => {
@@ -763,7 +763,7 @@ export default function ProductsPage() {
                           }}
                           disabled={p.status !== 'COMPLETED'}
                           className={cn(
-                            'p-1.5 rounded-md transition-colors',
+                            'p-1 rounded-md transition-colors',
                             p.status === 'COMPLETED'
                               ? 'hover:bg-muted/50 text-muted-foreground hover:text-accent'
                               : 'text-muted-foreground/30 cursor-not-allowed',
@@ -777,7 +777,7 @@ export default function ProductsPage() {
                             e.stopPropagation();
                             setReprocessTarget(p);
                           }}
-                          className="p-1.5 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+                          className="p-1 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
                           title="재처리"
                         >
                           <RefreshCw className="w-3.5 h-3.5" />
