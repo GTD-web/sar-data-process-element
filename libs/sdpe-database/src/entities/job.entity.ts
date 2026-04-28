@@ -17,6 +17,9 @@ export class JobEntity {
   @Column({ name: 'raw_data_path', type: 'varchar' })
   rawDataPath!: string;
 
+  @Column({ name: 'raw_data_id', type: 'varchar', nullable: true })
+  rawDataId!: string | null;
+
   @Column({ name: 'processing_profile_id', type: 'varchar' })
   processingProfileId!: string;
 
@@ -48,6 +51,7 @@ export class JobEntity {
     const entity = new JobEntity();
     entity.id = job.id as string;
     entity.eventId = job.eventId;
+    entity.rawDataId = job.rawDataId;
     entity.rawDataPath = job.rawDataPath;
     entity.processingProfileId = job.processingProfileId;
     entity.satelliteId = job.satelliteId;
@@ -66,6 +70,7 @@ export class JobEntity {
     Object.assign(job, {
       id: createJobId(this.id),
       eventId: this.eventId,
+      rawDataId: this.rawDataId ?? this.eventId,
       rawDataPath: this.rawDataPath,
       processingProfileId: this.processingProfileId,
       satelliteId: this.satelliteId,

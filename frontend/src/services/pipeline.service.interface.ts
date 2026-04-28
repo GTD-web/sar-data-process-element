@@ -58,7 +58,7 @@ export interface IPipelineUIService {
     rawDataId?: string;
   }): Promise<ServiceResponseWithData<Hdf5FileSummary[]>>;
 
-  HDF5_파일을_업로드한다(file: File): Promise<ServiceResponseWithData<Hdf5FileSummary>>;
+  HDF5_파일을_업로드한다(file: File, rawDataId?: string): Promise<ServiceResponseWithData<Hdf5FileSummary>>;
 
   // =========================================================================
   // Jobs
@@ -175,6 +175,7 @@ export interface IPipelineUIService {
 
   /** 제품 목록 조회 (UC27) */
   제품_목록을_조회한다(params?: {
+    rawDataId?: string;
     level?: string;
     satelliteId?: string;
     mode?: string;

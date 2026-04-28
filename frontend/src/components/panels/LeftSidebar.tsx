@@ -15,7 +15,7 @@ import { useTheme } from '@/lib/theme';
 import {
   GitBranch, Plus, PanelLeftClose, PanelLeftOpen,
   Settings, User, Bell, Trash2, ChevronDown, Briefcase,
-  LayoutDashboard, Layers, Archive, Package, FileText, Antenna, Database,
+  LayoutDashboard, Layers, Archive, FileText, Database,
   Users as UsersIcon, KeyRound, LogOut, Radio, Sun, Moon,
 } from 'lucide-react';
 
@@ -27,7 +27,7 @@ interface LeftSidebarBaseProps {
   collapsed: boolean;
   onToggle: () => void;
   /** 현재 활성 페이지 (nav highlight용) */
-  activePage?: 'home' | 'raw-data' | 'hdf5-attributes' | 'console' | 'deployed' | 'jobs' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit' | 'users' | 'settings';
+  activePage?: 'home' | 'data-catalog' | 'raw-data' | 'hdf5-attributes' | 'console' | 'deployed' | 'jobs' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit' | 'users' | 'settings';
 }
 
 interface LeftSidebarConsoleProps extends LeftSidebarBaseProps {
@@ -124,10 +124,8 @@ export default function LeftSidebar(props: LeftSidebarProps) {
 
   const navItems: { id: NonNullable<LeftSidebarBaseProps['activePage']>; icon: React.ElementType; label: string; href: string; adminOnly?: boolean }[] = [
     { id: 'home', icon: LayoutDashboard, label: '대시보드', href: base },
-    { id: 'raw-data', icon: Antenna, label: 'Raw Data 목록', href: `${base}/raw-data` },
-    { id: 'hdf5-attributes', icon: Database, label: 'HDF5 애트리뷰트', href: `${base}/hdf5-attributes` },
+    { id: 'data-catalog', icon: Database, label: '데이터 카탈로그', href: `${base}/data-catalog` },
     { id: 'console', icon: GitBranch, label: '파이프라인 관리', href: `${base}/console` },
-    { id: 'products', icon: Package, label: 'Production 목록', href: `${base}/products` },
     { id: 'queues', icon: Layers, label: '시스템 운영 모니터링', href: `${base}/queues` },
     { id: 'alerts', icon: Bell, label: '알림', href: `${base}/alerts` },
     { id: 'audit', icon: FileText, label: '감사 로그', href: `${base}/audit`, adminOnly: true },

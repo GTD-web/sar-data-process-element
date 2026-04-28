@@ -36,9 +36,9 @@ export default function manifest(): MetadataRoute.Manifest {
         url: '/plan',
       },
       {
-        name: 'HDF5 Attributes',
-        short_name: 'HDF5',
-        url: '/plan/hdf5-attributes',
+        name: 'Data Catalog',
+        short_name: 'Catalog',
+        url: '/plan/data-catalog',
       },
       {
         name: 'Current Console',

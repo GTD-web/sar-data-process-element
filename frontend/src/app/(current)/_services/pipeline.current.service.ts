@@ -94,9 +94,10 @@ export const pipelineCurrentService: IPipelineUIService = {
     return mockPipelineService.HDF5_애트리뷰트_목록을_조회한다(params);
   },
 
-  async HDF5_파일을_업로드한다(file: File): Promise<ServiceResponseWithData<Hdf5FileSummary>> {
+  async HDF5_파일을_업로드한다(file: File, rawDataId?: string): Promise<ServiceResponseWithData<Hdf5FileSummary>> {
     const formData = new FormData();
     formData.append('file', file);
+    if (rawDataId) formData.append('rawDataId', rawDataId);
 
     try {
       const res = await fetch(`${API_BASE}/hdf5-attributes/upload`, {
@@ -108,7 +109,7 @@ export const pipelineCurrentService: IPipelineUIService = {
       // 백엔드 미구현 환경에서는 mock fallback으로 업로드 UX를 유지한다.
     }
 
-    return mockPipelineService.HDF5_파일을_업로드한다(file);
+    return mockPipelineService.HDF5_파일을_업로드한다(file, rawDataId);
   },
 
   async Job_목록을_조회한다(params?: {
@@ -324,6 +325,7 @@ export const pipelineCurrentService: IPipelineUIService = {
   },
 
   async 제품_목록을_조회한다(params?: {
+    rawDataId?: string;
     level?: string;
     satelliteId?: string;
     mode?: string;
@@ -332,6 +334,7 @@ export const pipelineCurrentService: IPipelineUIService = {
     limit?: number;
   }): Promise<ServiceResponseWithData<PaginatedResponse<Product>>> {
     const query = new URLSearchParams();
+    if (params?.rawDataId) query.set('rawDataId', params.rawDataId);
     if (params?.level) query.set('level', params.level);
     if (params?.satelliteId) query.set('satelliteId', params.satelliteId);
     if (params?.mode) query.set('mode', params.mode);

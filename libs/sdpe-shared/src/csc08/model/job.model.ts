@@ -6,6 +6,7 @@ import { JobStatus } from '../type/job-status.type';
 export interface CreateJobParams {
   id: JobId;
   eventId: string;
+  rawDataId?: string;
   rawDataPath: string;
   processingProfileId: string;
   satelliteId: string;
@@ -23,6 +24,7 @@ export interface CreateJobParams {
 export class Job {
   readonly id: JobId;
   readonly eventId: string;
+  readonly rawDataId: string;
   readonly rawDataPath: string;
   readonly processingProfileId: string;
   readonly satelliteId: string;
@@ -38,6 +40,7 @@ export class Job {
   private constructor(params: CreateJobParams) {
     this.id = params.id;
     this.eventId = params.eventId;
+    this.rawDataId = params.rawDataId ?? params.eventId;
     this.rawDataPath = params.rawDataPath;
     this.processingProfileId = params.processingProfileId;
     this.satelliteId = params.satelliteId;

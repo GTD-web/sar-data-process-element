@@ -12,6 +12,7 @@ export interface RawDataReceivedEvent {
   schema_version: SchemaVersion;
   event_id: string;
   event_type: 'RAW_DATA_RECEIVED';
+  raw_data_id?: string;
   acquisition_start: string;
   acquisition_end: string;
   raw_data_path: string;

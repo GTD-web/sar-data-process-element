@@ -631,12 +631,13 @@ function generateExecutionLogs(jobs: JobDetail[]): ExecutionLog[] {
 // Product Mock Data
 // =============================================================================
 
-function generateProducts(jobs: JobDetail[]): Product[] {
+function generateProducts(jobs: JobDetail[], rawData: RawDataSummary[]): Product[] {
   const completedJobs = jobs.filter((j) => j.status === 'COMPLETED' || j.status === 'FAILED');
   const products: Product[] = [];
   const levels: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
 
-  for (const job of completedJobs) {
+  for (const [jobIndex, job] of completedJobs.entries()) {
+    const sourceRawData = rawData[jobIndex % rawData.length];
     const numProducts = job.status === 'COMPLETED' ? 1 + Math.floor(Math.random() * 3) : (Math.random() > 0.5 ? 1 : 0);
     for (let i = 0; i < numProducts; i++) {
       const level = levels[Math.min(i, levels.length - 1)];
@@ -651,10 +652,11 @@ function generateProducts(jobs: JobDetail[]): Product[] {
 
       const baseLat = 35 + Math.random() * 3;
       const baseLon = 126 + Math.random() * 3;
-      const rawDataName = job.rawDataPath.split('/').pop() ?? `${job.sceneId}.raw`;
+      const rawDataName = sourceRawData?.title ?? job.rawDataPath.split('/').pop() ?? `${job.sceneId}.raw`;
 
       products.push({
         id: `PROD-${job.jobId}-${level}`,
+        rawDataId: sourceRawData?.id ?? job.sceneId,
         sceneId: job.sceneId,
         rawDataName,
         jobId: job.jobId,
@@ -903,7 +905,7 @@ function cloneHdf5FileSummary(file: Hdf5FileSummary): Hdf5FileSummary {
   };
 }
 
-function buildUploadedHdf5FileSummary(file: Pick<File, 'name' | 'size' | 'lastModified'>): Hdf5FileSummary {
+function buildUploadedHdf5FileSummary(file: Pick<File, 'name' | 'size' | 'lastModified'>, rawDataId?: string): Hdf5FileSummary {
   const normalizedName = file.name.trim() || `uploaded-${randomId()}.h5`;
   const fileName = /\.(h5|hdf5)$/i.test(normalizedName) ? normalizedName : `${normalizedName}.h5`;
   const title = fileName.replace(/\.(h5|hdf5)$/i, '');
@@ -966,7 +968,7 @@ function buildUploadedHdf5FileSummary(file: Pick<File, 'name' | 'size' | 'lastMo
 
   return {
     id: `H5-UP-${randomId()}`,
-    rawDataId: `manual-upload-${randomId()}`,
+    rawDataId: rawDataId ?? `manual-upload-${randomId()}`,
     title,
     fileName,
     satelliteId: 'Manual Upload',
@@ -1437,7 +1439,7 @@ class MockPipelineUIService implements IPipelineUIService {
     this.queueHealth = generateQueueHealth();
     this.executionLogs = generateExecutionLogs(this.jobs);
     this.profiles = [...MOCK_PROCESSING_PROFILES];
-    this.products = generateProducts(this.jobs);
+    this.products = generateProducts(this.jobs, this.rawData);
   }
 
   private upsertActivationRule(pipeline: PipelineDefinition, active?: boolean): PipelineActivationRule | null {
@@ -1532,12 +1534,12 @@ class MockPipelineUIService implements IPipelineUIService {
     };
   }
 
-  async HDF5_파일을_업로드한다(file: File): Promise<ServiceResponseWithData<Hdf5FileSummary>> {
+  async HDF5_파일을_업로드한다(file: File, rawDataId?: string): Promise<ServiceResponseWithData<Hdf5FileSummary>> {
     if (!/\.(h5|hdf5)$/i.test(file.name)) {
       return { success: false, message: 'HDF5 파일(.h5, .hdf5)만 업로드할 수 있습니다.' };
     }
 
-    const uploaded = buildUploadedHdf5FileSummary(file);
+    const uploaded = buildUploadedHdf5FileSummary(file, rawDataId);
     this.hdf5Files = [uploaded, ...this.hdf5Files];
 
     return {
@@ -1952,6 +1954,7 @@ class MockPipelineUIService implements IPipelineUIService {
   }
 
   async 제품_목록을_조회한다(params?: {
+    rawDataId?: string;
     level?: string;
     satelliteId?: string;
     mode?: string;
@@ -1960,6 +1963,7 @@ class MockPipelineUIService implements IPipelineUIService {
     limit?: number;
   }): Promise<ServiceResponseWithData<PaginatedResponse<Product>>> {
     let filtered = [...this.products];
+    if (params?.rawDataId) filtered = filtered.filter((p) => p.rawDataId === params.rawDataId);
     if (params?.level) filtered = filtered.filter((p) => p.level === params.level);
     if (params?.satelliteId) filtered = filtered.filter((p) => p.satelliteId === params.satelliteId);
     if (params?.mode) filtered = filtered.filter((p) => p.mode === params.mode);

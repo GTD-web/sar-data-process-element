@@ -399,6 +399,7 @@ export interface ProductQuality {
 
 export interface Product {
   id: string;
+  rawDataId: string;
   sceneId: string;
   rawDataName?: string;
   jobId: string;
