@@ -282,7 +282,12 @@ export default function Hdf5AttributesPage() {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
         <div className="border-b border-border bg-card px-3 py-1.5">
           <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 text-[11px] font-semibold text-foreground">HDF5 Object Info</div>
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold text-foreground">HDF5 Object Info</div>
+              <div className="text-[10px] text-muted-foreground">
+                Level-0 product schema · output of CSC-03 (Level-0 Processor)
+              </div>
+            </div>
             <div className="text-[10px] text-muted-foreground">
               {selectedFile ? `${selectedFile.nodes.length} nodes · ${effectiveAttributes.length} attrs · ${formatRelativeTime(selectedFile.receivedAt)}` : 'No file loaded'}
             </div>

@@ -276,9 +276,15 @@ interface CanvasGraphProps {
   onReprocessStep?: (order: number) => void;
   /** Job 선택 모드 — PENDING 노드를 회색으로 표시 */
   isJobMode?: boolean;
+  /** 노드 상태별 halo glow 표시 여부. 기본값 true. */
+  showGlow?: boolean;
+  /** 우하단 minimap 표시 여부. 기본값 true. */
+  showMinimap?: boolean;
+  /** 좌하단 zoom controls 표시 여부. 기본값 true. */
+  showControls?: boolean;
 }
 
-export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable = false, onNodeClick, onDeleteNode, onAddNode, onConnect: onConnectProp, onDeleteEdge, onTrigger, jobInitWarningReason, focusEntryTrigger = 0, onNodeOpenDetail, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode }: CanvasGraphProps) {
+export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable = false, onNodeClick, onDeleteNode, onAddNode, onConnect: onConnectProp, onDeleteEdge, onTrigger, jobInitWarningReason, focusEntryTrigger = 0, onNodeOpenDetail, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode, showGlow = true, showMinimap = true, showControls = true }: CanvasGraphProps) {
   const graphScope = useMemo(() => sanitizeGraphScope(pipelineId), [pipelineId]);
   // 노드 위치는 드래그로 누적되는 사용자 편집 상태이므로 state로 유지.
   // 파이프라인 전환·스텝 추가/삭제 시에는 React 권장 "렌더 중 상태 조정" 패턴으로
@@ -452,13 +458,17 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
         defaultEdgeOptions={{ style: { stroke: 'transparent', strokeWidth: 0 } }}
       >
         <FlowEntryFocus trigger={focusEntryTrigger} nodes={nodes} />
-        <CanvasGlow completionRatio={completionRatio} />
+        {showGlow && <CanvasGlow completionRatio={completionRatio} />}
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color={t.canvasDot} />
-        <Controls showInteractive={false} position="bottom-left" className="!bg-card !border-border !shadow-lg [&>button]:!bg-muted [&>button]:!border-border [&>button]:!text-foreground" />
-        <MiniMap
-          nodeColor={(n) => { const d = n.data as PipelineNodeData; return d.status === 'COMPLETED' ? t.success : d.status === 'RUNNING' ? t.accent : d.status === 'FAILED' ? t.accent : t.nodeDefault; }}
-          maskColor="rgba(26, 26, 26, 0.8)" className="!bg-card/90 !border-border !rounded-lg" position="bottom-right"
-        />
+        {showControls && (
+          <Controls showInteractive={false} position="bottom-left" className="!bg-card !border-border !shadow-lg [&>button]:!bg-muted [&>button]:!border-border [&>button]:!text-foreground" />
+        )}
+        {showMinimap && (
+          <MiniMap
+            nodeColor={(n) => { const d = n.data as PipelineNodeData; return d.status === 'COMPLETED' ? t.success : d.status === 'RUNNING' ? t.accent : d.status === 'FAILED' ? t.accent : t.nodeDefault; }}
+            maskColor="rgba(26, 26, 26, 0.8)" className="!bg-card/90 !border-border !rounded-lg" position="bottom-right"
+          />
+        )}
       </ReactFlow>
       </div>
     </EdgeHoverContext.Provider>
