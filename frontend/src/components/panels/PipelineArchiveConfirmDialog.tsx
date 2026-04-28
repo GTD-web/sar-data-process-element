@@ -32,7 +32,7 @@ export default function PipelineArchiveConfirmDialog({
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <Archive className="w-4 h-4 text-warning" />
-            <h2 className="text-sm font-semibold text-foreground">파이프라인 폐기</h2>
+            <h2 className="text-sm font-semibold text-foreground">Archive Pipeline</h2>
           </div>
           <button type="button" onClick={onCancel} className="p-1 rounded-md hover:bg-muted/50 transition-colors">
             <X className="w-4 h-4 text-muted-foreground" />
@@ -41,26 +41,26 @@ export default function PipelineArchiveConfirmDialog({
 
         <div className="p-4 space-y-4">
           <p className="text-xs text-muted-foreground">
-            폐기된 파이프라인은 아카이브로 이동하며 운영 이벤트에 배포할 수 없습니다. 추후 아카이브 페이지에서 사유를 확인할 수 있습니다.
+            Archived pipelines move to the archive and cannot be activated for operational events. The reason remains available from the Archive page.
           </p>
 
           <div className="bg-muted/30 rounded-lg px-3 py-2.5 space-y-1">
             <div className="flex justify-between gap-3 text-[11px]">
-              <span className="text-muted-foreground">이름</span>
+              <span className="text-muted-foreground">Name</span>
               <span className="font-semibold text-foreground text-right">{pipelineName}</span>
             </div>
             <div className="flex justify-between text-[11px]">
-              <span className="text-muted-foreground">대상</span>
+              <span className="text-muted-foreground">Target</span>
               <span className="font-mono text-foreground">{satelliteId} · {mode}</span>
             </div>
           </div>
 
           <label className="block space-y-1.5">
-            <span className="text-xs font-medium text-foreground">폐기 사유</span>
+            <span className="text-xs font-medium text-foreground">Archive reason</span>
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="예: 신규 처리 프로파일로 대체되어 기존 운영 구성을 폐기합니다."
+              placeholder="Example: Replaced by a new processing profile."
               autoFocus
               rows={4}
               className={cn(
@@ -70,7 +70,7 @@ export default function PipelineArchiveConfirmDialog({
                   : 'border-border focus:ring-accent/50',
               )}
             />
-            <span className="block text-[10px] text-muted-foreground">최소 5자 이상 입력하세요.</span>
+            <span className="block text-[10px] text-muted-foreground">Enter at least 5 characters.</span>
           </label>
         </div>
 
@@ -80,7 +80,7 @@ export default function PipelineArchiveConfirmDialog({
             onClick={onCancel}
             className="flex-1 py-1.5 rounded-md border border-border text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
           >
-            취소
+            Cancel
           </button>
           <button
             type="button"
@@ -93,7 +93,7 @@ export default function PipelineArchiveConfirmDialog({
                 : 'bg-muted text-muted-foreground cursor-not-allowed',
             )}
           >
-            폐기 확인
+            Confirm Archive
           </button>
         </div>
       </div>

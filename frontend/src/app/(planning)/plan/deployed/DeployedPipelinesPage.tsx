@@ -2,18 +2,43 @@
 
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
-import { Activity, ChevronDown, ChevronUp, GitBranch, GripVertical, ServerCog, Unplug, ExternalLink, TerminalSquare, X } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import {
+  Activity,
+  ArrowRight,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  GitBranch,
+  Loader2,
+  Plus,
+  Power,
+  ServerCog,
+  X,
+} from 'lucide-react';
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import PipelineExecutionTabs from '@/components/panels/PipelineExecutionTabs';
+import ExecutionLogPanel from '@/components/panels/ExecutionLogPanel';
 import { useMockRole } from '@/components/auth/RolePreviewSelect';
-import PipelineUndeployConfirmDialog from '@/components/panels/PipelineUndeployConfirmDialog';
 import { toast } from '@/components/ui/Toast';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
-import type { ExecutionLog, JobSummary, LogLevel, PipelineActivationRule, PipelineDefinition, PipelineStep } from '@/types/pipeline';
+import type {
+  ExecutionLog,
+  JobSummary,
+  PipelineActivationRule,
+  PipelineDefinition,
+  PipelineEventType,
+  PipelineStep,
+  ProductLevel,
+  SavePipelineActivationRuleData,
+  TriggerSource,
+} from '@/types/pipeline';
 import {
   PIPELINE_EVENT_TYPE_LABELS,
+  POLARIZATION_OPTIONS,
   PRODUCT_LEVEL_LABELS,
+  QUEUE_NAME,
   SAR_STAGE_TO_CSC,
   SAR_STAGE_TO_LEVEL,
   TRIGGER_SOURCE_LABELS,
@@ -22,11 +47,63 @@ import {
 const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
   ssr: false,
   loading: () => (
-    <div className="flex h-56 items-center justify-center rounded-xl border border-border bg-background/50 text-sm text-muted-foreground">
+    <div className="flex h-56 items-center justify-center rounded-lg border border-border bg-background/50 text-sm text-muted-foreground">
       파이프라인 UI 불러오는 중...
     </div>
   ),
 });
+
+const DEPLOYMENT_TABLE_WIDTH = 1180;
+const DEPLOYMENT_TABLE_GRID = '92px 240px 250px 150px minmax(260px,1fr) 168px';
+const EVENT_TYPE_OPTIONS: PipelineEventType[] = ['RAW_DATA_RECEIVED', 'PARTIAL_REPROCESS_REQUESTED', 'PRODUCT_REPROCESS_REQUESTED'];
+const PRODUCT_LEVEL_OPTIONS: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
+const QUEUE_OPTIONS = Object.values(QUEUE_NAME);
+
+type RuleFormState = {
+  id: string | null;
+  pipelineId: string;
+  active: boolean;
+  eventType: PipelineEventType;
+  sourceQueue: string;
+  satelliteId: string;
+  mode: string;
+  polarization: string;
+  inputLevel: ProductLevel | '';
+  triggerSource: TriggerSource;
+  description: string;
+};
+
+function makeEmptyRuleForm(): RuleFormState {
+  return {
+    id: null,
+    pipelineId: '',
+    active: true,
+    eventType: 'RAW_DATA_RECEIVED',
+    sourceQueue: QUEUE_NAME.RECEPTION_EVENTS,
+    satelliteId: '',
+    mode: '',
+    polarization: '',
+    inputLevel: '',
+    triggerSource: 'PIPELINE_AUTO',
+    description: 'pgmq 수신 이벤트와 조건을 매칭해 지정한 파이프라인을 자동 실행합니다.',
+  };
+}
+
+function ruleToForm(rule: PipelineActivationRule): RuleFormState {
+  return {
+    id: rule.id,
+    pipelineId: rule.pipelineId,
+    active: rule.active,
+    eventType: rule.eventType,
+    sourceQueue: rule.sourceQueue,
+    satelliteId: rule.match.satelliteId ?? '',
+    mode: rule.match.mode ?? '',
+    polarization: rule.match.polarization ?? '',
+    inputLevel: rule.match.inputLevel ?? '',
+    triggerSource: rule.triggerSource,
+    description: rule.description,
+  };
+}
 
 function ruleConditions(rule: PipelineActivationRule): string[] {
   return [
@@ -35,10 +112,6 @@ function ruleConditions(rule: PipelineActivationRule): string[] {
     rule.match.polarization,
     rule.match.inputLevel ? PRODUCT_LEVEL_LABELS[rule.match.inputLevel] : undefined,
   ].filter((condition): condition is string => typeof condition === 'string' && condition.length > 0);
-}
-
-function summarizeQueueRules(rules: PipelineActivationRule[]): string {
-  return Array.from(new Set(rules.map((rule) => PIPELINE_EVENT_TYPE_LABELS[rule.eventType]))).join(', ');
 }
 
 function routeKey(rule: PipelineActivationRule): string {
@@ -62,18 +135,6 @@ function formatDate(value?: string): string {
   }).format(new Date(value));
 }
 
-const LOG_LEVEL_CLASS: Record<LogLevel, string> = {
-  ERROR: 'text-red-300',
-  WARN: 'text-yellow-300',
-  INFO: 'text-emerald-300',
-};
-
-const MIN_LOG_PANEL_WIDTH = 320;
-const DEFAULT_LOG_PANEL_WIDTH = 420;
-const MIN_CONTENT_WIDTH = 940;
-const DEPLOYMENT_TABLE_WIDTH = 1042;
-const DEPLOYMENT_TABLE_GRID = '180px 135px 185px 125px 210px 115px';
-
 function toPreviewSteps(pipeline: PipelineDefinition): PipelineStep[] {
   return pipeline.steps.map((step) => ({
     order: step.order,
@@ -95,6 +156,36 @@ function toPreviewSteps(pipeline: PipelineDefinition): PipelineStep[] {
   }));
 }
 
+function BadgeButton({
+  active,
+  children,
+  disabled,
+  onClick,
+  title,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      title={title}
+      onClick={onClick}
+      className={`inline-flex min-h-8 items-center rounded-full border px-3 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+        active
+          ? 'border-accent/40 bg-accent/15 text-accent'
+          : 'border-border bg-background text-muted-foreground hover:bg-muted/45 hover:text-foreground'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function DeployedPipelinesPage() {
   const service = usePipelineService();
   const router = useRouter();
@@ -108,9 +199,11 @@ export default function DeployedPipelinesPage() {
   const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
   const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
   const [expandedRuleId, setExpandedRuleId] = useState<string | null>(null);
-  const [undeployTarget, setUndeployTarget] = useState<PipelineDefinition | null>(null);
+  const [ruleForm, setRuleForm] = useState<RuleFormState>(() => makeEmptyRuleForm());
   const [savingPipelineId, setSavingPipelineId] = useState<string | null>(null);
-  const [logPanelWidth, setLogPanelWidth] = useState(DEFAULT_LOG_PANEL_WIDTH);
+  const [mappingModalOpen, setMappingModalOpen] = useState(false);
+  const [automating, setAutomating] = useState(false);
+  const [logPanelOpen, setLogPanelOpen] = useState(false);
 
   const canManage = previewRole === 'Administrator';
 
@@ -138,19 +231,18 @@ export default function DeployedPipelinesPage() {
     })();
   }, [service]);
 
-  const deployedRules = useMemo(
-    () => rules.filter((rule) => rule.active),
+  const deployedRules = useMemo(() => rules.filter((rule) => rule.active), [rules]);
+  const matchingRules = useMemo(
+    () => [...rules].sort((a, b) => Number(b.active) - Number(a.active) || a.sourceQueue.localeCompare(b.sourceQueue)),
     [rules],
   );
-  const deployedPipelineIds = new Set(deployedRules.map((rule) => rule.pipelineId));
-  const deployableDrafts = pipelines.filter((pipeline) => !deployedPipelineIds.has(pipeline.id));
-  const sourceQueueGroups = Array.from(
-    deployedRules.reduce((map, rule) => {
-      const current = map.get(rule.sourceQueue) ?? [];
-      current.push(rule);
-      map.set(rule.sourceQueue, current);
-      return map;
-    }, new Map<string, PipelineActivationRule[]>()).entries(),
+  const activePipelineIds = useMemo(
+    () => new Set(deployedRules.map((rule) => rule.pipelineId)),
+    [deployedRules],
+  );
+  const automationTargetPipelines = useMemo(
+    () => pipelines.filter((pipeline) => activePipelineIds.has(pipeline.id)),
+    [activePipelineIds, pipelines],
   );
   const duplicateRouteKeys = useMemo(() => {
     const counts = new Map<string, number>();
@@ -166,143 +258,128 @@ export default function DeployedPipelinesPage() {
     for (const pipeline of pipelines) map.set(pipeline.id, pipeline);
     return map;
   }, [pipelines]);
-
-  const selectedRule = selectedRuleId
-    ? deployedRules.find((rule) => rule.id === selectedRuleId) ?? null
-    : null;
-  const selectedPipeline = selectedRule ? pipelineById.get(selectedRule.pipelineId) ?? null : null;
+  const satelliteOptions = useMemo(
+    () => Array.from(new Set(pipelines.map((pipeline) => pipeline.satelliteId))).sort(),
+    [pipelines],
+  );
+  const modeOptions = useMemo(
+    () => Array.from(new Set(pipelines.map((pipeline) => pipeline.mode))).sort(),
+    [pipelines],
+  );
+  const selectedRule = selectedRuleId ? rules.find((rule) => rule.id === selectedRuleId) ?? null : null;
+  const selectedFormPipeline = ruleForm.pipelineId ? pipelineById.get(ruleForm.pipelineId) ?? null : null;
+  const selectedFormPreviewSteps = selectedFormPipeline ? toPreviewSteps(selectedFormPipeline) : [];
   const selectedPipelineJobIds = useMemo(() => {
     if (!selectedRule) return new Set<string>();
     return new Set(jobs.filter((job) => job.pipelineId === selectedRule.pipelineId).map((job) => job.jobId));
   }, [jobs, selectedRule]);
-  const selectedServerLogs = useMemo(() => {
-    if (!selectedRule) return [];
+  const automaticPipelineLogs = useMemo(() => {
+    if (!selectedRule) return executionLogs;
     const matched = executionLogs.filter((log) => log.jobId && selectedPipelineJobIds.has(log.jobId));
     return matched.length > 0 ? matched : executionLogs.slice(0, 80);
   }, [executionLogs, selectedPipelineJobIds, selectedRule]);
-
-  const handleUndeployConfirm = useCallback(async () => {
-    if (!undeployTarget) return;
-    setSavingPipelineId(undeployTarget.id);
-    const res = await service.파이프라인_배포상태를_변경한다(undeployTarget.id, false);
-    setSavingPipelineId(null);
-    if (!res.success) {
-      toast.error(res.message);
-      return;
-    }
-    setUndeployTarget(null);
-    await refresh();
-    toast.success('파이프라인 배포를 해제했습니다');
-  }, [service, refresh, undeployTarget]);
 
   const handleOpenPipeline = useCallback((pipelineId: string) => {
     router.push(`${base}/console?pipelineId=${encodeURIComponent(pipelineId)}`);
   }, [router, base]);
 
-  const handleRowClick = useCallback((ruleId: string) => {
-    setSelectedRuleId(ruleId);
-    setExpandedRuleId((prev) => (prev === ruleId ? null : ruleId));
+  const handleSaveRule = useCallback(async (form: RuleFormState) => {
+    if (!form.pipelineId) {
+      toast.error('자동화할 파이프라인을 선택하세요');
+      return null;
+    }
+    if (!form.satelliteId || !form.mode || !form.polarization || !form.inputLevel) {
+      toast.error('위성, 모드, 편파, 입력 레벨 조건을 모두 선택하세요');
+      return null;
+    }
+
+    const payload: SavePipelineActivationRuleData = {
+      id: form.id ?? undefined,
+      pipelineId: form.pipelineId,
+      active: form.active,
+      eventType: form.eventType,
+      sourceQueue: form.sourceQueue,
+      match: {
+        satelliteId: form.satelliteId || undefined,
+        mode: form.mode || undefined,
+        polarization: form.polarization || undefined,
+        inputLevel: form.inputLevel || undefined,
+      },
+      triggerSource: form.triggerSource,
+      description: form.description,
+    };
+
+    setSavingPipelineId(form.pipelineId);
+    const res = await service.파이프라인_자동실행규칙을_저장한다(payload);
+    setSavingPipelineId(null);
+    if (!res.success) {
+      toast.error(res.message);
+      return null;
+    }
+    await refresh();
+    if (res.data) {
+      setSelectedRuleId(res.data.id);
+      setRuleForm(ruleToForm(res.data));
+    }
+    return res.data ?? null;
+  }, [service, refresh]);
+
+  const handleAutomate = useCallback(async () => {
+    setAutomating(true);
+    await new Promise((resolve) => setTimeout(resolve, 720));
+    const result = await handleSaveRule({ ...ruleForm, active: true });
+    setAutomating(false);
+    if (!result) return;
+    setMappingModalOpen(false);
+    toast.success('자동화 파이프라인이 추가되었습니다');
+  }, [handleSaveRule, ruleForm]);
+
+  const handleToggleRuleActive = useCallback((rule: PipelineActivationRule) => {
+    void handleSaveRule({ ...ruleToForm(rule), active: !rule.active });
+  }, [handleSaveRule]);
+
+  const handleOpenNewRuleModal = useCallback(() => {
+    setRuleForm(makeEmptyRuleForm());
+    setMappingModalOpen(true);
   }, []);
 
-  const handleResizePointerDown = useCallback((event: React.PointerEvent) => {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = logPanelWidth;
-    const sidebarWidth = sidebarCollapsed ? 48 : 224;
-    const maxWidth = Math.max(MIN_LOG_PANEL_WIDTH, window.innerWidth - sidebarWidth - MIN_CONTENT_WIDTH);
-
-    const onMove = (moveEvent: PointerEvent) => {
-      const delta = startX - moveEvent.clientX;
-      const next = Math.max(MIN_LOG_PANEL_WIDTH, Math.min(maxWidth, startWidth + delta));
-      setLogPanelWidth(next);
-    };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
-    };
-
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-  }, [logPanelWidth, sidebarCollapsed]);
+  const handleRowClick = useCallback((rule: PipelineActivationRule) => {
+    setRuleForm(ruleToForm(rule));
+    setSelectedRuleId(rule.id);
+    setExpandedRuleId((prev) => (prev === rule.id ? null : rule.id));
+  }, []);
 
   return (
     <div className="h-full flex overflow-hidden bg-background">
       <LeftSidebar
         mode="nav"
         collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed((v) => !v)}
+        onToggle={() => setSidebarCollapsed((value) => !value)}
         activePage="deployed"
       />
 
-      <main className="flex-1 min-w-0 overflow-y-auto">
-        <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-background px-5 py-2.5">
-          <PipelineExecutionTabs active="auto" counts={{ auto: deployedRules.length, manual: jobs.length }} />
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-border bg-background px-5 py-2.5">
+          <PipelineExecutionTabs active="auto" counts={{ auto: matchingRules.length, manual: jobs.length }} />
+          {canManage && (
+            <button
+              type="button"
+              onClick={handleOpenNewRuleModal}
+              className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[11px] font-semibold text-accent-foreground transition-colors hover:brightness-110"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              자동 실행 매핑 규칙
+            </button>
+          )}
         </div>
-        <div className="min-h-full px-8 py-7">
-          <section className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg border border-border bg-card overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-                <div className="flex items-center gap-2">
-                  <GitBranch className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-xs font-semibold text-foreground">미배포 파이프라인 정의</span>
-                </div>
-                <span className="text-[10px] font-mono text-muted-foreground">{deployableDrafts.length}</span>
-              </div>
-              <div className="max-h-40 overflow-y-auto divide-y divide-border/70">
-                {deployableDrafts.length === 0 ? (
-                  <div className="px-4 py-4 text-xs text-muted-foreground">대기 중인 파이프라인 정의가 없습니다</div>
-                ) : deployableDrafts.map((pipeline) => (
-                  <button
-                    key={pipeline.id}
-                    type="button"
-                    onClick={() => handleOpenPipeline(pipeline.id)}
-                    className="w-full grid grid-cols-[1fr_150px] gap-3 px-4 py-2.5 text-left hover:bg-muted/25 transition-colors cursor-pointer"
-                  >
-                    <span className="text-xs font-medium text-foreground truncate">{pipeline.name}</span>
-                    <span className="text-[10px] text-muted-foreground truncate">{pipeline.satelliteId} · {pipeline.mode}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
 
-            <div className="rounded-lg border border-border bg-card overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-                <div className="flex items-center gap-2">
-                  <ServerCog className="w-4 h-4 text-accent" />
-                  <span className="text-xs font-semibold text-foreground">pgmq 수신 큐</span>
-                </div>
-                <span className="text-[10px] font-mono text-muted-foreground">{sourceQueueGroups.length} queues</span>
-              </div>
-              <div className="max-h-40 overflow-y-auto divide-y divide-border/70">
-                {sourceQueueGroups.length === 0 ? (
-                  <div className="px-4 py-4 text-xs text-muted-foreground">연결된 pgmq 이벤트 소스가 없습니다</div>
-                ) : sourceQueueGroups.map(([queue, queueRules]) => (
-                  <div
-                    key={queue}
-                    className="grid grid-cols-[1fr_150px] gap-3 px-4 py-2.5"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-mono text-foreground truncate">{queue}</p>
-                      <p className="mt-1 text-[10px] text-muted-foreground truncate">{summarizeQueueRules(queueRules)}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] text-accent">{queueRules.length}개 매칭 규칙</p>
-                      <p className="mt-1 text-[10px] text-muted-foreground">이벤트 1건은 1개 실행</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section className="mt-5 rounded-lg border border-border bg-card overflow-x-auto overflow-y-hidden">
-            {deployedRules.length === 0 ? (
-              <div className="px-4 py-16 text-center">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+          <section className="min-h-[calc(100vh-128px)] rounded-lg border border-border bg-card overflow-x-auto overflow-y-hidden">
+            {matchingRules.length === 0 ? (
+              <div className="px-4 py-24 text-center">
                 <Activity className="w-10 h-10 mx-auto text-muted-foreground/30" />
-                <p className="mt-3 text-sm font-medium text-foreground">자동 파이프라인이 없습니다</p>
-                <p className="mt-1 text-xs text-muted-foreground">파이프라인 화면에서 배포하면 이 목록에 표시됩니다.</p>
+                <p className="mt-3 text-sm font-medium text-foreground">자동 파이프라인 매칭 규칙이 없습니다</p>
+                <p className="mt-1 text-xs text-muted-foreground">우상단 버튼에서 pgmq 이벤트 조건과 실행 파이프라인을 연결하세요.</p>
               </div>
             ) : (
               <div className="max-w-none" style={{ width: `max(100%, ${DEPLOYMENT_TABLE_WIDTH}px)` }}>
@@ -310,15 +387,15 @@ export default function DeployedPipelinesPage() {
                   className="grid gap-3 px-4 py-2.5 border-b border-border text-[10px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap"
                   style={{ gridTemplateColumns: DEPLOYMENT_TABLE_GRID }}
                 >
-                  <span>pgmq 수신 큐</span>
-                  <span>이벤트 유형</span>
+                  <span>상태</span>
+                  <span>pgmq 수신 이벤트</span>
                   <span>매칭 조건</span>
                   <span>처리 흐름</span>
                   <span>실행 파이프라인</span>
                   <span className="text-right">작업</span>
                 </div>
                 <div className="divide-y divide-border/70">
-                  {deployedRules.map((rule) => {
+                  {matchingRules.map((rule) => {
                     const pipeline = pipelineById.get(rule.pipelineId);
                     const conditions = ruleConditions(rule);
                     const hasDuplicateRoute = duplicateRouteKeys.has(routeKey(rule));
@@ -327,7 +404,7 @@ export default function DeployedPipelinesPage() {
                     return (
                       <div key={rule.id}>
                         <div
-                          onClick={() => handleRowClick(rule.id)}
+                          onClick={() => handleRowClick(rule)}
                           className="relative grid gap-3 px-4 py-3 items-center cursor-pointer whitespace-nowrap group"
                           style={{ gridTemplateColumns: DEPLOYMENT_TABLE_GRID }}
                         >
@@ -335,41 +412,45 @@ export default function DeployedPipelinesPage() {
                             selectedRule?.id === rule.id ? 'bg-accent/10' : 'group-hover:bg-muted/20'
                           }`} />
                           <div className="relative min-w-0">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="h-2 w-2 rounded-full bg-success shadow-[0_0_12px_rgba(52,211,153,0.7)]" />
-                              <span className="text-[10px] font-mono text-foreground truncate">{rule.sourceQueue}</span>
-                            </div>
-                            <p className="mt-1 text-[10px] text-muted-foreground truncate">pgmq message source</p>
+                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold ${
+                              rule.active ? 'bg-success/10 text-success' : 'bg-muted/60 text-muted-foreground'
+                            }`}>
+                              <span className={`h-1.5 w-1.5 rounded-full ${rule.active ? 'bg-success' : 'bg-muted-foreground/50'}`} />
+                              {rule.active ? '활성' : '비활성'}
+                            </span>
+                            <p className="mt-1 text-[10px] text-muted-foreground truncate">
+                              {rule.active ? '자동 실행 대상' : '매칭 대기'}
+                            </p>
                           </div>
 
                           <div className="relative min-w-0">
                             <p className="text-xs font-medium text-foreground truncate">{PIPELINE_EVENT_TYPE_LABELS[rule.eventType]}</p>
-                            <p className="mt-1 text-[10px] text-muted-foreground truncate">{rule.eventType}</p>
+                            <p className="mt-1 font-mono text-[10px] text-muted-foreground truncate">{rule.sourceQueue}</p>
                           </div>
 
                           <div className="relative flex gap-1.5 overflow-hidden">
-                            {conditions.map((condition) => (
-                              <span key={condition} className="rounded bg-muted/55 px-1.5 py-0.5 text-[10px] text-foreground truncate shrink-0 max-w-[72px]">
+                            {conditions.length === 0 ? (
+                              <span className="rounded bg-muted/55 px-1.5 py-0.5 text-[10px] text-muted-foreground">전체 조건</span>
+                            ) : conditions.map((condition) => (
+                              <span key={condition} className="rounded bg-muted/55 px-1.5 py-0.5 text-[10px] text-foreground truncate shrink-0 max-w-[88px]">
                                 {condition}
                               </span>
                             ))}
                           </div>
 
-                          <span className="relative rounded border border-border px-1.5 py-0.5 text-[10px] text-accent truncate max-w-[125px]">
+                          <span className="relative rounded border border-border px-1.5 py-0.5 text-[10px] text-accent truncate max-w-[140px]">
                             {TRIGGER_SOURCE_LABELS[rule.triggerSource]}
                           </span>
 
                           <div className="relative min-w-0">
                             <div className="flex items-center gap-2">
-                              <p className="text-sm font-semibold text-foreground truncate">
-                                {pipeline?.name ?? rule.pipelineId}
-                              </p>
+                              <p className="text-sm font-semibold text-foreground truncate">{pipeline?.name ?? rule.pipelineId}</p>
                               {expanded ? <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                             </div>
                             <p className="mt-1 text-[11px] text-muted-foreground truncate">
                               {hasDuplicateRoute
                                 ? '중복 라우트 확인 필요'
-                                : pipeline ? `${pipeline.satelliteId} · ${pipeline.mode}` : `deployed ${formatDate(rule.deployedAt)}`}
+                                : pipeline ? `${pipeline.satelliteId} · ${pipeline.mode}` : `created ${formatDate(rule.deployedAt)}`}
                             </p>
                           </div>
 
@@ -391,13 +472,16 @@ export default function DeployedPipelinesPage() {
                                 disabled={savingPipelineId === rule.pipelineId}
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  const pipeline = pipelineById.get(rule.pipelineId);
-                                  if (pipeline) setUndeployTarget(pipeline);
+                                  handleToggleRuleActive(rule);
                                 }}
-                                className="flex items-center gap-1 rounded-md border border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                                className={`flex items-center gap-1 rounded-md border px-2 py-1.5 text-[11px] transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed ${
+                                  rule.active
+                                    ? 'border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
+                                    : 'border-accent/25 bg-accent/10 text-accent hover:bg-accent/15'
+                                }`}
                               >
-                                <Unplug className="w-3 h-3" />
-                                해제
+                                <Power className="w-3 h-3" />
+                                {rule.active ? '비활성화' : '활성화'}
                               </button>
                             )}
                           </div>
@@ -421,7 +505,7 @@ export default function DeployedPipelinesPage() {
                                 파이프라인 조회하기
                               </button>
                             </div>
-                            <div className="deployed-preview-flow h-64 overflow-hidden rounded-xl border border-border bg-card">
+                            <div className="deployed-preview-flow h-64 overflow-hidden rounded-lg border border-border bg-card">
                               <CanvasGraph
                                 pipelineId={`deployed-preview-${pipeline.id}`}
                                 steps={previewSteps}
@@ -439,89 +523,258 @@ export default function DeployedPipelinesPage() {
             )}
           </section>
         </div>
+
+        <ExecutionLogPanel
+          logs={automaticPipelineLogs}
+          selectedJobId={null}
+          open={logPanelOpen}
+          onToggle={() => setLogPanelOpen((value) => !value)}
+        />
       </main>
 
-      <aside
-        className="relative border-l border-black bg-[#050807] flex flex-col overflow-hidden shrink-0"
-        style={{ width: logPanelWidth }}
-      >
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          onPointerDown={handleResizePointerDown}
-          className="absolute left-0 top-0 bottom-0 z-20 w-2 -translate-x-1 cursor-ew-resize flex items-center justify-center hover:bg-emerald-500/10"
-          title="서버 로그 패널 크기 조절"
-        >
-          <GripVertical className="w-3 h-5 text-emerald-100/30" />
-        </div>
-        <div className="h-10 px-3 border-b border-emerald-900/50 flex items-center justify-between bg-[#111611]">
-          <div className="flex items-center gap-2 min-w-0">
-            <TerminalSquare className="w-3.5 h-3.5 text-emerald-300 shrink-0 ml-1" />
-            <span className="text-[11px] font-mono text-emerald-100/85 truncate">sdpe-prod-shell</span>
-          </div>
-          {selectedRule && (
-            <button
-              type="button"
-              onClick={() => setSelectedRuleId(null)}
-              className="p-1 rounded-md text-emerald-100/45 hover:bg-emerald-500/10 hover:text-emerald-100 transition-colors"
-              title="선택 해제"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
+      {mappingModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-5 py-6" onClick={() => !automating && setMappingModalOpen(false)}>
+          <div
+            className={`flex max-h-[88vh] w-full flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl transition-[max-width] duration-200 ${
+              selectedFormPipeline ? 'max-w-7xl' : 'max-w-5xl'
+            }`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+              <div className="flex items-center gap-2">
+                <ServerCog className="h-4 w-4 text-accent" />
+                <h2 className="text-sm font-semibold text-foreground">자동 실행 매핑 규칙</h2>
+              </div>
+              <button
+                type="button"
+                disabled={automating}
+                onClick={() => setMappingModalOpen(false)}
+                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:opacity-40"
+                aria-label="닫기"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
 
-        {selectedRule ? (
-          <>
-            <div className="px-4 py-3 border-b border-border bg-background/35">
-              <div className="font-mono text-[11px] leading-5">
-                <p className="text-emerald-300">
-                  <span className="text-emerald-500">operator@sdpe-prod</span>
-                  <span className="text-emerald-100/50">:</span>
-                  <span className="text-sky-300">~</span>
-                  <span className="text-emerald-100/50">$ </span>
-                  aws logs tail /sdpe/pipeline-workflow --follow
-                </p>
-                <p className="text-emerald-100/55 truncate">
-                  target={selectedPipeline?.name ?? selectedRule.pipelineId} jobs={selectedPipelineJobIds.size || 'sample'}
-                </p>
+            <div className={`grid min-h-0 flex-1 ${
+              selectedFormPipeline
+                ? 'grid-cols-[minmax(0,0.82fr)_minmax(320px,0.88fr)_minmax(360px,1fr)]'
+                : 'grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)]'
+            }`}>
+              <div className="min-h-0 overflow-y-auto border-r border-border px-5 py-4">
+                <div className="space-y-5">
+                  <div>
+                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">pgmq 이벤트</p>
+                    <div className="flex flex-wrap gap-2">
+                      {EVENT_TYPE_OPTIONS.map((eventType) => (
+                        <BadgeButton
+                          key={eventType}
+                          active={ruleForm.eventType === eventType}
+                          disabled={automating}
+                          onClick={() => setRuleForm((prev) => ({ ...prev, eventType }))}
+                        >
+                          {PIPELINE_EVENT_TYPE_LABELS[eventType]}
+                        </BadgeButton>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">수신 큐</p>
+                    <div className="flex flex-wrap gap-2">
+                      {QUEUE_OPTIONS.map((queue) => (
+                        <BadgeButton
+                          key={queue}
+                          active={ruleForm.sourceQueue === queue}
+                          disabled={automating}
+                          onClick={() => setRuleForm((prev) => ({ ...prev, sourceQueue: queue }))}
+                        >
+                          <span className="font-mono">{queue}</span>
+                        </BadgeButton>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">위성 조건</p>
+                    <div className="flex flex-wrap gap-2">
+                      {satelliteOptions.map((satelliteId) => (
+                        <BadgeButton
+                          key={satelliteId}
+                          active={ruleForm.satelliteId === satelliteId}
+                          disabled={automating}
+                          onClick={() => setRuleForm((prev) => ({ ...prev, satelliteId }))}
+                        >
+                          {satelliteId}
+                        </BadgeButton>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">모드 조건</p>
+                    <div className="flex flex-wrap gap-2">
+                      {modeOptions.map((mode) => (
+                        <BadgeButton
+                          key={mode}
+                          active={ruleForm.mode === mode}
+                          disabled={automating}
+                          onClick={() => setRuleForm((prev) => ({ ...prev, mode }))}
+                        >
+                          {mode}
+                        </BadgeButton>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">편파 조건</p>
+                    <div className="flex flex-wrap gap-2">
+                      {POLARIZATION_OPTIONS.map((polarization) => (
+                        <BadgeButton
+                          key={polarization}
+                          active={ruleForm.polarization === polarization}
+                          disabled={automating}
+                          onClick={() => setRuleForm((prev) => ({ ...prev, polarization }))}
+                        >
+                          {polarization}
+                        </BadgeButton>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">입력 레벨</p>
+                    <div className="flex flex-wrap gap-2">
+                      {PRODUCT_LEVEL_OPTIONS.map((inputLevel) => (
+                        <BadgeButton
+                          key={inputLevel}
+                          active={ruleForm.inputLevel === inputLevel}
+                          disabled={automating}
+                          onClick={() => setRuleForm((prev) => ({ ...prev, inputLevel }))}
+                        >
+                          {PRODUCT_LEVEL_LABELS[inputLevel]}
+                        </BadgeButton>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className={`min-h-0 overflow-y-auto px-5 py-4 ${selectedFormPipeline ? 'border-r border-border' : ''}`}>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-[10px] font-semibold uppercase text-muted-foreground">활성 파이프라인</p>
+                  <span className="rounded-full bg-muted/60 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">{automationTargetPipelines.length}</span>
+                </div>
+                {automationTargetPipelines.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-border px-4 py-12 text-center">
+                    <GitBranch className="mx-auto h-8 w-8 text-muted-foreground/35" />
+                    <p className="mt-3 text-xs text-muted-foreground">파이프라인 관리에서 활성화된 파이프라인이 없습니다</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {automationTargetPipelines.map((pipeline) => {
+                      const selected = ruleForm.pipelineId === pipeline.id;
+                      return (
+                        <button
+                          key={pipeline.id}
+                          type="button"
+                          disabled={automating}
+                          onClick={() => setRuleForm((prev) => ({
+                            ...prev,
+                            pipelineId: pipeline.id,
+                            satelliteId: prev.satelliteId || pipeline.satelliteId,
+                            mode: prev.mode || pipeline.mode,
+                          }))}
+                          className={`w-full rounded-lg border px-3 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                            selected
+                              ? 'border-accent/45 bg-accent/10'
+                              : 'border-border bg-background hover:bg-muted/35'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-foreground">{pipeline.name}</p>
+                              <p className="mt-1 truncate text-[11px] text-muted-foreground">{pipeline.satelliteId} · {pipeline.mode}</p>
+                            </div>
+                            {selected && <CheckCircle2 className="h-4 w-4 shrink-0 text-accent" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              {selectedFormPipeline && (
+                <div className="min-h-0 overflow-y-auto px-5 py-4">
+                  <div className="mb-3">
+                    <p className="text-[10px] font-semibold uppercase text-muted-foreground">파이프라인 순서</p>
+                    <p className="mt-1 truncate text-xs font-semibold text-foreground">{selectedFormPipeline.name}</p>
+                  </div>
+                  <div className="deployed-preview-flow h-[420px] overflow-hidden rounded-lg border border-border bg-background">
+                    <CanvasGraph
+                      pipelineId={`automation-modal-${selectedFormPipeline.id}`}
+                      steps={selectedFormPreviewSteps}
+                      pipelineEdges={selectedFormPipeline.edges}
+                      editable={false}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-border bg-muted/10 px-5 py-4">
+              <div className="mb-3 rounded-lg border border-border bg-background px-3 py-3">
+                <p className="mb-2 text-[10px] font-semibold text-muted-foreground">현재 선택한 최종 자동 파이프라인</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-border bg-muted/45 px-2.5 py-1 font-mono text-[10px] text-foreground">
+                    {ruleForm.sourceQueue}
+                  </span>
+                  <span className="rounded-full border border-border bg-muted/45 px-2.5 py-1 text-[10px] text-foreground">
+                    {PIPELINE_EVENT_TYPE_LABELS[ruleForm.eventType]}
+                  </span>
+                  {[
+                    ruleForm.satelliteId,
+                    ruleForm.mode,
+                    ruleForm.polarization,
+                    ruleForm.inputLevel ? PRODUCT_LEVEL_LABELS[ruleForm.inputLevel] : '',
+                  ].filter(Boolean).map((label) => (
+                    <span key={label} className="rounded-full border border-border bg-muted/45 px-2.5 py-1 text-[10px] text-foreground">
+                      {label}
+                    </span>
+                  ))}
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-accent/30 bg-accent/10 text-accent">
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="rounded-full border border-accent/35 bg-accent/10 px-3 py-1 text-[10px] font-semibold text-accent">
+                    {selectedFormPipeline?.name ?? '파이프라인 미선택'}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={automating}
+                  onClick={() => setMappingModalOpen(false)}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/45 hover:text-foreground disabled:opacity-45"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  disabled={automating || !ruleForm.pipelineId || !ruleForm.satelliteId || !ruleForm.mode || !ruleForm.polarization || !ruleForm.inputLevel}
+                  onClick={handleAutomate}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-foreground transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {automating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
+                  {automating ? '자동화 추가 중' : '자동화'}
+                </button>
               </div>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto font-mono text-[11px] bg-[#050807] text-emerald-50/80">
-              {selectedServerLogs.length === 0 ? (
-                <div className="h-full min-h-[180px] flex items-center justify-center text-xs text-emerald-100/40">
-                  no log events
-                </div>
-              ) : selectedServerLogs.map((log) => (
-                <div key={log.id} className="px-3 py-1.5 border-b border-emerald-950/60 hover:bg-emerald-400/[0.04] transition-colors">
-                  <p className="leading-5 break-words">
-                    <span className="text-emerald-100/40">{new Date(log.timestamp).toISOString()}</span>
-                    <span className={`ml-2 font-semibold ${LOG_LEVEL_CLASS[log.level]}`}>{log.level}</span>
-                    <span className="ml-2 text-sky-300">[{log.source}]</span>
-                    {log.jobId && <span className="ml-2 text-emerald-100/50">{log.jobId}</span>}
-                    <span className="ml-2 text-emerald-50/85">{log.message}</span>
-                  </p>
-                  {log.detail && <p className="pl-4 text-emerald-100/42 break-words">`-- {log.detail}</p>}
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 min-h-0 flex items-center justify-center px-8 text-center font-mono text-xs text-emerald-100/45">
-            select pipeline to tail logs
           </div>
-        )}
-      </aside>
-
-      {undeployTarget && (
-        <PipelineUndeployConfirmDialog
-          pipelineName={undeployTarget.name}
-          satelliteId={undeployTarget.satelliteId}
-          mode={undeployTarget.mode}
-          onConfirm={handleUndeployConfirm}
-          onCancel={() => setUndeployTarget(null)}
-        />
+        </div>
       )}
+
       <style jsx global>{`
         .deployed-preview-flow .react-flow__controls,
         .deployed-preview-flow .react-flow__minimap {

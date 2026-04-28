@@ -87,8 +87,8 @@ export interface JobInitConfig {
 export interface ProcessingProfileSummary {
   id: string;
   name: string;
-  mode: string;
-  polarization: string;
+  mode?: string;
+  polarization?: string;
   description?: string;
 }
 
@@ -154,6 +154,8 @@ export interface RawDataSummary {
   latitude: number;
   longitude: number;
   footprintKm: number;
+  /** EPSG:4326 lon/lat ring coordinates describing the captured ground footprint. */
+  footprint?: [number, number][];
   fileSizeBytes: number;
   status: RawDataStatus;
   rawDataPath: string;
@@ -324,6 +326,22 @@ export interface PipelineActivationRule {
   description: string;
 }
 
+export interface SavePipelineActivationRuleData {
+  id?: string;
+  pipelineId: string;
+  active: boolean;
+  eventType: PipelineEventType;
+  sourceQueue: string;
+  match: {
+    satelliteId?: string;
+    mode?: string;
+    polarization?: string;
+    inputLevel?: ProductLevel;
+  };
+  triggerSource: TriggerSource;
+  description?: string;
+}
+
 export interface CreatePipelineData {
   name: string;
   satelliteId: string;
@@ -343,9 +361,13 @@ export interface UpdatePipelineData {
 export interface ProcessingProfile {
   id: string;
   name: string;
-  satelliteId: string;
-  mode: string;
-  polarization: string;
+  satelliteId?: string;
+  mode?: string;
+  polarization?: string;
+  satelliteTags?: string[];
+  modeTags?: string[];
+  polarizationTags?: string[];
+  processingStage?: string;
   priority: number;
   description?: string;
   parameters: Record<string, unknown>;

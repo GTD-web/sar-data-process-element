@@ -2,13 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import type OlMap from 'ol/Map';
 import { usePathname, useRouter } from 'next/navigation';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import { toast } from '@/components/ui/Toast';
 import { cn, formatKST, formatRelativeTime } from '@/lib/utils';
-import {
-} from '@/types/pipeline';
 import type { PipelineDefinition, PipelineStep, RawDataStatus, RawDataSummary } from '@/types/pipeline';
 import {
   Antenna,
@@ -143,6 +142,144 @@ function PipelineMiniPreview({ pipeline }: { pipeline: PipelineDefinition | null
       <div className="border-t border-border bg-card px-3 py-2">
         <div className="text-[10px] text-muted-foreground">
           현재 선택된 파이프라인의 처리 흐름 미리보기입니다.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function buildFallbackFootprint(rawData: RawDataSummary): [number, number][] {
+  const widthRatio = rawData.mode === 'ScanSAR' ? 0.72 : rawData.mode === 'Spotlight' ? 0.34 : 0.46;
+  const halfAlongKm = rawData.footprintKm / 2;
+  const halfAcrossKm = (rawData.footprintKm * widthRatio) / 2;
+  const headingSeed = rawData.id.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const heading = ((headingSeed % 140) - 70) * (Math.PI / 180);
+  const latKm = 110.574;
+  const lonKm = Math.max(1, 111.32 * Math.cos(rawData.latitude * Math.PI / 180));
+  const corners = [
+    [-halfAlongKm, -halfAcrossKm],
+    [halfAlongKm, -halfAcrossKm],
+    [halfAlongKm, halfAcrossKm],
+    [-halfAlongKm, halfAcrossKm],
+  ];
+  const ring = corners.map(([along, across]) => {
+    const eastKm = along * Math.sin(heading) + across * Math.cos(heading);
+    const northKm = along * Math.cos(heading) - across * Math.sin(heading);
+    return [
+      Number((rawData.longitude + eastKm / lonKm).toFixed(6)),
+      Number((rawData.latitude + northKm / latKm).toFixed(6)),
+    ] as [number, number];
+  });
+
+  return [...ring, ring[0]!];
+}
+
+function RawDataCoverageMap({ rawData }: { rawData: RawDataSummary }) {
+  const mapElementRef = useRef<HTMLDivElement | null>(null);
+  const footprint = useMemo(() => rawData.footprint ?? buildFallbackFootprint(rawData), [rawData]);
+
+  useEffect(() => {
+    let disposed = false;
+    let map: OlMap | null = null;
+
+    (async () => {
+      const [
+        { default: Map },
+        { default: View },
+        { default: TileLayer },
+        { default: VectorLayer },
+        { default: OSM },
+        { default: VectorSource },
+        { default: Feature },
+        { default: Polygon },
+        { default: Point },
+        { fromLonLat },
+        { Fill, Stroke, Style, Circle: CircleStyle },
+      ] = await Promise.all([
+        import('ol/Map'),
+        import('ol/View'),
+        import('ol/layer/Tile'),
+        import('ol/layer/Vector'),
+        import('ol/source/OSM'),
+        import('ol/source/Vector'),
+        import('ol/Feature'),
+        import('ol/geom/Polygon'),
+        import('ol/geom/Point'),
+        import('ol/proj'),
+        import('ol/style'),
+      ]);
+
+      if (disposed || !mapElementRef.current) return;
+
+      const center = fromLonLat([rawData.longitude, rawData.latitude]);
+      const footprintCoordinates = footprint.map((coordinate) => fromLonLat(coordinate));
+      const footprintFeature = new Feature({
+        geometry: new Polygon([footprintCoordinates]),
+      });
+      footprintFeature.setStyle(new Style({
+        fill: new Fill({ color: 'rgba(16, 185, 129, 0.22)' }),
+        stroke: new Stroke({ color: '#10b981', width: 2 }),
+      }));
+
+      const centerFeature = new Feature({
+        geometry: new Point(center),
+      });
+      centerFeature.setStyle(new Style({
+        image: new CircleStyle({
+          radius: 5,
+          fill: new Fill({ color: '#ffffff' }),
+          stroke: new Stroke({ color: '#10b981', width: 3 }),
+        }),
+      }));
+
+      const vectorSource = new VectorSource({
+        features: [footprintFeature, centerFeature],
+      });
+
+      map = new Map({
+        target: mapElementRef.current,
+        layers: [
+          new TileLayer({ source: new OSM() }),
+          new VectorLayer({ source: vectorSource }),
+        ],
+        view: new View({
+          center,
+          zoom: 9,
+        }),
+      });
+
+      const extent = vectorSource.getExtent();
+      if (extent) {
+        map.getView().fit(extent, {
+          padding: [30, 30, 30, 30],
+          maxZoom: 12,
+          duration: 180,
+        });
+      }
+      window.setTimeout(() => map?.updateSize(), 80);
+    })();
+
+    return () => {
+      disposed = true;
+      map?.setTarget(undefined);
+    };
+  }, [footprint, rawData.latitude, rawData.longitude]);
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div className="raw-coverage-map relative h-64 bg-muted/30" ref={mapElementRef} />
+      <div className="grid grid-cols-3 divide-x divide-border border-t border-border bg-card text-[10px]">
+        <div className="px-3 py-2">
+          <div className="text-muted-foreground">Center</div>
+          <div className="mt-1 font-mono text-foreground">{rawData.latitude.toFixed(4)}, {rawData.longitude.toFixed(4)}</div>
+        </div>
+        <div className="px-3 py-2">
+          <div className="text-muted-foreground">Footprint</div>
+          <div className="mt-1 font-mono text-foreground">{rawData.footprintKm.toFixed(1)} km</div>
+        </div>
+        <div className="px-3 py-2">
+          <div className="text-muted-foreground">Mode</div>
+          <div className="mt-1 font-mono text-foreground">{rawData.mode}</div>
         </div>
       </div>
     </div>
@@ -487,10 +624,7 @@ function MappingPanel({
             <MapPin className="h-3.5 w-3.5" />
             Coverage
           </div>
-          <div className="mt-3 rounded-lg border border-dashed border-border px-3 py-3 text-sm text-foreground">
-            관측 중심 좌표는 <span className="font-mono">{rawData.latitude.toFixed(4)}</span>, <span className="font-mono">{rawData.longitude.toFixed(4)}</span> 이고,
-            예상 footprint는 약 <span className="font-mono">{rawData.footprintKm.toFixed(1)} km</span> 입니다.
-          </div>
+          <RawDataCoverageMap rawData={rawData} />
         </section>
       </div>
 
@@ -928,6 +1062,18 @@ export default function RawDataPage() {
           .raw-preview-flow .react-flow__controls,
           .raw-preview-flow .react-flow__minimap {
             display: none !important;
+          }
+          .raw-coverage-map .ol-viewport {
+            border-radius: 0.75rem 0.75rem 0 0;
+          }
+          .raw-coverage-map .ol-control button {
+            background: var(--card);
+            color: var(--foreground);
+            border: 1px solid var(--border);
+          }
+          .raw-coverage-map .ol-control button:hover,
+          .raw-coverage-map .ol-control button:focus {
+            background: var(--muted);
           }
         `}</style>
       </div>

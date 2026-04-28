@@ -40,13 +40,7 @@ import {
 } from 'lucide-react';
 
 const LEVELS: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
-const LEVEL_LABELS: Record<ProductLevel, string> = {
-  LEVEL_0: 'L0',
-  LEVEL_1: 'L1',
-  LEVEL_2: 'L2',
-  LEVEL_3: 'L3',
-};
-
+type CatalogListTab = 'raw' | 'hdf5';
 type InspectorSelection =
   | { type: 'raw' }
   | { type: 'hdf5'; fileId?: string }
@@ -165,7 +159,6 @@ function RawDataList({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       {items.map((item) => {
-        const latestProduct = item.products[0];
         return (
           <button
             key={item.raw.id}
@@ -185,21 +178,61 @@ function RawDataList({
                 {item.raw.status}
               </span>
             </div>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">HDF5 {item.hdf5Files.length}</span>
-              {LEVELS.map((level) => (
-                <span key={level} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                  {LEVEL_LABELS[level]} {item.products.filter((product) => product.level === level).length}
-                </span>
-              ))}
-            </div>
             <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
               <span>{item.raw.satelliteId} / {item.raw.mode}</span>
-              <span>{latestProduct ? formatRelativeTime(latestProduct.createdAt) : '산출물 없음'}</span>
+              <span>{formatRelativeTime(item.raw.receivedAt)}</span>
             </div>
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function Hdf5FileList({
+  files,
+  selectedFileId,
+  onSelect,
+}: {
+  files: { file: Hdf5FileSummary; raw?: RawDataSummary }[];
+  selectedFileId?: string;
+  onSelect: (file: Hdf5FileSummary) => void;
+}) {
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      {files.map(({ file, raw }) => (
+        <button
+          key={file.id}
+          type="button"
+          onClick={() => onSelect(file)}
+          className={cn(
+            'w-full border-b border-border px-3 py-3 text-left transition-colors',
+            selectedFileId === file.id ? 'bg-accent/10' : 'hover:bg-muted/25',
+          )}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-xs font-semibold text-foreground">{file.fileName}</div>
+              <div className="mt-1 truncate font-mono text-[10px] text-muted-foreground">{file.id}</div>
+            </div>
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+              {formatFileSize(file.fileSizeBytes)}
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <span className="rounded bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              {file.nodes.length} nodes
+            </span>
+            <span className="rounded bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              {file.rootGroups.length} groups
+            </span>
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+            <span className="min-w-0 truncate">{raw?.title ?? file.rawDataId}</span>
+            <span className="shrink-0">{formatRelativeTime(file.receivedAt)}</span>
+          </div>
+        </button>
+      ))}
     </div>
   );
 }
@@ -655,6 +688,7 @@ export default function DataCatalogPage() {
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [query, setQuery] = useState('');
   const [levelFilter, setLevelFilter] = useState<ProductLevel | 'all'>('all');
+  const [catalogTab, setCatalogTab] = useState<CatalogListTab>('raw');
   const [selectedRawId, setSelectedRawId] = useState<string | null>(null);
   const [selection, setSelection] = useState<InspectorSelection>({ type: 'raw' });
 
@@ -678,6 +712,7 @@ export default function DataCatalogPage() {
   }, [loadData]);
 
   const lineage = useMemo(() => buildLineage(rawData, hdf5Files, products, jobs), [rawData, hdf5Files, products, jobs]);
+  const rawById = useMemo(() => new Map(rawData.map((raw) => [raw.id, raw])), [rawData]);
   const filteredLineage = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return lineage.filter((item) => {
@@ -694,17 +729,46 @@ export default function DataCatalogPage() {
     });
   }, [lineage, levelFilter, query]);
 
+  const filteredHdf5Files = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    return hdf5Files
+      .map((file) => ({ file, raw: rawById.get(file.rawDataId) }))
+      .filter(({ file, raw }) => {
+        if (!normalized) return true;
+        return [
+          file.id,
+          file.fileName,
+          file.title,
+          file.rawDataId,
+          file.satelliteId,
+          file.mode,
+          ...(raw ? [raw.id, raw.title, raw.rawDataPath] : []),
+          ...file.rootGroups,
+          ...file.nodes.map((node) => node.path),
+        ].some((value) => value.toLowerCase().includes(normalized));
+      });
+  }, [hdf5Files, query, rawById]);
+
   const selectedItem = useMemo(() => {
-    return filteredLineage.find((item) => item.raw.id === selectedRawId) ?? filteredLineage[0] ?? null;
-  }, [filteredLineage, selectedRawId]);
+    return lineage.find((item) => item.raw.id === selectedRawId) ?? filteredLineage[0] ?? null;
+  }, [filteredLineage, lineage, selectedRawId]);
 
   useEffect(() => {
-    if (!selectedItem) return;
-    if (selectedRawId !== selectedItem.raw.id) {
-      setSelectedRawId(selectedItem.raw.id);
+    if (selectedRawId && selectedItem) return;
+    if (catalogTab === 'hdf5') {
+      const firstFile = filteredHdf5Files[0]?.file;
+      if (!firstFile) return;
+      setSelectedRawId(firstFile.rawDataId);
+      setSelection({ type: 'hdf5', fileId: firstFile.id });
+      return;
+    }
+    if (filteredLineage[0]) {
+      setSelectedRawId(filteredLineage[0].raw.id);
       setSelection({ type: 'raw' });
     }
-  }, [selectedItem, selectedRawId]);
+  }, [catalogTab, filteredHdf5Files, filteredLineage, selectedItem, selectedRawId]);
+
+  const selectedHdf5FileId = selection.type === 'hdf5' ? selection.fileId : undefined;
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -764,6 +828,7 @@ export default function DataCatalogPage() {
 
       if (uploadedFiles.length > 0) {
         setHdf5Files((current) => [...uploadedFiles, ...current]);
+        setCatalogTab('hdf5');
         setSelection({ type: 'hdf5', fileId: uploadedFiles[0].id });
         toast.success(
           uploadedFiles.length === 1
@@ -834,32 +899,72 @@ export default function DataCatalogPage() {
                   <div className="text-xs font-semibold text-foreground">{totals.completed}</div>
                 </div>
               </div>
+              <div className="grid grid-cols-2 overflow-hidden rounded-md border border-border bg-background p-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCatalogTab('raw');
+                    if (selectedItem) setSelection({ type: 'raw' });
+                  }}
+                  className={cn(
+                    'h-7 rounded px-2 text-xs font-semibold transition-colors',
+                    catalogTab === 'raw'
+                      ? 'bg-accent text-background'
+                      : 'text-muted-foreground hover:bg-muted/35 hover:text-foreground',
+                  )}
+                >
+                  Raw Data
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCatalogTab('hdf5');
+                    const nextFile =
+                      selectedItem?.hdf5Files[0] ?? filteredHdf5Files[0]?.file;
+                    if (nextFile) {
+                      setSelectedRawId(nextFile.rawDataId);
+                      setSelection({ type: 'hdf5', fileId: nextFile.id });
+                    }
+                  }}
+                  className={cn(
+                    'h-7 rounded px-2 text-xs font-semibold transition-colors',
+                    catalogTab === 'hdf5'
+                      ? 'bg-accent text-background'
+                      : 'text-muted-foreground hover:bg-muted/35 hover:text-foreground',
+                  )}
+                >
+                  HDF5 Files
+                </button>
+              </div>
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Raw / HDF5 / Product / Job"
+                  placeholder={catalogTab === 'raw' ? 'Search Raw / Product / Job' : 'Search HDF5 / Raw / Node'}
                   className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-2 text-xs outline-none focus:border-accent"
                 />
               </div>
               <div className="flex items-center gap-2">
-                <select
-                  value={levelFilter}
-                  onChange={(event) => setLevelFilter(event.target.value as ProductLevel | 'all')}
-                  className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-accent"
-                >
-                  <option value="all">전체 레벨</option>
-                  {LEVELS.map((level) => (
-                    <option key={level} value={level}>{PRODUCT_LEVEL_LABELS[level]}</option>
-                  ))}
-                </select>
+                {catalogTab === 'raw' && (
+                  <select
+                    value={levelFilter}
+                    onChange={(event) => setLevelFilter(event.target.value as ProductLevel | 'all')}
+                    className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-accent"
+                  >
+                    <option value="all">All levels</option>
+                    {LEVELS.map((level) => (
+                      <option key={level} value={level}>{PRODUCT_LEVEL_LABELS[level]}</option>
+                    ))}
+                  </select>
+                )}
                 <button
                   type="button"
                   onClick={handleUploadClick}
                   disabled={uploading || !selectedItem}
                   className={cn(
-                    'flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors',
+                    'flex h-8 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors',
+                    catalogTab === 'hdf5' && 'flex-1',
                     uploading || !selectedItem
                       ? 'cursor-not-allowed bg-muted text-muted-foreground'
                       : 'bg-accent text-background hover:bg-accent/90',
@@ -870,7 +975,9 @@ export default function DataCatalogPage() {
                 </button>
               </div>
               <div className="text-[11px] font-semibold text-muted-foreground">
-                Raw Data 기준 {loading ? '로딩 중' : `${filteredLineage.length}건`}
+                {catalogTab === 'raw'
+                  ? `Raw Data ${loading ? 'loading' : `${filteredLineage.length} items`}`
+                  : `HDF5 Files ${loading ? 'loading' : `${filteredHdf5Files.length} items`}`}
               </div>
               {uploadQueue.length > 0 && (
                 <div className="space-y-1">
@@ -891,17 +998,30 @@ export default function DataCatalogPage() {
                 </div>
               )}
             </div>
-            {filteredLineage.length > 0 ? (
-              <RawDataList
-                items={filteredLineage}
-                selectedRawId={selectedItem?.raw.id ?? null}
-                onSelect={(rawId) => {
-                  setSelectedRawId(rawId);
-                  setSelection({ type: 'raw' });
+            {catalogTab === 'raw' ? (
+              filteredLineage.length > 0 ? (
+                <RawDataList
+                  items={filteredLineage}
+                  selectedRawId={selectedItem?.raw.id ?? null}
+                  onSelect={(rawId) => {
+                    setSelectedRawId(rawId);
+                    setSelection({ type: 'raw' });
+                  }}
+                />
+              ) : (
+                <div className="px-4 py-8 text-center text-sm text-muted-foreground">No Raw Data matches the filters.</div>
+              )
+            ) : filteredHdf5Files.length > 0 ? (
+              <Hdf5FileList
+                files={filteredHdf5Files}
+                selectedFileId={selectedHdf5FileId}
+                onSelect={(file) => {
+                  setSelectedRawId(file.rawDataId);
+                  setSelection({ type: 'hdf5', fileId: file.id });
                 }}
               />
             ) : (
-              <div className="px-4 py-8 text-center text-sm text-muted-foreground">조건에 맞는 데이터가 없습니다.</div>
+              <div className="px-4 py-8 text-center text-sm text-muted-foreground">No HDF5 files match the filters.</div>
             )}
           </aside>
 

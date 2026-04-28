@@ -16,6 +16,7 @@ import type {
   RawDataSummary,
   QueueHealth,
   SarStage,
+  SavePipelineActivationRuleData,
   ServiceResponse,
   ServiceResponseWithData,
   UpdatePipelineData,
@@ -144,10 +145,13 @@ export interface IPipelineUIService {
   /** EI-01: 파이프라인 수동 실행 (테스트/운영). 새 Job을 생성하여 파이프라인을 기동합니다. */
   파이프라인을_실행한다(pipelineId: string): Promise<ServiceResponseWithData<JobSummary>>;
 
-  /** 배포된 파이프라인 자동 실행 규칙. pgmq 이벤트 수신 후 백엔드가 이 매핑으로 실행 대상을 결정한다. */
+  /** 활성화된 파이프라인 자동 실행 규칙. pgmq 이벤트 수신 후 백엔드가 이 매핑으로 실행 대상을 결정한다. */
   파이프라인_자동실행규칙을_조회한다(pipelineId?: string): Promise<ServiceResponseWithData<PipelineActivationRule[]>>;
 
-  /** 파이프라인 배포/배포 해제. 배포된 경우에만 pgmq 이벤트 매칭 후 자동 실행된다. */
+  /** pgmq 수신 이벤트와 매칭 조건, 실행 파이프라인을 하나의 자동 실행 규칙으로 저장한다. */
+  파이프라인_자동실행규칙을_저장한다(data: SavePipelineActivationRuleData): Promise<ServiceResponseWithData<PipelineActivationRule>>;
+
+  /** 파이프라인 자동 실행 연결 활성화/비활성화. 활성화된 경우에만 pgmq 이벤트 매칭 후 자동 실행된다. */
   파이프라인_배포상태를_변경한다(pipelineId: string, active: boolean): Promise<ServiceResponseWithData<PipelineActivationRule>>;
 
   // =========================================================================

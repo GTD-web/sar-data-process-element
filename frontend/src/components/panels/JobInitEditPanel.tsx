@@ -26,6 +26,17 @@ const DEFAULT_CONFIG: JobInitConfig = {
   deadlineHours: 4,
 };
 
+function profileMatchesTags(profile: ProcessingProfile, satelliteId: string, mode: string, polarization: string) {
+  const satelliteTags = profile.satelliteTags ?? (profile.satelliteId ? [profile.satelliteId] : []);
+  const modeTags = profile.modeTags ?? (profile.mode ? [profile.mode] : []);
+  const polarizationTags = profile.polarizationTags ?? (profile.polarization ? [profile.polarization] : []);
+  return (
+    (satelliteTags.length === 0 || satelliteTags.includes(satelliteId)) &&
+    (modeTags.length === 0 || modeTags.includes(mode)) &&
+    (polarizationTags.length === 0 || polarizationTags.includes(polarization))
+  );
+}
+
 export default function JobInitEditPanel({ step, satelliteId, mode, profiles, onSave }: JobInitEditPanelProps) {
   const initial = step.jobInitConfig ?? DEFAULT_CONFIG;
 
@@ -37,15 +48,13 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const matchingProfiles = useMemo(
-    () => profiles.filter((p) => p.satelliteId === satelliteId && p.mode === mode && p.polarization === polarization),
+    () => profiles.filter((p) => profileMatchesTags(p, satelliteId, mode, polarization)),
     [profiles, satelliteId, mode, polarization],
   );
 
-  // 편파 변경 시 매칭 프로파일 목록이 바뀌므로 현재 선택을 자동 정합화.
-  // 부모가 key={step.order}로 remount를 보장하므로 profiles/satelliteId/mode 변경은 고려하지 않음.
   const handlePolarizationChange = (newPol: string) => {
     setPolarization(newPol);
-    const next = profiles.filter((p) => p.satelliteId === satelliteId && p.mode === mode && p.polarization === newPol);
+    const next = profiles.filter((p) => profileMatchesTags(p, satelliteId, mode, newPol));
     if (next.length === 0) {
       setProfileId('');
     } else if (!next.find((p) => p.id === profileId)) {
@@ -85,9 +94,9 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
       <div>
         <div className="flex items-center gap-2 mb-1">
           <SlidersHorizontal className="w-4 h-4 text-accent flex-shrink-0" />
-          <span className="text-sm font-semibold text-foreground">작업 초기화</span>
+          <span className="text-sm font-semibold text-foreground">Job Initialization</span>
         </div>
-        <div className="text-[11px] text-muted-foreground">CSU-08.02 · 작업 생성 + 프로파일 선택</div>
+        <div className="text-[11px] text-muted-foreground">CSU-08.02 · Job creation + profile selection</div>
       </div>
 
       {profileMissingInDefinition && (
@@ -103,13 +112,13 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
       <div className="space-y-2.5">
         <div className="flex items-center gap-1.5 text-[11px] font-medium text-foreground">
           <UserCog className="w-3.5 h-3.5 text-accent" />
-          처리 프로파일
+          Processing Profile
         </div>
 
         <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
           {/* Polarization */}
           <div>
-            <label className="text-[10px] text-muted-foreground block mb-1">편파 구성</label>
+            <label className="text-[10px] text-muted-foreground block mb-1">Polarization</label>
             <select
               value={polarization}
               onChange={(e) => handlePolarizationChange(e.target.value)}
@@ -123,7 +132,7 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
 
           {/* Profile Select */}
           <div>
-            <label className="text-[10px] text-muted-foreground block mb-1">프로파일</label>
+            <label className="text-[10px] text-muted-foreground block mb-1">Profile</label>
             {matchingProfiles.length > 0 ? (
               <select
                 value={profileId}
@@ -136,7 +145,7 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
               </select>
             ) : (
               <div className="px-2.5 py-1.5 text-[10px] text-muted-foreground/60 bg-card border border-border rounded-md">
-                {satelliteId} / {mode} / {polarization} 에 해당하는 프로파일이 없습니다
+                No profile tags match {satelliteId} / {mode} / {polarization}
               </div>
             )}
           </div>
@@ -151,7 +160,7 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
           {/* Profile ID */}
           {selectedProfile && (
             <div className="flex justify-between text-[10px] pt-1 border-t border-border/50">
-              <span className="text-muted-foreground">프로파일 ID</span>
+              <span className="text-muted-foreground">Profile ID</span>
               <span className="font-mono text-muted-foreground/70">{selectedProfile.id}</span>
             </div>
           )}
@@ -162,14 +171,14 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
       <div className="space-y-2.5">
         <div className="flex items-center gap-1.5 text-[11px] font-medium text-foreground">
           <Zap className="w-3.5 h-3.5 text-accent" />
-          작업 설정
+          Job Settings
         </div>
 
         <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
           {/* Priority */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-[10px] text-muted-foreground">우선순위</label>
+              <label className="text-[10px] text-muted-foreground">Priority</label>
               <span className="text-[10px] font-mono text-accent">{priority}</span>
             </div>
             <input
@@ -181,22 +190,22 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
               className="w-full h-1.5 bg-border rounded-full appearance-none cursor-pointer accent-accent"
             />
             <div className="flex justify-between text-[9px] text-muted-foreground/50 mt-0.5">
-              <span>1 (최고)</span>
-              <span>10 (최저)</span>
+              <span>1 (highest)</span>
+              <span>10 (lowest)</span>
             </div>
           </div>
 
           {/* Deadline */}
           <div>
-            <label className="text-[10px] text-muted-foreground block mb-1">처리 기한</label>
+            <label className="text-[10px] text-muted-foreground block mb-1">Deadline</label>
             <select
               value={deadlineHours ?? ''}
               onChange={(e) => setDeadlineHours(e.target.value ? Number(e.target.value) : undefined)}
               className="w-full bg-card border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent/50"
             >
-              <option value="">미지정</option>
+              <option value="">Not set</option>
               {DEADLINE_HOUR_OPTIONS.map((h) => (
-                <option key={h} value={h}>{h}시간</option>
+                <option key={h} value={h}>{h} hours</option>
               ))}
             </select>
           </div>
@@ -207,17 +216,17 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
       <div className="space-y-2.5">
         <div className="flex items-center gap-1.5 text-[11px] font-medium text-foreground">
           <Shield className="w-3.5 h-3.5 text-accent" />
-          재시도 정책
+          Retry Policy
         </div>
 
         <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
           <div className="flex justify-between text-[10px]">
-            <span className="text-muted-foreground">최대 재시도</span>
-            <span className="text-foreground font-medium">{MAX_RETRY_COUNT}회 (고정)</span>
+            <span className="text-muted-foreground">Max retries</span>
+            <span className="text-foreground font-medium">{MAX_RETRY_COUNT} fixed</span>
           </div>
 
           <div>
-            <label className="text-[10px] text-muted-foreground block mb-1">재시도 간격</label>
+            <label className="text-[10px] text-muted-foreground block mb-1">Retry interval</label>
             <div className="flex gap-1.5">
               {(Object.entries(RETRY_INTERVAL_LABELS) as [RetryInterval, string][]).map(([key, label]) => (
                 <button
@@ -245,20 +254,20 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
         >
           {advancedOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
           <Clock className="w-3.5 h-3.5" />
-          고급 설정
+          Advanced Settings
         </button>
 
         {advancedOpen && (
           <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
             <div className="text-[10px] text-muted-foreground">
-              파라미터 오버라이드 — FI 시그니처 확정 후 활성화 예정 (TBD)
+              Parameter overrides will be enabled after the FI signature is finalized.
             </div>
             <div className="bg-card border border-dashed border-border rounded-md p-3 text-center">
               <code className="text-[10px] text-muted-foreground/40">{'{ }'}</code>
             </div>
             <div className="flex justify-between text-[10px]">
-              <span className="text-muted-foreground">트리거 소스</span>
-              <span className="text-foreground">자동 결정</span>
+              <span className="text-muted-foreground">Trigger source</span>
+              <span className="text-foreground">Auto</span>
             </div>
           </div>
         )}
@@ -272,7 +281,7 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
           className="w-full flex items-center justify-center gap-1.5 py-2 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 disabled:opacity-30 transition-colors"
         >
           <Save className="w-3 h-3" />
-          적용
+          Apply
         </button>
       </div>
     </div>

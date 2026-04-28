@@ -58,7 +58,7 @@ function RestorePipelineConfirmDialog({
 
         <div className="p-4 space-y-3">
           <p className="text-xs text-muted-foreground">
-            아카이브에서 운영 파이프라인 목록으로 되돌립니다. 복원 후에는 콘솔에서 별도로 배포해야 운영 이벤트에 연결됩니다.
+            아카이브에서 운영 파이프라인 목록으로 되돌립니다. 복원 후에는 콘솔에서 별도로 활성화해야 운영 이벤트에 연결됩니다.
           </p>
           <div className="bg-muted/30 rounded-lg px-3 py-2.5 space-y-1">
             <div className="flex justify-between gap-3 text-[11px]">

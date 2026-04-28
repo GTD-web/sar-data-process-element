@@ -8,8 +8,8 @@ import { cn } from '@/lib/utils';
 type PipelineExecutionTab = 'auto' | 'manual';
 
 const tabs: { id: PipelineExecutionTab; label: string; icon: React.ElementType }[] = [
-  { id: 'auto', label: '자동 파이프라인', icon: Radio },
-  { id: 'manual', label: '수동 파이프라인', icon: Briefcase },
+  { id: 'auto', label: 'Automatic Pipelines', icon: Radio },
+  { id: 'manual', label: 'Manual Pipelines', icon: Briefcase },
 ];
 
 export default function PipelineExecutionTabs({
@@ -47,7 +47,7 @@ export default function PipelineExecutionTabs({
               active === tab.id ? 'bg-background/20 text-accent-foreground' : 'bg-muted/60 text-muted-foreground',
             )}
           >
-            {counts?.[tab.id] ?? 0}건
+            {counts?.[tab.id] ?? 0}
           </span>
         </Link>
       ))}

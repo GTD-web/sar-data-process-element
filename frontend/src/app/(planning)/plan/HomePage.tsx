@@ -33,6 +33,7 @@ import {
 import {
   Activity,
   AlertTriangle,
+  Check,
   Filter,
   GitBranch,
   Layers,
@@ -190,12 +191,17 @@ export default function HomePage() {
   }, [pipelines, selectedPipelineIds.length]);
 
   const handlePipelineFilterToggle = useCallback((pipelineId: string) => {
-    setSelectedPipelineIds((prev) => (
-      prev.includes(pipelineId)
-        ? prev.filter((id) => id !== pipelineId)
-        : [...prev, pipelineId]
-    ));
-  }, []);
+    setFilterMode('custom');
+    setSelectedPipelineIds((prev) => {
+      const baseSelection = filterMode === 'all'
+        ? []
+        : prev;
+
+      return baseSelection.includes(pipelineId)
+        ? baseSelection.filter((id) => id !== pipelineId)
+        : [...baseSelection, pipelineId];
+    });
+  }, [filterMode]);
 
   const handleSelectAllPipelines = useCallback(() => {
     setFilterMode('custom');
@@ -833,10 +839,7 @@ function PipelineFilterPanel({
             </div>
           </div>
 
-          <div className={cn(
-            'grid max-h-72 gap-1 overflow-y-auto p-2 sm:grid-cols-2',
-            filterMode === 'all' && 'opacity-55',
-          )}>
+          <div className="grid max-h-72 gap-1 overflow-y-auto p-2 sm:grid-cols-2">
             {pipelines.map((pipeline) => {
               const checked = filterMode === 'all' || selectedPipelineIds.has(pipeline.id);
               return (
@@ -852,11 +855,21 @@ function PipelineFilterPanel({
                   <input
                     type="checkbox"
                     checked={checked}
-                    disabled={filterMode === 'all'}
                     onChange={() => onTogglePipeline(pipeline.id)}
-                    className="mt-0.5 h-3.5 w-3.5 accent-[var(--accent)] disabled:opacity-50"
+                    className="peer sr-only"
                     aria-label={`${pipeline.name} 표시 여부`}
                   />
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      'mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring',
+                      checked
+                        ? 'border-accent bg-accent text-white shadow-[0_0_0_1px_rgba(16,185,129,0.18)]'
+                        : 'border-border bg-background text-transparent',
+                    )}
+                  >
+                    <Check className="h-2.5 w-2.5 stroke-[3]" />
+                  </span>
                   <span className="min-w-0">
                     <span className="block truncate text-[11px] font-semibold text-foreground">{pipeline.name}</span>
                     <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">

@@ -24,6 +24,7 @@ import type {
   RawDataSummary,
   QueueHealth,
   SarStage,
+  SavePipelineActivationRuleData,
   ServiceResponse,
   ServiceResponseWithData,
   UpdatePipelineData,
@@ -274,6 +275,22 @@ export const pipelineCurrentService: IPipelineUIService = {
     return handleResponse(res, '파이프라인 자동 실행 규칙 조회 실패');
   },
 
+  async 파이프라인_자동실행규칙을_저장한다(
+    data: SavePipelineActivationRuleData,
+  ): Promise<ServiceResponseWithData<PipelineActivationRule>> {
+    const res = await fetch(
+      data.id
+        ? `${API_BASE}/pipeline-activation-rules/${encodeURIComponent(data.id)}`
+        : `${API_BASE}/pipeline-activation-rules`,
+      {
+        method: data.id ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      },
+    );
+    return handleResponse(res, '파이프라인 자동 실행 규칙 저장 실패');
+  },
+
   async 파이프라인_배포상태를_변경한다(
     pipelineId: string,
     active: boolean,
@@ -283,7 +300,7 @@ export const pipelineCurrentService: IPipelineUIService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active }),
     });
-    return handleResponse(res, '파이프라인 배포 상태 변경 실패');
+    return handleResponse(res, '파이프라인 자동 실행 연결 상태 변경 실패');
   },
 
   async 처리_프로파일_목록을_조회한다(params?: {

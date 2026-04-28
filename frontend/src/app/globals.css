@@ -1,5 +1,6 @@
 @import url("https://spoqa.github.io/spoqa-han-sans/css/SpoqaHanSansNeo.css");
 @import "tailwindcss";
+@import "ol/ol.css";
 
 /* Light theme (default) */
 :root {

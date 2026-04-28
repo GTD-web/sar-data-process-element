@@ -10,9 +10,9 @@ import { cn } from '@/lib/utils';
 type PipelineManagementTab = 'pipelines' | 'profiles' | 'archive';
 
 const tabs: { id: PipelineManagementTab; label: string; icon: ElementType; query?: string }[] = [
-  { id: 'pipelines', label: '파이프라인', icon: GitBranch, query: 'pipelines' },
-  { id: 'profiles', label: '처리 프로파일', icon: SlidersHorizontal, query: 'profiles' },
-  { id: 'archive', label: '아카이브', icon: Archive, query: 'archive' },
+  { id: 'pipelines', label: 'Pipelines', icon: GitBranch, query: 'pipelines' },
+  { id: 'profiles', label: 'Processing Profiles', icon: SlidersHorizontal, query: 'profiles' },
+  { id: 'archive', label: 'Archive', icon: Archive, query: 'archive' },
 ];
 
 type PipelineManagementCounts = Partial<Record<PipelineManagementTab, number>>;
@@ -76,7 +76,7 @@ export default function PipelineManagementTabs({
             <tab.icon className="h-3.5 w-3.5" />
             <span>{tab.label}</span>
             {typeof resolvedCounts[tab.id] === 'number' && (
-              <span className="font-mono text-[10px] opacity-75">{resolvedCounts[tab.id]}건</span>
+              <span className="font-mono text-[10px] opacity-75">{resolvedCounts[tab.id]}</span>
             )}
           </Link>
         );

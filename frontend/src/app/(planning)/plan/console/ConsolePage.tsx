@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import PipelineProgressStepper from '@/components/graph/PipelineProgressStepper';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import PipelineManagementTabs from '@/components/panels/PipelineManagementTabs';
@@ -15,15 +14,13 @@ import ReprocessConfirmDialog from '@/components/panels/ReprocessConfirmDialog';
 import CancelConfirmDialog from '@/components/panels/CancelConfirmDialog';
 import CreatePipelineDialog, { type CreatePipelineBasicData } from '@/components/panels/CreatePipelineDialog';
 import SelectStartNodeDialog, { type StartNodeSelection } from '@/components/panels/SelectStartNodeDialog';
-import ExecutionLogPanel from '@/components/panels/ExecutionLogPanel';
-import StepDetailPopover from '@/components/panels/StepDetailPopover';
 import NodeDetailModal, { type PrevNodeInfo } from '@/components/panels/NodeDetailModal';
 import FileInputConfigDialog from '@/components/panels/FileInputConfigDialog';
 import PipelineArchiveConfirmDialog from '@/components/panels/PipelineArchiveConfirmDialog';
 import PipelineEditDialog from '@/components/panels/PipelineEditDialog';
 import PipelineUndeployConfirmDialog from '@/components/panels/PipelineUndeployConfirmDialog';
 import { toast } from '@/components/ui/Toast';
-import { FlaskConical, Plus, GitBranch, Pencil, Check, X, SlidersHorizontal, Radio, ServerCog, UploadCloud, Info } from 'lucide-react';
+import { Plus, GitBranch, Pencil, Check, X, SlidersHorizontal, Radio, ServerCog, UploadCloud, Info, Archive } from 'lucide-react';
 import type {
   PipelineDefinition,
   PipelineStepDefinition,
@@ -112,10 +109,10 @@ function PipelineNameBadge({
               className="bg-background border border-accent rounded px-1.5 py-0.5 text-xs font-semibold text-foreground focus:outline-none w-48"
               autoFocus
             />
-            <button onClick={handleSubmit} className="p-0.5 rounded hover:bg-success/20 transition-colors" title="저장">
+            <button onClick={handleSubmit} className="p-0.5 rounded hover:bg-success/20 transition-colors" title="Save">
               <Check className="w-3.5 h-3.5 text-success" />
             </button>
-            <button onClick={handleCancel} className="p-0.5 rounded hover:bg-destructive/20 transition-colors" title="취소">
+            <button onClick={handleCancel} className="p-0.5 rounded hover:bg-destructive/20 transition-colors" title="Cancel">
               <X className="w-3.5 h-3.5 text-destructive" />
             </button>
           </div>
@@ -124,7 +121,7 @@ function PipelineNameBadge({
             type="button"
             onClick={() => editable && setEditing(true)}
             className={`group flex items-center gap-1.5 ${editable ? 'cursor-pointer' : 'cursor-default'}`}
-            title={editable ? '클릭하여 이름 수정' : undefined}
+            title={editable ? 'Edit name' : undefined}
           >
             <span className="text-xs font-semibold text-foreground">{name}</span>
             <span className="text-[10px] text-muted-foreground">
@@ -140,7 +137,7 @@ function PipelineNameBadge({
             type="button"
             onClick={onEditProperties}
             className="p-0.5 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
-            title="파이프라인 속성 수정"
+            title="Edit pipeline properties"
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
           </button>
@@ -166,11 +163,11 @@ function PipelineActivationPanel({
   const visibleRules = activeRules.length > 0 ? activeRules : rules;
   const deployed = activeRules.length > 0;
   const summaryText = deployed
-    ? '현재 운영 이벤트와 연결되어 자동 실행됩니다.'
-    : '아직 운영 이벤트와 연결되지 않았습니다.';
+    ? 'Connected to operational events for automatic execution.'
+    : 'Not connected to operational events yet.';
   const headerTooltip = deployed
-    ? '배포된 경우에만 pgmq 이벤트와 매칭되며, 조건이 맞는 원시 데이터 이벤트가 들어오면 이 파이프라인이 자동 기동됩니다.'
-    : '배포 전에는 운영 이벤트가 들어와도 이 파이프라인은 자동으로 기동되지 않습니다.';
+    ? 'When enabled, pgmq events are matched against this rule and matching raw-data events start this pipeline automatically.'
+    : 'When disabled, operational events will not start this pipeline automatically.';
 
   const toggleTooltip = (id: string) => {
     setOpenTooltipId((prev) => (prev === id ? null : id));
@@ -190,7 +187,7 @@ function PipelineActivationPanel({
             </span>
             <div className="min-w-0 space-y-1">
               <div className="flex items-center gap-2">
-                <p className="text-[11px] font-semibold leading-tight text-foreground">파이프라인 배포</p>
+                <p className="text-[11px] font-semibold leading-tight text-foreground">Automatic Execution Link</p>
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                   deployed ? 'bg-success/10 text-success' : 'bg-muted/60 text-muted-foreground'
                 }`}>
@@ -209,8 +206,8 @@ function PipelineActivationPanel({
                   ? 'border-accent/40 bg-accent/10 text-accent'
                   : 'border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground'
               }`}
-              title="배포 설명 보기"
-              aria-label="배포 설명 보기"
+              title="Show activation details"
+              aria-label="Show activation details"
               aria-expanded={openTooltipId === 'summary'}
             >
               <Info className="h-3.5 w-3.5" />
@@ -230,7 +227,7 @@ function PipelineActivationPanel({
       <div className="divide-y divide-border/60">
         {visibleRules.length === 0 ? (
           <div className="px-3 py-3 text-xs text-muted-foreground">
-            배포 조건을 만들 수 없습니다. 진입 노드와 파이프라인 속성을 확인하세요.
+            Activation conditions cannot be created. Check the entry node and pipeline properties.
           </div>
         ) : visibleRules.map((rule) => {
           const conditions = [
@@ -266,8 +263,8 @@ function PipelineActivationPanel({
                         ? 'border-accent/40 bg-accent/10 text-accent'
                         : 'border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground'
                     }`}
-                    title="규칙 설명 보기"
-                    aria-label="규칙 설명 보기"
+                    title="Show rule details"
+                    aria-label="Show rule details"
                     aria-expanded={openTooltipId === tooltipId}
                   >
                     <Info className="h-3 w-3" />
@@ -279,7 +276,7 @@ function PipelineActivationPanel({
                     >
                       {deployed
                         ? rule.description
-                        : '아직 배포되지 않았습니다. 배포 전에는 운영 이벤트가 들어와도 이 DAG는 자동 기동되지 않습니다.'}
+                        : 'This rule is not active yet. Inactive rules do not start this DAG when operational events arrive.'}
                     </div>
                   )}
                 </div>
@@ -301,7 +298,7 @@ function PipelineActivationPanel({
 
       <div className="flex items-center justify-between gap-3 border-t border-border/70 bg-muted/15 px-3 py-2.5">
         <div className="text-[10px] leading-relaxed text-muted-foreground">
-          {deployed ? '자동 실행 연결이 활성화되어 있습니다.' : '배포 후 자동 실행 연결이 활성화됩니다.'}
+          {deployed ? 'Automatic execution is active.' : 'Enable this link to start automatic execution.'}
         </div>
         {canManage && visibleRules.length > 0 && (
           <button
@@ -315,7 +312,7 @@ function PipelineActivationPanel({
             }`}
           >
             <UploadCloud className="h-3.5 w-3.5" />
-            {deployed ? '배포 해제' : '배포'}
+            {deployed ? 'Deactivate' : 'Activate'}
           </button>
         )}
       </div>
@@ -327,7 +324,7 @@ const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
   ssr: false,
   loading: () => (
     <div className="flex-1 flex items-center justify-center bg-background text-muted-foreground text-sm">
-      그래프 로딩 중...
+      Loading graph...
     </div>
   ),
 });
@@ -406,75 +403,9 @@ export default function ConsolePage() {
       if (jobsRes.data) setJobs(jobsRes.data.items);
       if (activationRes.data) setActivationRules(activationRes.data);
 
-      // URL에 jobId가 있으면 자동 선택
-      const urlJobId = searchParams.get('jobId');
-      if (urlJobId) {
-        const jobRes = await service.Job_상세를_조회한다(urlJobId);
-        if (jobRes.data) {
-          setSelectedJob(jobRes.data);
-          setConsoleMode({ type: 'job', job: jobRes.data });
-        }
-      }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- searchParams는 초기 로드에만 사용
   }, [service]);
-
-  // --- 실행 중인 Job 폴링 (ASSIGNED/CREATED 상태일 때 1초 간격으로 갱신) ---
-  useEffect(() => {
-    if (!selectedJob) return;
-    if (selectedJob.status !== 'ASSIGNED' && selectedJob.status !== 'CREATED') return;
-
-    const jobId = selectedJob.jobId;
-    let stopped = false;
-
-    const interval = setInterval(async () => {
-      if (stopped) return;
-      const res = await service.Job_상세를_조회한다(jobId);
-      if (res.data) {
-        const nextJob = { ...res.data, steps: res.data.steps.map((step) => ({ ...step })) };
-        setSelectedJob(nextJob);
-        setConsoleMode({ type: 'job', job: nextJob });
-        setJobs((prev) => prev.map((job) =>
-          job.jobId === nextJob.jobId
-            ? {
-                jobId: nextJob.jobId,
-                pipelineId: nextJob.pipelineId,
-                sceneId: nextJob.sceneId,
-                status: nextJob.status,
-                currentLevel: nextJob.currentLevel,
-                currentTargetCsc: nextJob.currentTargetCsc,
-                retryCount: nextJob.retryCount,
-                startedAt: nextJob.startedAt,
-                updatedAt: nextJob.updatedAt,
-              }
-            : job,
-        ));
-
-        if (res.data.status === 'COMPLETED') {
-          stopped = true;
-          clearInterval(interval);
-          const toastKey = `${res.data.jobId}:COMPLETED`;
-          if (!terminalToastKeysRef.current.has(toastKey)) {
-            terminalToastKeysRef.current.add(toastKey);
-            toast.success(`Job ${res.data.jobId} 처리가 완료되었습니다`);
-          }
-        } else if (res.data.status === 'FAILED') {
-          stopped = true;
-          clearInterval(interval);
-          const toastKey = `${res.data.jobId}:FAILED`;
-          if (!terminalToastKeysRef.current.has(toastKey)) {
-            terminalToastKeysRef.current.add(toastKey);
-            toast.error(`Job ${res.data.jobId} 처리 중 오류가 발생했습니다`);
-          }
-        }
-      }
-    }, 1000);
-
-    return () => {
-      stopped = true;
-      clearInterval(interval);
-    };
-  }, [selectedJob, service]);
 
   // --- Derived ---
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId) ?? null;
@@ -487,7 +418,7 @@ export default function ConsolePage() {
         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     : [];
   const canManage = previewRole === 'Administrator';
-  const canvasEditable = !selectedJob && canManage;
+  const canvasEditable = canManage;
   const disabledNodeOrders = new Set(selectedPipeline?.steps.filter((s) => s.disabled).map((s) => s.order) ?? []);
 
   const graphSteps: PipelineStep[] = selectedPipeline
@@ -557,7 +488,7 @@ export default function ConsolePage() {
       s.order === order ? { ...toStepUpdate(s), disabled: !s.disabled } : toStepUpdate(s),
     );
     updatePipeline({ steps: nextSteps });
-    toast.success(step.disabled ? '노드 바이패스를 해제했습니다' : '노드를 바이패스 상태로 저장했습니다');
+    toast.success(step.disabled ? 'Node bypass removed.' : 'Node saved as bypassed.');
   }, [selectedPipeline, toStepUpdate, updatePipeline]);
 
   // --- Canvas handlers ---
@@ -626,7 +557,7 @@ export default function ConsolePage() {
     const res = await service.파이프라인을_실행한다(selectedPipelineId);
     if (res.success) {
       if (profileMissing) {
-        toast.warning(`${res.message} — 처리 프로파일이 파이프라인에 없습니다. 캔버스의 「작업 초기화」노드 안내를 확인하세요.`);
+        toast.warning(`${res.message} - Processing profile is missing from the pipeline. Check the Job Init node on the canvas.`);
       } else {
         toast.success(res.message);
       }
@@ -663,7 +594,7 @@ export default function ConsolePage() {
       return;
     }
     await refreshActivationRules();
-    toast.success(active ? '파이프라인을 운영 이벤트에 배포했습니다' : '파이프라인 배포를 해제했습니다');
+    toast.success(active ? 'Automatic execution link activated.' : 'Automatic execution link deactivated.');
   }, [service, selectedPipelineId, selectedPipeline, refreshActivationRules]);
 
   const handleConfirmUndeploy = useCallback(async () => {
@@ -677,7 +608,7 @@ export default function ConsolePage() {
     }
     setUndeployTarget(null);
     await refreshActivationRules();
-    toast.success('파이프라인 배포를 해제했습니다');
+    toast.success('Automatic execution link deactivated.');
   }, [service, undeployTarget, refreshActivationRules]);
 
   const handleSelectJobFromSidebar = useCallback(async (jobId: string) => {
@@ -762,11 +693,11 @@ export default function ConsolePage() {
     const jobId = selectedJob.jobId;
     const fileInput = selectedJob.steps.find((s) => s.kind === 'FILE_INPUT');
     const startLabel = fileInput?.inputLevel
-      ? `${fileInput.inputLevel.replace('LEVEL_', 'L')} 입력 이후`
-      : '처음부터';
+      ? `after ${fileInput.inputLevel.replace('LEVEL_', 'L')} input`
+      : 'from the beginning';
     const res = await service.Job을_재처리한다(jobId);
     if (res.success) {
-      toast.success(`Job ${jobId} 전체 재처리를 ${startLabel} 시작했습니다`);
+      toast.success(`Job ${jobId} full reprocess started ${startLabel}.`);
     } else {
       toast.error(res.message);
     }
@@ -797,7 +728,7 @@ export default function ConsolePage() {
     const stageLabel = SAR_STAGE_LABELS[sarStage];
     const res = await service.부분_재처리를_요청한다(jobId, { sarStage });
     if (res.success) {
-      toast.success(`Job ${jobId} ${sarStage} · ${stageLabel} 노드부터 재처리를 시작했습니다`);
+      toast.success(`Job ${jobId} reprocess started from ${sarStage} · ${stageLabel}.`);
     } else {
       toast.error(res.message);
     }
@@ -823,7 +754,7 @@ export default function ConsolePage() {
       toast.error(res.message);
       return;
     }
-    toast.success('파이프라인이 폐기되어 아카이브로 이동했습니다');
+    toast.success('Pipeline archived.');
     setPipelines((prev) => prev.filter((p) => p.id !== id));
     await refreshActivationRules();
     if (selectedPipelineId === id) {
@@ -909,12 +840,12 @@ export default function ConsolePage() {
       if (!s) continue;
       let label: string;
       let csc: string;
-      if (s.kind === 'TRIGGER') { label = '원시 데이터 수신 트리거'; csc = 'EI-01'; }
-      else if (s.kind === 'FILE_INPUT') { label = '결과 파일 입력'; csc = 'SI-07'; }
-      else if (s.kind === 'JOB_INIT') { label = '작업 초기화'; csc = 'CSC-08.02'; }
-      else if (s.kind === 'CATALOG') { label = '카탈로그 등록'; csc = 'CSC-07'; }
+      if (s.kind === 'TRIGGER') { label = 'Raw Data Receive Trigger'; csc = 'EI-01'; }
+      else if (s.kind === 'FILE_INPUT') { label = 'Result File Input'; csc = 'SI-07'; }
+      else if (s.kind === 'JOB_INIT') { label = 'Job Initialization'; csc = 'CSC-08.02'; }
+      else if (s.kind === 'CATALOG') { label = 'Catalog Registration'; csc = 'CSC-07'; }
       else if (s.kind === 'SAR' && s.sarStage) { label = SAR_STAGE_LABELS[s.sarStage]; csc = SAR_STAGE_TO_CSC[s.sarStage]; }
-      else { label = '노드'; csc = '—'; }
+      else { label = 'Node'; csc = '—'; }
       results.push({ order: s.order, kind: s.kind, sarStage: s.sarStage, inputLevel: s.inputLevel, label, csc });
     }
     return results;
@@ -926,7 +857,7 @@ export default function ConsolePage() {
     if (res.success && res.data) {
       setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? { ...p, name: res.data!.name } : p)));
       await refreshActivationRules();
-      toast.success('파이프라인 이름이 변경되었습니다');
+      toast.success('Pipeline name changed.');
     } else {
       toast.error(res.message);
     }
@@ -972,16 +903,23 @@ export default function ConsolePage() {
           if (target) setArchivePipelineTarget(target);
         }}
         canManagePipelines={canManage}
-        pipelineJobs={pipelineJobs}
-        selectedJobId={selectedJob?.jobId ?? null}
-        onSelectJob={handleSelectJobFromSidebar}
         activePage="console"
       />
 
       {/* Center: Canvas */}
       <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex items-center gap-3 border-b border-border px-5 py-2.5 shrink-0">
+        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-2.5 shrink-0">
             <PipelineManagementTabs active="pipelines" counts={{ pipelines: pipelines.length }} />
+            {canManage && selectedPipeline && (
+              <button
+                type="button"
+                onClick={() => setArchivePipelineTarget(selectedPipeline)}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-[11px] font-semibold text-muted-foreground transition-colors hover:border-warning/45 hover:bg-warning/10 hover:text-warning"
+              >
+                <Archive className="h-3.5 w-3.5" />
+                Archive Pipeline
+              </button>
+            )}
           </div>
           {graphSteps.length > 0 ? (
             <div ref={canvasRef} className="flex-1 relative overflow-hidden">
@@ -995,14 +933,11 @@ export default function ConsolePage() {
                 onAddNode={handleAddNode}
                 onConnect={handleConnect}
                 onDeleteEdge={handleDeleteEdge}
-                onTrigger={selectedJob?.status === 'ASSIGNED' ? undefined : handleTriggerPipeline}
                 jobInitWarningReason={jobInitWarningReason}
                 focusEntryTrigger={focusEntryTrigger}
                 onNodeOpenDetail={handleNodeOpenDetail}
                 disabledNodeOrders={disabledNodeOrders}
                 onToggleNodeActive={handleToggleNodeActive}
-                onReprocessStep={selectedJob ? handleReprocessFromNode : undefined}
-                isJobMode={!!selectedJob}
               />
               {/* 캔버스 좌측 상단 — 파이프라인 이름 */}
               {selectedPipeline && (
@@ -1031,49 +966,12 @@ export default function ConsolePage() {
                     onClick={handleOpenNodesPanel}
                     className="p-1.5 rounded-md bg-card/80 backdrop-blur-sm border border-border shadow-sm
                                text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                    title="노드 추가"
+                    title="Add node"
                   >
                     <Plus className="w-4 h-4" />
                   </button>
                 )}
               </div>
-              {/* n8n 스타일 플로팅 실행 버튼 — 캔버스 하단 중앙 (Job 선택 시 숨김) */}
-              {!selectedJob && (
-                <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-                  <button
-                    type="button"
-                    disabled={!selectedPipelineId}
-                    onClick={handleTriggerPipeline}
-                    className="pointer-events-auto flex items-center gap-2 pl-2.5 pr-3.5 py-2 rounded-lg
-                               text-[11px] font-semibold shadow-lg whitespace-nowrap
-                               bg-accent text-accent-foreground
-                               hover:brightness-110 active:brightness-95 transition-all
-                               disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <FlaskConical className="w-3.5 h-3.5" />
-                    파이프라인 실행
-                  </button>
-                </div>
-              )}
-              {/* 단계 상세 팝오버 — 클릭한 카드 높이에 맞춰 캔버스 우측에 렌더링 */}
-              {selectedJob && activeStepOrder != null && activeStepOrder > 0 && (() => {
-                const activeStep = selectedJob.steps.find((s) => s.order === activeStepOrder);
-                if (!activeStep) return null;
-                const canvasRect = canvasRef.current?.getBoundingClientRect();
-                const canvasTop = canvasRect?.top ?? 0;
-                const canvasHeight = canvasRect?.height ?? 600;
-                const relativeTop = Math.max(8, popoverClickY - canvasTop);
-                return (
-                  <StepDetailPopover
-                    step={activeStep}
-                    job={selectedJob}
-                    logs={executionLogs}
-                    onClose={() => setActiveStepOrder(null)}
-                    topOffset={relativeTop}
-                    containerHeight={canvasHeight}
-                  />
-                );
-              })()}
             </div>
           ) : (
             <div className="flex-1 relative flex items-center justify-center bg-background">
@@ -1090,7 +988,7 @@ export default function ConsolePage() {
                     >
                       <Plus className="w-10 h-10 text-muted-foreground/50 group-hover:text-accent transition-colors" />
                       <span className="text-sm text-muted-foreground group-hover:text-foreground mt-3 transition-colors">
-                        새 파이프라인 만들기
+                        Create Pipeline
                       </span>
                     </button>
 
@@ -1098,7 +996,7 @@ export default function ConsolePage() {
                   </>
                 )}
 
-                {/* 기존 파이프라인 선택 */}
+                {/* Select existing pipeline */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1112,24 +1010,13 @@ export default function ConsolePage() {
                 >
                   <GitBranch className="w-10 h-10 text-muted-foreground/50 group-hover:text-accent transition-colors" />
                   <span className="text-sm text-muted-foreground group-hover:text-foreground mt-3 transition-colors">
-                    기존 파이프라인 열기
+                    Open Pipeline
                   </span>
                 </button>
               </div>
             </div>
           )}
 
-          {/* Progress Stepper — 실행 로그 패널 위 */}
-          {selectedJob && graphSteps.length > 0 && (
-            <PipelineProgressStepper steps={graphSteps} />
-          )}
-          {/* Bottom: Execution Log Panel */}
-          <ExecutionLogPanel
-            logs={executionLogs}
-            selectedJobId={selectedJob?.jobId}
-            open={logPanelOpen}
-            onToggle={() => setLogPanelOpen((v) => !v)}
-          />
         </div>
 
       {/* Right: Tabbed Panel */}
@@ -1140,7 +1027,7 @@ export default function ConsolePage() {
             setConsoleMode({ type: 'idle' });
           }}
           showCollapsedToggle={false}
-          title="노드 추가"
+          title="Add Node"
         >
           <ConsoleTab
             mode={consoleMode}

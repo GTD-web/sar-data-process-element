@@ -16,7 +16,7 @@ import {
   GitBranch, Plus, PanelLeftClose, PanelLeftOpen,
   Settings, User, Bell, Trash2, ChevronDown, Briefcase,
   LayoutDashboard, Layers, Archive, FileText, Database,
-  Users as UsersIcon, KeyRound, LogOut, Radio, Sun, Moon,
+  Users as UsersIcon, KeyRound, LogOut, Radio, Sun, Moon, Package,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -38,9 +38,6 @@ interface LeftSidebarConsoleProps extends LeftSidebarBaseProps {
   onCreatePipeline: () => void;
   onDeletePipeline: (id: string) => void;
   canManagePipelines?: boolean;
-  pipelineJobs?: JobSummary[];
-  selectedJobId?: string | null;
-  onSelectJob?: (jobId: string) => void;
 }
 
 interface LeftSidebarJobsProps extends LeftSidebarBaseProps {
@@ -84,7 +81,6 @@ export default function LeftSidebar(props: LeftSidebarProps) {
 
   const [pipelinesOpen, setPipelinesOpen] = useState(true);
   const [jobsOpen, setJobsOpen] = useState(true);
-  const [pipelineJobsOpen, setPipelineJobsOpen] = useState(true);
   const [navArchiveOpen, setNavArchiveOpen] = useState(true);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [pwModalOpen, setPwModalOpen] = useState(false);
@@ -125,6 +121,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
   const navItems: { id: NonNullable<LeftSidebarBaseProps['activePage']>; icon: React.ElementType; label: string; href: string; adminOnly?: boolean }[] = [
     { id: 'home', icon: LayoutDashboard, label: '대시보드', href: base },
     { id: 'data-catalog', icon: Database, label: '데이터 카탈로그', href: `${base}/data-catalog` },
+    { id: 'products', icon: Package, label: 'Production 목록', href: `${base}/products` },
     { id: 'console', icon: GitBranch, label: '파이프라인 관리', href: `${base}/console` },
     { id: 'queues', icon: Layers, label: '시스템 운영 모니터링', href: `${base}/queues` },
     { id: 'alerts', icon: Bell, label: '알림', href: `${base}/alerts` },
@@ -324,56 +321,6 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Console mode: selected pipeline jobs ── */}
-          {isConsole && consolePl && consolePl.pipelineJobs && (
-            <div className="border-b border-border">
-              <button
-                onClick={() => setPipelineJobsOpen((v) => !v)}
-                className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:bg-muted/20 transition-colors"
-              >
-                <ChevronDown className={cn('w-3 h-3 transition-transform', !pipelineJobsOpen && '-rotate-90')} />
-                <Briefcase className="w-3 h-3" />
-                <span className="flex-1 text-left">수동 파이프라인</span>
-                <span className="text-[9px] font-mono font-normal normal-case">{consolePl.pipelineJobs.length}</span>
-              </button>
-              {pipelineJobsOpen && (
-                <div className="px-1.5 pb-2 space-y-0.5">
-                  {consolePl.pipelineJobs.length === 0 ? (
-                    <div className="px-2 py-3 text-[10px] text-muted-foreground/60 text-center">
-                      이 파이프라인의 실행 기록 없음
-                    </div>
-                  ) : (
-                    consolePl.pipelineJobs.map((job) => (
-                      <button
-                        key={job.jobId}
-                        onClick={() => consolePl.onSelectJob?.(job.jobId)}
-                        className={cn(
-                          'w-full text-left px-2 py-1.5 rounded-md transition-colors',
-                          consolePl.selectedJobId === job.jobId
-                            ? 'bg-accent/10 text-accent'
-                            : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground',
-                        )}
-                      >
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="text-[10px] font-semibold truncate text-foreground">
-                            {pipelineNameById.get(job.pipelineId) ?? '파이프라인 미확인'}
-                          </span>
-                          <JobStatusBadge status={job.status} retryCount={job.retryCount} />
-                        </div>
-                        <div className="flex items-center justify-between text-[9px] text-muted-foreground mt-0.5">
-                          <span className="truncate font-mono">{job.jobId}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-[9px] text-muted-foreground mt-0.5">
-                          <span className="truncate">{formatRelativeTime(job.updatedAt)}</span>
-                        </div>
-                      </button>
-                    ))
-                  )}
                 </div>
               )}
             </div>

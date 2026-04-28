@@ -118,42 +118,42 @@ export default function ConsoleTab({
       <div className="p-4 space-y-3">
         <div className="flex items-center gap-2 mb-1">
           <SlidersHorizontal className="w-4 h-4 text-accent flex-shrink-0" />
-          <span className="text-sm font-semibold text-foreground">작업 초기화</span>
+          <span className="text-sm font-semibold text-foreground">Job Initialization</span>
         </div>
-        <div className="text-[11px] text-muted-foreground">CSU-08.02 · 작업 생성 + 처리 프로파일 선택</div>
+        <div className="text-[11px] text-muted-foreground">CSU-08.02 · Job creation + profile selection</div>
         <div className="h-px bg-border" />
 
         {hasData ? (
           <>
             <div className="space-y-1.5 text-[11px]">
-              <TriggerInfoRow label="작업 생성" value={mode.jobCreatedAt ? formatKST(mode.jobCreatedAt) : '—'} />
+              <TriggerInfoRow label="Created At" value={mode.jobCreatedAt ? formatKST(mode.jobCreatedAt) : '—'} />
               {mode.triggerSource && (
-                <TriggerInfoRow label="트리거 소스" value={TRIGGER_SOURCE_LABELS[mode.triggerSource]} />
+                <TriggerInfoRow label="Trigger Source" value={TRIGGER_SOURCE_LABELS[mode.triggerSource]} />
               )}
               {mode.priority !== undefined && (
-                <TriggerInfoRow label="우선순위" value={`${mode.priority} / 10`} />
+                <TriggerInfoRow label="Priority" value={`${mode.priority} / 10`} />
               )}
             </div>
             <div className="h-px bg-border" />
-            <div className="text-[11px] font-medium text-muted-foreground">처리 프로파일</div>
+            <div className="text-[11px] font-medium text-muted-foreground">Processing Profile</div>
             <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-1.5 text-[11px]">
-              <TriggerInfoRow label="프로파일 ID" value={mode.processingProfile!.id} mono />
-              <TriggerInfoRow label="이름" value={mode.processingProfile!.name} />
-              <TriggerInfoRow label="모드" value={mode.processingProfile!.mode} />
-              <TriggerInfoRow label="편파" value={mode.processingProfile!.polarization} />
+              <TriggerInfoRow label="Profile ID" value={mode.processingProfile!.id} mono />
+              <TriggerInfoRow label="Name" value={mode.processingProfile!.name} />
+              <TriggerInfoRow label="Mode" value={mode.processingProfile!.mode ?? 'Unassigned'} />
+              <TriggerInfoRow label="Polarization" value={mode.processingProfile!.polarization ?? 'Unassigned'} />
               {mode.processingProfile!.description && (
-                <TriggerInfoRow label="설명" value={mode.processingProfile!.description} />
+                <TriggerInfoRow label="Description" value={mode.processingProfile!.description} />
               )}
             </div>
             <div className="h-px bg-border" />
-            <div className="text-[11px] font-medium text-muted-foreground">재시도 정책</div>
+            <div className="text-[11px] font-medium text-muted-foreground">Retry Policy</div>
             <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-1.5 text-[11px]">
-              <TriggerInfoRow label="최대 재시도" value={`${MAX_RETRY_COUNT}회`} />
-              <TriggerInfoRow label="재시도 간격" value={RETRY_INTERVAL_LABELS.IMMEDIATE} />
+              <TriggerInfoRow label="Max Retries" value={`${MAX_RETRY_COUNT}`} />
+              <TriggerInfoRow label="Retry Interval" value={RETRY_INTERVAL_LABELS.IMMEDIATE} />
             </div>
           </>
         ) : (
-          <p className="text-[10px] text-muted-foreground/60">Job을 선택하면 프로파일 정보가 표시됩니다.</p>
+          <p className="text-[10px] text-muted-foreground/60">Select a job to view profile information.</p>
         )}
         <ProcessInfoSection kind="JOB_INIT" />
       </div>

@@ -19,15 +19,15 @@ import {
 
 const SATELLITES = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'];
 const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
+const PROCESSING_STAGES = ['L0', 'L1A', 'L1B', 'L1C', 'L2', 'L2A', 'L2B', 'L3'];
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 const PROFILE_TABLE_COLUMNS = [
-  { id: 'name', label: '이름', align: 'left' },
-  { id: 'satelliteId', label: '위성', align: 'left' },
-  { id: 'mode', label: '모드', align: 'left' },
-  { id: 'polarization', label: '편파', align: 'left' },
-  { id: 'priority', label: '우선순위', align: 'center' },
-  { id: 'references', label: '참조 파이프라인', align: 'center' },
-  { id: 'createdAt', label: '생성일', align: 'left' },
+  { id: 'name', label: 'Name', align: 'left' },
+  { id: 'processingStage', label: 'Stage', align: 'center' },
+  { id: 'assignmentTags', label: 'Assignment Tags', align: 'left' },
+  { id: 'priority', label: 'Priority', align: 'center' },
+  { id: 'references', label: 'Referenced Pipelines', align: 'center' },
+  { id: 'createdAt', label: 'Created At', align: 'left' },
 ] as const;
 
 type ProfileSortKey = (typeof PROFILE_TABLE_COLUMNS)[number]['id'];
@@ -74,6 +74,39 @@ function buildProfileReferenceMap(pipelines: PipelineDefinition[]): Record<strin
   return map;
 }
 
+function getProfileTagGroups(profile: ProcessingProfile) {
+  return {
+    satellite: profile.satelliteTags ?? (profile.satelliteId ? [profile.satelliteId] : []),
+    mode: profile.modeTags ?? (profile.mode ? [profile.mode] : []),
+    polarization: profile.polarizationTags ?? (profile.polarization ? [profile.polarization] : []),
+  };
+}
+
+function flattenProfileTags(profile: ProcessingProfile) {
+  const groups = getProfileTagGroups(profile);
+  return [
+    ...groups.satellite.map((value) => `satellite:${value}`),
+    ...groups.mode.map((value) => `mode:${value}`),
+    ...groups.polarization.map((value) => `polarization:${value}`),
+  ];
+}
+
+function AssignmentTags({ profile }: { profile: ProcessingProfile }) {
+  const tags = flattenProfileTags(profile);
+  if (tags.length === 0) {
+    return <span className="text-xs text-muted-foreground/60">Unassigned</span>;
+  }
+  return (
+    <div className="flex flex-wrap gap-1">
+      {tags.map((tag) => (
+        <span key={tag} className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          {tag}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function getPageRange(current: number, total: number): (number | 'ellipsis')[] {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
   const pages: (number | 'ellipsis')[] = [1];
@@ -108,7 +141,7 @@ function Pagination({
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-border bg-card shrink-0">
       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-        <span>페이지 당</span>
+        <span>Rows</span>
         <select
           value={pageSize}
           onChange={(e) => onPageSizeChange(Number(e.target.value))}
@@ -132,7 +165,7 @@ function Pagination({
           onClick={() => onPageChange(page - 1)}
           className="px-2 py-1 text-[11px] rounded-md border border-border text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          이전
+          Previous
         </button>
         {range.map((p, i) =>
           p === 'ellipsis' ? (
@@ -161,7 +194,7 @@ function Pagination({
           onClick={() => onPageChange(page + 1)}
           className="px-2 py-1 text-[11px] rounded-md border border-border text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          다음
+          Next
         </button>
       </div>
     </div>
@@ -178,11 +211,54 @@ interface ProfileFormProps {
   onCancel: () => void;
 }
 
+function TagPicker({
+  label,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  options: readonly string[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const toggle = (value: string) => {
+    onChange(selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value]);
+  };
+
+  return (
+    <div>
+      <div className="mb-1 text-[10px] font-medium text-muted-foreground">{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((option) => {
+          const active = selected.includes(option);
+          return (
+            <button
+              key={option}
+              type="button"
+              onClick={() => toggle(option)}
+              className={cn(
+                'rounded-full border px-2 py-1 text-[10px] font-medium transition-colors',
+                active
+                  ? 'border-accent/45 bg-accent/10 text-accent'
+                  : 'border-border bg-card text-muted-foreground hover:border-accent/35 hover:text-foreground',
+              )}
+            >
+              {option}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ProfileFormDialog({ profile, onSave, onCancel }: ProfileFormProps) {
   const [name, setName] = useState(profile?.name ?? '');
-  const [satelliteId, setSatelliteId] = useState(profile?.satelliteId ?? SATELLITES[0]);
-  const [mode, setMode] = useState(profile?.mode ?? MODES[0]);
-  const [polarization, setPolarization] = useState(profile?.polarization ?? 'HH');
+  const [satelliteTags, setSatelliteTags] = useState<string[]>(profile?.satelliteTags ?? (profile?.satelliteId ? [profile.satelliteId] : []));
+  const [modeTags, setModeTags] = useState<string[]>(profile?.modeTags ?? (profile?.mode ? [profile.mode] : []));
+  const [polarizationTags, setPolarizationTags] = useState<string[]>(profile?.polarizationTags ?? (profile?.polarization ? [profile.polarization] : []));
+  const [processingStage, setProcessingStage] = useState(profile?.processingStage ?? PROCESSING_STAGES[0]);
   const [priority, setPriority] = useState(profile?.priority ?? 5);
   const [description, setDescription] = useState(profile?.description ?? '');
   const [parametersJson, setParametersJson] = useState(
@@ -199,10 +275,22 @@ function ProfileFormDialog({ profile, onSave, onCancel }: ProfileFormProps) {
       parameters = JSON.parse(parametersJson);
       setParametersError('');
     } catch {
-      setParametersError('JSON 형식이 올바르지 않습니다. 처리 파라미터를 다시 확인하세요.');
+      setParametersError('Invalid JSON. Check the processing parameters.');
       return;
     }
-    onSave({ name, satelliteId, mode, polarization, priority, description, parameters });
+    onSave({
+      name,
+      satelliteId: undefined,
+      mode: undefined,
+      polarization: undefined,
+      satelliteTags,
+      modeTags,
+      polarizationTags,
+      processingStage,
+      priority,
+      description,
+      parameters,
+    });
   }
 
   return (
@@ -213,7 +301,7 @@ function ProfileFormDialog({ profile, onSave, onCancel }: ProfileFormProps) {
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-foreground">
-            {isEdit ? '처리 프로파일 수정' : '새 처리 프로파일'}
+            {isEdit ? 'Edit Processing Profile' : 'New Processing Profile'}
           </h2>
           <button type="button" onClick={onCancel} className="p-1 rounded hover:bg-muted/50 transition-colors">
             <X className="w-4 h-4 text-muted-foreground" />
@@ -223,55 +311,31 @@ function ProfileFormDialog({ profile, onSave, onCancel }: ProfileFormProps) {
         <div className="px-5 py-4 space-y-3 max-h-[60vh] overflow-y-auto">
           {/* Name */}
           <label className="block">
-            <span className="text-[11px] font-medium text-muted-foreground">이름</span>
+            <span className="text-[11px] font-medium text-muted-foreground">Name</span>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
               maxLength={100}
               className="mt-1 w-full bg-background border border-border rounded-md px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent"
-              placeholder="예: Lumir-X1 Stripmap Standard"
+              placeholder="Example: L1A Range Processing Baseline"
             />
           </label>
 
-          {/* Satellite + Mode */}
+          {/* Stage + Priority */}
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="text-[11px] font-medium text-muted-foreground">위성</span>
+              <span className="text-[11px] font-medium text-muted-foreground">Stage</span>
               <select
-                value={satelliteId}
-                onChange={(e) => setSatelliteId(e.target.value)}
+                value={processingStage}
+                onChange={(e) => setProcessingStage(e.target.value)}
                 className="mt-1 w-full bg-background border border-border rounded-md px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
               >
-                {SATELLITES.map((s) => <option key={s} value={s}>{s}</option>)}
+                {PROCESSING_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
               </select>
             </label>
             <label className="block">
-              <span className="text-[11px] font-medium text-muted-foreground">모드</span>
-              <select
-                value={mode}
-                onChange={(e) => setMode(e.target.value)}
-                className="mt-1 w-full bg-background border border-border rounded-md px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-              >
-                {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </label>
-          </div>
-
-          {/* Polarization + Priority */}
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-[11px] font-medium text-muted-foreground">편파</span>
-              <select
-                value={polarization}
-                onChange={(e) => setPolarization(e.target.value)}
-                className="mt-1 w-full bg-background border border-border rounded-md px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-              >
-                {POLARIZATION_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </label>
-            <label className="block">
-              <span className="text-[11px] font-medium text-muted-foreground">우선순위 (1–10)</span>
+              <span className="text-[11px] font-medium text-muted-foreground">Priority (1-10)</span>
               <input
                 type="number"
                 min={1}
@@ -283,22 +347,36 @@ function ProfileFormDialog({ profile, onSave, onCancel }: ProfileFormProps) {
             </label>
           </div>
 
+          <div className="rounded-lg border border-border bg-background/45 p-3">
+            <div className="mb-2">
+              <div className="text-[11px] font-semibold text-foreground">Assignment Tags</div>
+              <div className="mt-0.5 text-[10px] text-muted-foreground">
+                Leave tags empty to keep this profile available for every satellite, mode, and polarization.
+              </div>
+            </div>
+            <div className="space-y-2.5">
+              <TagPicker label="Satellite" options={SATELLITES} selected={satelliteTags} onChange={setSatelliteTags} />
+              <TagPicker label="Mode" options={MODES} selected={modeTags} onChange={setModeTags} />
+              <TagPicker label="Polarization" options={POLARIZATION_OPTIONS} selected={polarizationTags} onChange={setPolarizationTags} />
+            </div>
+          </div>
+
           {/* Description */}
           <label className="block">
-            <span className="text-[11px] font-medium text-muted-foreground">설명</span>
+            <span className="text-[11px] font-medium text-muted-foreground">Description</span>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               maxLength={500}
               rows={2}
               className="mt-1 w-full bg-background border border-border rounded-md px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent resize-none"
-              placeholder="선택사항"
+              placeholder="Optional"
             />
           </label>
 
           {/* Parameters JSON */}
           <label className="block">
-            <span className="text-[11px] font-medium text-muted-foreground">처리 파라미터 (JSON)</span>
+            <span className="text-[11px] font-medium text-muted-foreground">Processing Parameters (JSON)</span>
             <textarea
               value={parametersJson}
               onChange={(e) => {
@@ -325,13 +403,13 @@ function ProfileFormDialog({ profile, onSave, onCancel }: ProfileFormProps) {
             onClick={onCancel}
             className="px-3 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-muted/30 transition-colors"
           >
-            취소
+            Cancel
           </button>
           <button
             type="submit"
             className="px-4 py-1.5 rounded-md text-xs font-medium bg-accent text-background hover:bg-accent/90 transition-colors"
           >
-            {isEdit ? '수정' : '생성'}
+            {isEdit ? 'Update' : 'Create'}
           </button>
         </div>
       </form>
@@ -357,15 +435,15 @@ function DeleteConfirmDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5">
-        <h3 className="text-sm font-semibold text-foreground mb-2">프로파일 삭제</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-2">Delete Profile</h3>
         {hasRefs ? (
           <p className="text-xs text-destructive">
-            이 프로파일을 참조하는 파이프라인이 {profile.referencedPipelineCount}개 있습니다.
-            먼저 해당 파이프라인에서 프로파일을 변경하거나 제거해야 합니다.
+            This profile is referenced by {profile.referencedPipelineCount} pipeline(s).
+            Change or remove the profile from those pipelines first.
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            프로파일 &quot;{profile.name}&quot;을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+            Delete profile &quot;{profile.name}&quot;? This action cannot be undone.
           </p>
         )}
         <div className="flex justify-end gap-2 mt-4">
@@ -373,14 +451,14 @@ function DeleteConfirmDialog({
             onClick={onCancel}
             className="px-3 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-muted/30 transition-colors"
           >
-            취소
+            Cancel
           </button>
           {!hasRefs && (
             <button
               onClick={onConfirm}
               className="px-4 py-1.5 rounded-md text-xs font-medium bg-destructive text-white hover:bg-destructive/90 transition-colors"
             >
-              삭제
+              Delete
             </button>
           )}
         </div>
@@ -410,9 +488,7 @@ function ProfileDetailDialog({
         <div className="flex items-start justify-between px-5 py-4 border-b border-border">
           <div>
             <h2 className="text-sm font-semibold text-foreground">{profile.name}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {profile.satelliteId} / {profile.mode} / {profile.polarization}
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{profile.processingStage ?? 'No stage'} · Processing profile</p>
           </div>
           <button type="button" onClick={onClose} className="p-1 rounded hover:bg-muted/50 transition-colors">
             <X className="w-4 h-4 text-muted-foreground" />
@@ -421,19 +497,24 @@ function ProfileDetailDialog({
 
         <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <DetailItem label="위성" value={profile.satelliteId} />
-            <DetailItem label="모드" value={profile.mode} />
-            <DetailItem label="편파" value={profile.polarization} />
-            <DetailItem label="우선순위" value={String(profile.priority)} mono />
-            <DetailItem label="참조 중인 파이프라인" value={`${referencedPipelines.length}개`} mono />
-            <DetailItem label="생성일" value={formatKST(profile.createdAt)} />
-            <DetailItem label="수정일" value={formatKST(profile.updatedAt)} />
+            <DetailItem label="Stage" value={profile.processingStage ?? '-'} mono />
+            <DetailItem label="Priority" value={String(profile.priority)} mono />
+            <DetailItem label="Referenced Pipelines" value={`${referencedPipelines.length}`} mono />
+            <DetailItem label="Created At" value={formatKST(profile.createdAt)} />
+            <DetailItem label="Updated At" value={formatKST(profile.updatedAt)} />
           </div>
 
           <div>
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">참조 중인 파이프라인</div>
+            <div className="text-[11px] font-medium text-muted-foreground mb-1">Assignment Tags</div>
+            <div className="rounded-md border border-border bg-background px-3 py-2">
+              <AssignmentTags profile={profile} />
+            </div>
+          </div>
+
+          <div>
+            <div className="text-[11px] font-medium text-muted-foreground mb-1">Referenced Pipelines</div>
             {referencedPipelines.length === 0 ? (
-              <p className="text-xs text-muted-foreground">이 프로파일을 사용하는 파이프라인이 없습니다.</p>
+              <p className="text-xs text-muted-foreground">No pipelines reference this profile.</p>
             ) : (
               <div className="space-y-2">
                 {referencedPipelines.map((pipeline) => (
@@ -450,7 +531,7 @@ function ProfileDetailDialog({
                       </div>
                       {pipeline.archived && (
                         <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground bg-muted">
-                          아카이브
+                          Archived
                         </span>
                       )}
                     </div>
@@ -462,13 +543,13 @@ function ProfileDetailDialog({
 
           {profile.description && (
             <div>
-              <div className="text-[11px] font-medium text-muted-foreground mb-1">설명</div>
+              <div className="text-[11px] font-medium text-muted-foreground mb-1">Description</div>
               <p className="text-xs text-foreground leading-relaxed">{profile.description}</p>
             </div>
           )}
 
           <div>
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">처리 파라미터</div>
+            <div className="text-[11px] font-medium text-muted-foreground mb-1">Processing Parameters</div>
             <pre className="rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground font-mono overflow-auto max-h-56">
               {parameters}
             </pre>
@@ -481,7 +562,7 @@ function ProfileDetailDialog({
             onClick={onClose}
             className="px-4 py-1.5 rounded-md text-xs font-medium bg-accent text-background hover:bg-accent/90 transition-colors"
           >
-            닫기
+            Close
           </button>
         </div>
       </div>
@@ -509,8 +590,7 @@ export default function ProcessingProfilesPage() {
   const [profileReferences, setProfileReferences] = useState<Record<string, ReferencingPipelineInfo[]>>({});
 
   // Filters
-  const [filterSatellite, setFilterSatellite] = useState('');
-  const [filterMode, setFilterMode] = useState('');
+  const [filterStage, setFilterStage] = useState('');
   const [search, setSearch] = useState('');
   const [previewRole] = useMockRole();
   const [page, setPage] = useState(1);
@@ -542,15 +622,16 @@ export default function ProcessingProfilesPage() {
   }, [loadData]);
 
   const filtered = profiles.filter((p) => {
-    if (filterSatellite && p.satelliteId !== filterSatellite) return false;
-    if (filterMode && p.mode !== filterMode) return false;
-    if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (filterStage && p.processingStage !== filterStage) return false;
+    if (search) {
+      const normalized = search.toLowerCase();
+      const searchable = [p.name, p.description ?? '', p.processingStage ?? '', ...flattenProfileTags(p)].join(' ').toLowerCase();
+      if (!searchable.includes(normalized)) return false;
+    }
     return true;
   }).sort((a, b) => {
-    const satCmp = a.satelliteId.localeCompare(b.satelliteId);
-    if (satCmp !== 0) return satCmp;
-    const modeCmp = a.mode.localeCompare(b.mode);
-    if (modeCmp !== 0) return modeCmp;
+    const stageCmp = (a.processingStage ?? '').localeCompare(b.processingStage ?? '');
+    if (stageCmp !== 0) return stageCmp;
     return a.priority - b.priority;
   });
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -610,31 +691,20 @@ export default function ProcessingProfilesPage() {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              placeholder="이름 검색..."
+              placeholder="Search profile or tag..."
               className="pl-8 pr-3 py-1.5 bg-background border border-border rounded-md text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent w-48"
             />
           </div>
           <select
-            value={filterSatellite}
+            value={filterStage}
             onChange={(e) => {
-              setFilterSatellite(e.target.value);
+              setFilterStage(e.target.value);
               setPage(1);
             }}
             className="bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
           >
-            <option value="">전체 위성</option>
-            {SATELLITES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <select
-            value={filterMode}
-            onChange={(e) => {
-              setFilterMode(e.target.value);
-              setPage(1);
-            }}
-            className="bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-          >
-            <option value="">전체 모드</option>
-            {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+            <option value="">All stages</option>
+            {PROCESSING_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
           </select>
           <div className="ml-auto">
             {canManage && (
@@ -643,7 +713,7 @@ export default function ProcessingProfilesPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-accent text-background hover:bg-accent/90 transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>새 프로파일</span>
+                <span>New Profile</span>
               </button>
             )}
           </div>
@@ -654,14 +724,13 @@ export default function ProcessingProfilesPage() {
           <table className="w-full">
             <thead className="sticky top-0 bg-card z-10">
               <tr className="border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                <th className="text-left px-5 py-2.5">이름</th>
-                <th className="text-left px-3 py-2.5">위성</th>
-                <th className="text-left px-3 py-2.5">모드</th>
-                <th className="text-left px-3 py-2.5">편파</th>
-                <th className="text-center px-3 py-2.5">우선순위</th>
-                <th className="text-center px-3 py-2.5">참조 파이프라인</th>
-                <th className="text-left px-3 py-2.5">생성일</th>
-                <th className="text-right px-5 py-2.5">작업</th>
+                <th className="text-left px-5 py-2.5">Name</th>
+                <th className="text-center px-3 py-2.5">Stage</th>
+                <th className="text-left px-3 py-2.5">Assignment Tags</th>
+                <th className="text-center px-3 py-2.5">Priority</th>
+                <th className="text-center px-3 py-2.5">Referenced Pipelines</th>
+                <th className="text-left px-3 py-2.5">Created At</th>
+                <th className="text-right px-5 py-2.5">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -677,22 +746,23 @@ export default function ProcessingProfilesPage() {
                       <div className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{p.description}</div>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-xs text-foreground">{p.satelliteId}</td>
-                  <td className="px-3 py-2.5 text-xs text-foreground">{p.mode}</td>
-                  <td className="px-3 py-2.5">
-                    <span className="inline-block px-1.5 py-0.5 rounded text-xs font-mono bg-accent/10 text-accent">
-                      {p.polarization}
+                  <td className="px-3 py-2.5 text-center">
+                    <span className="inline-block px-1.5 py-0.5 rounded text-xs font-mono bg-muted text-foreground">
+                      {p.processingStage ?? '-'}
                     </span>
+                  </td>
+                  <td className="px-3 py-2.5 max-w-[280px]">
+                    <AssignmentTags profile={p} />
                   </td>
                   <td className="px-3 py-2.5 text-center text-xs text-foreground font-mono">{p.priority}</td>
                   <td className="px-3 py-2.5 text-center">
                     {(profileReferences[p.id]?.length ?? 0) > 0 ? (
                       <span className="inline-flex items-center gap-1 text-xs text-accent">
                         <GitBranch className="w-3 h-3" />
-                        {profileReferences[p.id]!.length}개
+                        {profileReferences[p.id]!.length}
                       </span>
                     ) : (
-                      <span className="text-xs text-muted-foreground/50">없음</span>
+                      <span className="text-xs text-muted-foreground/50">None</span>
                     )}
                   </td>
                   <td className="px-3 py-2.5 text-xs text-muted-foreground">{formatKST(p.createdAt)}</td>
@@ -707,7 +777,7 @@ export default function ProcessingProfilesPage() {
                               setFormOpen(true);
                             }}
                             className="p-1.5 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
-                            title="수정"
+                            title="Edit"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
@@ -717,7 +787,7 @@ export default function ProcessingProfilesPage() {
                               setDeleteTarget(p);
                             }}
                             className="p-1.5 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-destructive transition-colors"
-                            title="삭제"
+                            title="Delete"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -729,8 +799,8 @@ export default function ProcessingProfilesPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-sm text-muted-foreground">
-                    조건에 맞는 프로파일이 없습니다
+                  <td colSpan={7} className="text-center py-12 text-sm text-muted-foreground">
+                    No profiles match the current filters
                   </td>
                 </tr>
               )}

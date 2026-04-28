@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   BadgeCheck,
   Bell,
+  Check,
   ChevronDown,
   Clock3,
   Columns3,
@@ -31,6 +32,7 @@ type PanelDefault = 'open' | 'closed';
 type TimeZoneMode = 'Asia/Seoul' | 'UTC';
 type ToastMode = 'all' | 'important' | 'silent';
 type BadgeMode = 'all' | 'unread' | 'off';
+type SelectOption = { value: string; label: string; description?: string };
 
 interface ConsoleSettings {
   sidebarDefault: SidebarDefault;
@@ -158,10 +160,14 @@ export default function SettingsPage() {
                   </div>
                 </SettingRow>
                 <SettingRow label="기본 역할" description="Mock 권한 미리보기 기본값">
-                  <SelectValue value={role} onChange={(next) => setRole(next as MockRole)}>
-                    <option value="Administrator">Administrator</option>
-                    <option value="Operator">Operator</option>
-                  </SelectValue>
+                  <SelectValue
+                    value={role}
+                    options={[
+                      { value: 'Administrator', label: 'Administrator', description: '관리자 권한' },
+                      { value: 'Operator', label: 'Operator', description: '운영자 권한' },
+                    ]}
+                    onChange={(next) => setRole(next as MockRole)}
+                  />
                 </SettingRow>
                 <SettingRow label="비밀번호" description="계정 보안 설정">
                   <button
@@ -203,12 +209,13 @@ export default function SettingsPage() {
                 <SettingRow label="테이블 페이지 크기" description="목록 화면 기본 페이지 크기">
                   <SelectValue
                     value={String(settings.tablePageSize)}
+                    options={[
+                      { value: '10', label: '10 rows' },
+                      { value: '20', label: '20 rows' },
+                      { value: '50', label: '50 rows' },
+                    ]}
                     onChange={(value) => update('tablePageSize', Number(value))}
-                  >
-                    <option value="10">10 rows</option>
-                    <option value="20">20 rows</option>
-                    <option value="50">50 rows</option>
-                  </SelectValue>
+                  />
                 </SettingRow>
               </SettingsSection>
 
@@ -230,23 +237,25 @@ export default function SettingsPage() {
                 <SettingRow label="로그 표시 개수" description="실행 로그 패널 기본 로딩 수">
                   <SelectValue
                     value={String(settings.logLimit)}
+                    options={[
+                      { value: '100', label: '100 events' },
+                      { value: '300', label: '300 events' },
+                      { value: '500', label: '500 events' },
+                    ]}
                     onChange={(value) => update('logLimit', Number(value))}
-                  >
-                    <option value="100">100 events</option>
-                    <option value="300">300 events</option>
-                    <option value="500">500 events</option>
-                  </SelectValue>
+                  />
                 </SettingRow>
                 <SettingRow label="자동 새로고침 간격" description="대시보드/큐 상태 갱신 주기">
                   <SelectValue
                     value={String(settings.refreshIntervalSec)}
+                    options={[
+                      { value: '10', label: '10 seconds' },
+                      { value: '30', label: '30 seconds' },
+                      { value: '60', label: '60 seconds' },
+                      { value: '0', label: 'Off' },
+                    ]}
                     onChange={(value) => update('refreshIntervalSec', Number(value))}
-                  >
-                    <option value="10">10 seconds</option>
-                    <option value="30">30 seconds</option>
-                    <option value="60">60 seconds</option>
-                    <option value="0">Off</option>
-                  </SelectValue>
+                  />
                 </SettingRow>
               </SettingsSection>
 
@@ -258,22 +267,24 @@ export default function SettingsPage() {
                 <SettingRow label="Toast 표시" description="화면 우상단 알림 메시지 표시 범위">
                   <SelectValue
                     value={settings.toastMode}
+                    options={[
+                      { value: 'all', label: 'All events' },
+                      { value: 'important', label: 'Important only' },
+                      { value: 'silent', label: 'Silent' },
+                    ]}
                     onChange={(value) => update('toastMode', value as ToastMode)}
-                  >
-                    <option value="all">All events</option>
-                    <option value="important">Important only</option>
-                    <option value="silent">Silent</option>
-                  </SelectValue>
+                  />
                 </SettingRow>
                 <SettingRow label="배지 표시" description="사이드바 알림 카운터 표시 방식">
                   <SelectValue
                     value={settings.badgeMode}
+                    options={[
+                      { value: 'all', label: 'All counts' },
+                      { value: 'unread', label: 'Unread only' },
+                      { value: 'off', label: 'Off' },
+                    ]}
                     onChange={(value) => update('badgeMode', value as BadgeMode)}
-                  >
-                    <option value="all">All counts</option>
-                    <option value="unread">Unread only</option>
-                    <option value="off">Off</option>
-                  </SelectValue>
+                  />
                 </SettingRow>
               </SettingsSection>
             </div>
@@ -332,7 +343,7 @@ function SettingsSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-border bg-card overflow-hidden">
+    <section className="rounded-lg border border-border bg-card">
       <div className="flex items-start gap-3 border-b border-border px-4 py-3">
         <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-md bg-accent/10 text-accent">
           <Icon className="w-4 h-4" />
@@ -369,23 +380,88 @@ function SettingRow({
 
 function SelectValue({
   value,
+  options,
   onChange,
-  children,
 }: {
   value: string;
+  options: SelectOption[];
   onChange: (value: string) => void;
-  children: React.ReactNode;
 }) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((option) => option.value === value) ?? options[0];
+
+  const selectOption = (nextValue: string) => {
+    onChange(nextValue);
+    setOpen(false);
+  };
+
   return (
-    <div className="relative w-full">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full appearance-none rounded-md border border-border bg-background px-2.5 py-1.5 pr-8 text-[11px] font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+    <div
+      className={cn('relative w-full', open && 'z-40')}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') setOpen(false);
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className={cn(
+          'flex min-h-8 w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-left text-[11px] font-medium text-foreground transition-colors',
+          open ? 'border-accent ring-1 ring-accent/35' : 'hover:bg-muted/25',
+        )}
+        aria-haspopup="listbox"
+        aria-expanded={open}
       >
-        {children}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <span className="min-w-0">
+          <span className="block truncate">{selected?.label ?? value}</span>
+          {selected?.description && (
+            <span className="mt-0.5 block truncate text-[9px] font-normal text-muted-foreground">{selected.description}</span>
+          )}
+        </span>
+        <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-xl"
+        >
+          {options.map((option) => {
+            const active = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onClick={() => selectOption(option.value)}
+                className={cn(
+                  'flex w-full items-start gap-2 px-3 py-2 text-left transition-colors',
+                  active ? 'bg-accent/12 text-foreground' : 'hover:bg-muted/35',
+                )}
+              >
+                <span
+                  className={cn(
+                    'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border',
+                    active ? 'border-accent bg-accent text-background' : 'border-border text-transparent',
+                  )}
+                >
+                  <Check className="h-3 w-3 stroke-[3]" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[11px] font-semibold text-foreground">{option.label}</span>
+                  {option.description && (
+                    <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">{option.description}</span>
+                  )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

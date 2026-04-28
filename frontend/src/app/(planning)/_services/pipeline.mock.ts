@@ -25,6 +25,7 @@ import type {
   QueueDeadLetter,
   QueueDepthPoint,
   SarStage,
+  SavePipelineActivationRuleData,
   ServiceResponse,
   ServiceResponseWithData,
   UpdatePipelineData,
@@ -86,14 +87,16 @@ const SATELLITE_SHORT_NAMES: Record<string, string> = {
 };
 const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
 
-const MOCK_PROCESSING_PROFILES: ProcessingProfile[] = SATELLITE_IDS.flatMap((sat) => [
-  { id: `PROF-${sat}-SM-HHHV`, name: `${sat} Stripmap Dual`, satelliteId: sat, mode: 'Stripmap', polarization: 'HH+HV', priority: 3, description: 'Stripmap 이중편파 표준 처리', parameters: { azimuthLooks: 4, rangeLooks: 1 }, referencedPipelineCount: 2, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
-  { id: `PROF-${sat}-SM-HH`, name: `${sat} Stripmap Single`, satelliteId: sat, mode: 'Stripmap', polarization: 'HH', priority: 5, description: 'Stripmap 단일편파 표준 처리', parameters: { azimuthLooks: 4, rangeLooks: 1 }, referencedPipelineCount: 1, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
-  { id: `PROF-${sat}-SC-VV`, name: `${sat} ScanSAR VV`, satelliteId: sat, mode: 'ScanSAR', polarization: 'VV', priority: 4, description: 'ScanSAR 단일편파 광역 처리', parameters: { burstOverlap: 0.1 }, referencedPipelineCount: 1, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
-  { id: `PROF-${sat}-SC-VVVH`, name: `${sat} ScanSAR Dual`, satelliteId: sat, mode: 'ScanSAR', polarization: 'VV+VH', priority: 5, description: 'ScanSAR 이중편파 광역 처리', parameters: { burstOverlap: 0.1 }, referencedPipelineCount: 0, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
-  { id: `PROF-${sat}-SL-HH`, name: `${sat} Spotlight HH`, satelliteId: sat, mode: 'Spotlight', polarization: 'HH', priority: 2, description: 'Spotlight 고해상도 처리', parameters: { azimuthLooks: 1, rangeLooks: 1 }, referencedPipelineCount: 1, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
-  { id: `PROF-${sat}-SL-HHHV`, name: `${sat} Spotlight Dual`, satelliteId: sat, mode: 'Spotlight', polarization: 'HH+HV', priority: 6, description: 'Spotlight 이중편파 고해상도 처리', parameters: { azimuthLooks: 1, rangeLooks: 1 }, referencedPipelineCount: 0, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
-]);
+const MOCK_PROCESSING_PROFILES: ProcessingProfile[] = [
+  { id: 'PROF-L0-INGEST-BASELINE', name: 'L0 Ingest Baseline', processingStage: 'L0', priority: 3, description: 'Generic L0 ingest and raw product preparation profile.', parameters: { rangeLooks: 1, azimuthLooks: 1 }, referencedPipelineCount: 2, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: 'PROF-L1A-RANGE-BASELINE', name: 'L1A Range Processing Baseline', processingStage: 'L1A', priority: 4, description: 'Generic range compression and calibration preparation profile.', parameters: { rangeWindow: 'hann', calibration: true }, referencedPipelineCount: 3, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: 'PROF-L1B-AZIMUTH-BASELINE', name: 'L1B Azimuth Processing Baseline', processingStage: 'L1B', priority: 4, description: 'Generic azimuth focusing profile.', parameters: { azimuthWindow: 'kaiser', dopplerCentroid: 'auto' }, referencedPipelineCount: 2, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: 'PROF-L1C-SLC-BASELINE', name: 'L1C SLC Baseline', processingStage: 'L1C', priority: 5, description: 'Generic SLC formation profile.', parameters: { phasePreserve: true, multilook: false }, referencedPipelineCount: 2, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: 'PROF-L2-GEOCODE-BASELINE', name: 'L2 Geocoding Baseline', processingStage: 'L2', priority: 5, description: 'Generic terrain correction and geocoding profile.', parameters: { dem: 'default', projection: 'EPSG:4326' }, referencedPipelineCount: 1, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: 'PROF-L2A-RADIOMETRY-BASELINE', name: 'L2A Radiometry Baseline', processingStage: 'L2A', priority: 6, description: 'Generic radiometric normalization profile.', parameters: { normalizeSigma0: true }, referencedPipelineCount: 0, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: 'PROF-L2B-ANALYSIS-BASELINE', name: 'L2B Analysis Baseline', processingStage: 'L2B', priority: 6, description: 'Generic analysis-ready product profile.', parameters: { despeckle: 'adaptive' }, referencedPipelineCount: 0, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: 'PROF-L3-MOSAIC-BASELINE', name: 'L3 Mosaic Baseline', processingStage: 'L3', priority: 7, description: 'Generic L3 aggregation and mosaic profile.', parameters: { tileSize: 2048 }, referencedPipelineCount: 0, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+];
 
 const MODE_DEFAULT_POLARIZATION: Record<string, string> = {
   Stripmap: 'HH+HV',
@@ -409,17 +412,10 @@ function generateJobs(count: number, pipelines: PipelineDefinition[]): JobDetail
     const lastSarStep = [...pipelineStepDefs].reverse().find((s) => s.kind === 'SAR');
     const finalLevel: ProductLevel = lastSarStep?.sarStage ? SAR_STAGE_TO_LEVEL[lastSarStep.sarStage] : 'LEVEL_3';
 
-    const PROFILE_POLARIZATIONS: Record<string, string> = {
-      Stripmap: 'HH+HV',
-      ScanSAR: 'VV',
-      Spotlight: 'HH',
-    };
     const processingProfile: ProcessingProfileSummary = {
-      id: `PROF-${satelliteId}-${mode}`.replace(/\s/g, ''),
-      name: `${satelliteId} ${mode} Standard`,
-      mode,
-      polarization: PROFILE_POLARIZATIONS[mode] ?? 'HH',
-      description: `${mode} 모드 표준 처리 프로파일`,
+      id: 'PROF-L1A-RANGE-BASELINE',
+      name: 'L1A Range Processing Baseline',
+      description: 'Generic processing profile',
     };
 
     return {
@@ -663,7 +659,7 @@ function generateProducts(jobs: JobDetail[], rawData: RawDataSummary[]): Product
         level,
         satelliteId: job.satelliteId,
         mode: job.mode,
-        polarization: job.processingProfile?.polarization ?? 'HH',
+        polarization: 'HH',
         status,
         spatialExtent: {
           west: baseLon,
@@ -697,6 +693,32 @@ function formatRawDataTitle(satelliteId: string, capturedAt: string, latitude: n
   return `${shortName}_${datePart}_${timePart}_${latPart}_${lonPart}`;
 }
 
+function buildRawDataFootprint(latitude: number, longitude: number, footprintKm: number, mode: string, idx: number): [number, number][] {
+  const widthRatio = mode === 'ScanSAR' ? 0.72 : mode === 'Spotlight' ? 0.34 : 0.46;
+  const halfAlongKm = footprintKm / 2;
+  const halfAcrossKm = (footprintKm * widthRatio) / 2;
+  const heading = ((idx * 23) % 140 - 70) * (Math.PI / 180);
+  const latKm = 110.574;
+  const lonKm = Math.max(1, 111.32 * Math.cos(latitude * Math.PI / 180));
+  const corners = [
+    [-halfAlongKm, -halfAcrossKm],
+    [halfAlongKm, -halfAcrossKm],
+    [halfAlongKm, halfAcrossKm],
+    [-halfAlongKm, halfAcrossKm],
+  ];
+
+  const ring = corners.map(([along, across]) => {
+    const eastKm = along * Math.sin(heading) + across * Math.cos(heading);
+    const northKm = along * Math.cos(heading) - across * Math.sin(heading);
+    return [
+      Number((longitude + eastKm / lonKm).toFixed(6)),
+      Number((latitude + northKm / latKm).toFixed(6)),
+    ] as [number, number];
+  });
+
+  return [...ring, ring[0]!];
+}
+
 function generateRawData(pipelines: PipelineDefinition[]): RawDataSummary[] {
   const now = Date.now();
   return Array.from({ length: 24 }, (_, idx) => {
@@ -712,6 +734,7 @@ function generateRawData(pipelines: PipelineDefinition[]): RawDataSummary[] {
       : new Date(new Date(capturedAt).getTime() + (8 + (idx % 6)) * 60_000).toISOString();
     const latitude = 34.95 + (idx * 0.18324) % 3.6;
     const longitude = 126.14 + (idx * 0.21437) % 3.8;
+    const footprintKm = 22 + (idx % 6) * 4.5;
     const preferredPipeline = pipelines.find((pipeline) => (
       !pipeline.archived &&
       pipeline.satelliteId === satelliteId &&
@@ -731,7 +754,8 @@ function generateRawData(pipelines: PipelineDefinition[]): RawDataSummary[] {
       receivedAt,
       latitude,
       longitude,
-      footprintKm: 22 + (idx % 6) * 4.5,
+      footprintKm,
+      footprint: buildRawDataFootprint(latitude, longitude, footprintKm, mode, idx),
       fileSizeBytes: 18_000_000_000 + idx * 630_000_000,
       status,
       rawDataPath: `/mnt/nas/sdpe/raw/${satelliteId}/${mode.toLowerCase()}/${formatRawDataTitle(satelliteId, capturedAt, latitude, longitude)}.dat`,
@@ -1124,9 +1148,7 @@ function buildPipelineFromSteps(
   createdAt = '2026-01-15T09:00:00Z',
 ): PipelineDefinition {
   const pol = MODE_DEFAULT_POLARIZATION[mode] ?? 'HH';
-  const matchingProfile = MOCK_PROCESSING_PROFILES.find(
-    (p) => p.satelliteId === sat && p.mode === mode && p.polarization === pol,
-  );
+  const matchingProfile = MOCK_PROCESSING_PROFILES.find((p) => p.processingStage === 'L1A') ?? MOCK_PROCESSING_PROFILES[0];
   const stepsWithConfig = stepDefs.map((s) => {
     if (s.kind === 'JOB_INIT') {
       const config: JobInitConfig = {
@@ -1155,9 +1177,7 @@ function buildBranchedPipeline(
   createdAt = '2026-03-20T09:00:00Z',
 ): PipelineDefinition {
   const pol = MODE_DEFAULT_POLARIZATION[mode] ?? 'HH';
-  const matchingProfile = MOCK_PROCESSING_PROFILES.find(
-    (p) => p.satelliteId === sat && p.mode === mode && p.polarization === pol,
-  );
+  const matchingProfile = MOCK_PROCESSING_PROFILES.find((p) => p.processingStage === 'L1A') ?? MOCK_PROCESSING_PROFILES[0];
   const steps = stepDefs.map((s, i) => {
     const base = {
       order: i + 1,
@@ -1274,7 +1294,7 @@ function generatePipelines(): PipelineDefinition[] {
     { ...buildPipelineFromSteps(
       'PL-LX1-Archive-2', 'Lumir-X1 ScanSAR 테스트 파이프라인',
       'Lumir-X1', 'ScanSAR', MODE_STEP_VARIANTS['ScanSAR'] ?? PIPELINE_STEPS, '2025-08-15T09:00:00Z',
-    ), archived: true, archivedAt: '2026-02-18T05:15:00Z', archiveReason: '성능 검증용 테스트 파이프라인으로 운영 배포 대상에서 제외했습니다.' },
+    ), archived: true, archivedAt: '2026-02-18T05:15:00Z', archiveReason: '성능 검증용 테스트 파이프라인으로 운영 자동 실행 대상에서 제외했습니다.' },
     { ...buildPipelineFromSteps(
       'PL-LX2-Archive-1', 'Lumir-X2 Spotlight 실험 파이프라인',
       'Lumir-X2', 'Spotlight', MODE_STEP_VARIANTS['Spotlight'] ?? PIPELINE_STEPS, '2025-10-20T09:00:00Z',
@@ -1448,6 +1468,32 @@ class MockPipelineUIService implements IPipelineUIService {
     this.activationRules = this.activationRules.filter((rule) => rule.pipelineId !== pipeline.id);
     if (nextRule) this.activationRules.push(nextRule);
     return nextRule;
+  }
+
+  private saveActivationRule(data: SavePipelineActivationRuleData): PipelineActivationRule | null {
+    const pipeline = this.pipelines.find((p) => p.id === data.pipelineId);
+    if (!pipeline || pipeline.archived) return null;
+
+    const current = data.id
+      ? this.activationRules.find((rule) => rule.id === data.id)
+      : undefined;
+    const id = current?.id ?? `AR-${data.pipelineId}-${randomId()}`;
+    const rule: PipelineActivationRule = {
+      id,
+      pipelineId: data.pipelineId,
+      active: data.active,
+      eventType: data.eventType,
+      sourceQueue: data.sourceQueue,
+      match: { ...data.match },
+      triggerSource: data.triggerSource,
+      deployedAt: data.active ? new Date().toISOString() : undefined,
+      description: data.description?.trim()
+        || 'pgmq 수신 이벤트와 조건을 매칭해 지정한 파이프라인을 자동 실행합니다.',
+    };
+
+    this.activationRules = this.activationRules.filter((item) => item.id !== id);
+    this.activationRules.push(rule);
+    return rule;
   }
 
   async 대시보드_통계를_조회한다(): Promise<ServiceResponseWithData<DashboardStats>> {
@@ -1895,19 +1941,31 @@ class MockPipelineUIService implements IPipelineUIService {
     };
   }
 
+  async 파이프라인_자동실행규칙을_저장한다(
+    data: SavePipelineActivationRuleData,
+  ): Promise<ServiceResponseWithData<PipelineActivationRule>> {
+    const rule = this.saveActivationRule(data);
+    if (!rule) return { success: false, message: '자동 실행 규칙을 저장할 수 없습니다' };
+    return {
+      success: true,
+      message: '자동 실행 규칙이 저장되었습니다',
+      data: { ...rule, match: { ...rule.match } },
+    };
+  }
+
   async 파이프라인_배포상태를_변경한다(
     pipelineId: string,
     active: boolean,
   ): Promise<ServiceResponseWithData<PipelineActivationRule>> {
     const pipeline = this.pipelines.find((p) => p.id === pipelineId);
     if (!pipeline) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
-    if (pipeline.archived) return { success: false, message: '아카이브된 파이프라인은 배포할 수 없습니다' };
+    if (pipeline.archived) return { success: false, message: '아카이브된 파이프라인은 활성화할 수 없습니다' };
 
     const rule = this.upsertActivationRule(pipeline, active);
-    if (!rule) return { success: false, message: '배포 규칙을 생성할 수 없습니다' };
+    if (!rule) return { success: false, message: '자동 실행 규칙을 생성할 수 없습니다' };
     return {
       success: true,
-      message: active ? '파이프라인이 배포되었습니다' : '파이프라인 배포가 해제되었습니다',
+      message: active ? '자동 실행 연결이 활성화되었습니다' : '자동 실행 연결이 비활성화되었습니다',
       data: { ...rule, match: { ...rule.match } },
     };
   }
@@ -1917,8 +1975,12 @@ class MockPipelineUIService implements IPipelineUIService {
     mode?: string;
   }): Promise<ServiceResponseWithData<ProcessingProfile[]>> {
     let filtered = [...this.profiles];
-    if (params?.satelliteId) filtered = filtered.filter((p) => p.satelliteId === params.satelliteId);
-    if (params?.mode) filtered = filtered.filter((p) => p.mode === params.mode);
+    if (params?.satelliteId) {
+      filtered = filtered.filter((p) => !p.satelliteTags?.length || p.satelliteTags.includes(params.satelliteId!));
+    }
+    if (params?.mode) {
+      filtered = filtered.filter((p) => !p.modeTags?.length || p.modeTags.includes(params.mode!));
+    }
     return { success: true, message: 'OK', data: filtered };
   }
 

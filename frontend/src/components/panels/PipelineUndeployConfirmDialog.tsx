@@ -26,7 +26,7 @@ export default function PipelineUndeployConfirmDialog({
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <Unplug className="w-4 h-4 text-warning" />
-            <h2 className="text-sm font-semibold text-foreground">파이프라인 배포 해제</h2>
+            <h2 className="text-sm font-semibold text-foreground">자동 실행 연결 비활성화</h2>
           </div>
           <button type="button" onClick={onCancel} className="p-1 rounded-md hover:bg-muted/50 transition-colors">
             <X className="w-4 h-4 text-muted-foreground" />
@@ -35,7 +35,7 @@ export default function PipelineUndeployConfirmDialog({
 
         <div className="p-4 space-y-3">
           <p className="text-xs text-muted-foreground">
-            배포를 해제하면 이 파이프라인은 pgmq 이벤트와 매칭되어 자동 실행되지 않습니다.
+            비활성화하면 이 파이프라인은 pgmq 이벤트와 매칭되어 자동 실행되지 않습니다.
           </p>
           <div className="bg-muted/30 rounded-lg px-3 py-2.5 space-y-1">
             <div className="flex justify-between gap-3 text-[11px]">
@@ -71,7 +71,7 @@ export default function PipelineUndeployConfirmDialog({
             onClick={onConfirm}
             className="flex-1 py-1.5 rounded-md bg-destructive text-white text-xs font-medium hover:bg-destructive/80 transition-colors"
           >
-            배포 해제
+            비활성화
           </button>
         </div>
       </div>
