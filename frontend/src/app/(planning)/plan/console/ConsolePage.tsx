@@ -17,10 +17,10 @@ import SelectStartNodeDialog, { type StartNodeSelection } from '@/components/pan
 import NodeDetailModal, { type PrevNodeInfo } from '@/components/panels/NodeDetailModal';
 import FileInputConfigDialog from '@/components/panels/FileInputConfigDialog';
 import PipelineArchiveConfirmDialog from '@/components/panels/PipelineArchiveConfirmDialog';
-import PipelineEditDialog from '@/components/panels/PipelineEditDialog';
+import PipelineDeleteConfirmDialog from '@/components/panels/PipelineDeleteConfirmDialog';
 import PipelineUndeployConfirmDialog from '@/components/panels/PipelineUndeployConfirmDialog';
 import { toast } from '@/components/ui/Toast';
-import { Plus, GitBranch, Pencil, Check, X, SlidersHorizontal, Radio, ServerCog, UploadCloud, Info, Archive } from 'lucide-react';
+import { Plus, GitBranch, Pencil, Check, X, Radio, UploadCloud, Info, Archive } from 'lucide-react';
 import type {
   PipelineDefinition,
   PipelineStepDefinition,
@@ -36,12 +36,9 @@ import type {
 } from '@/types/pipeline';
 import {
   JOB_INIT_PROFILE_MISSING_MESSAGE,
-  PIPELINE_EVENT_TYPE_LABELS,
-  PRODUCT_LEVEL_LABELS,
   SAR_STAGE_LABELS,
   SAR_STAGE_TO_CSC,
   SAR_STAGE_TO_LEVEL,
-  TRIGGER_SOURCE_LABELS,
 } from '@/types/pipeline';
 
 // ---------------------------------------------------------------------------
@@ -50,18 +47,12 @@ import {
 
 function PipelineNameBadge({
   name,
-  satellite,
-  mode,
   editable,
   onRename,
-  onEditProperties,
 }: {
   name: string;
-  satellite: string;
-  mode: string;
   editable: boolean;
   onRename: (newName: string) => void;
-  onEditProperties: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
@@ -124,22 +115,9 @@ function PipelineNameBadge({
             title={editable ? 'Edit name' : undefined}
           >
             <span className="text-xs font-semibold text-foreground">{name}</span>
-            <span className="text-[10px] text-muted-foreground">
-              {satellite} · {mode}
-            </span>
             {editable && (
               <Pencil className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
             )}
-          </button>
-        )}
-        {editable && !editing && (
-          <button
-            type="button"
-            onClick={onEditProperties}
-            className="p-0.5 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
-            title="Edit pipeline properties"
-          >
-            <SlidersHorizontal className="w-3.5 h-3.5" />
           </button>
         )}
       </div>
@@ -224,79 +202,13 @@ function PipelineActivationPanel({
         </div>
       </div>
 
-      <div className="divide-y divide-border/60">
-        {visibleRules.length === 0 ? (
-          <div className="px-3 py-3 text-xs text-muted-foreground">
-            Activation conditions cannot be created. Check the entry node and pipeline properties.
-          </div>
-        ) : visibleRules.map((rule) => {
-          const conditions = [
-            rule.match.satelliteId,
-            rule.match.mode,
-            rule.match.polarization,
-            rule.match.inputLevel ? PRODUCT_LEVEL_LABELS[rule.match.inputLevel] : undefined,
-          ].filter((condition): condition is string => typeof condition === 'string' && condition.length > 0);
-          const tooltipId = `rule:${rule.id}`;
+      {visibleRules.length === 0 && (
+        <div className="px-3 py-3 text-xs text-muted-foreground border-b border-border/60">
+          Activation conditions cannot be created. Check the entry node and pipeline properties.
+        </div>
+      )}
 
-          return (
-            <div key={rule.id} className="px-3 py-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <ServerCog className="h-3.5 w-3.5 shrink-0 text-accent" />
-                    <span className="truncate text-xs font-semibold text-foreground">
-                      {PIPELINE_EVENT_TYPE_LABELS[rule.eventType]}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">→</span>
-                    <span className="shrink-0 text-[10px] font-medium text-accent">
-                      {TRIGGER_SOURCE_LABELS[rule.triggerSource]}
-                    </span>
-                  </div>
-                  <div className="mt-1 text-[10px] text-muted-foreground">{rule.sourceQueue}</div>
-                </div>
-                <div className="relative shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => toggleTooltip(tooltipId)}
-                    className={`inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors ${
-                      openTooltipId === tooltipId
-                        ? 'border-accent/40 bg-accent/10 text-accent'
-                        : 'border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground'
-                    }`}
-                    title="Show rule details"
-                    aria-label="Show rule details"
-                    aria-expanded={openTooltipId === tooltipId}
-                  >
-                    <Info className="h-3 w-3" />
-                  </button>
-                  {openTooltipId === tooltipId && (
-                    <div
-                      role="tooltip"
-                      className="absolute right-0 top-8 z-20 w-[250px] rounded-md border border-border bg-card px-3 py-2 text-left text-[10px] leading-relaxed text-foreground shadow-xl"
-                    >
-                      {deployed
-                        ? rule.description
-                        : 'This rule is not active yet. Inactive rules do not start this DAG when operational events arrive.'}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <span className="rounded border border-border bg-background/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                  {rule.sourceQueue}
-                </span>
-                {conditions.map((condition) => (
-                  <span key={condition} className="rounded bg-muted/55 px-1.5 py-0.5 text-[10px] text-foreground">
-                    {condition}
-                  </span>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="flex items-center justify-between gap-3 border-t border-border/70 bg-muted/15 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3 bg-muted/15 px-3 py-2.5">
         <div className="text-[10px] leading-relaxed text-muted-foreground">
           {deployed ? 'Automatic execution is active.' : 'Enable this link to start automatic execution.'}
         </div>
@@ -360,7 +272,6 @@ export default function ConsolePage() {
   const [rightCollapsed, setRightCollapsed] = useState(true);
   const [previewRole] = useMockRole();
   const [consoleMode, setConsoleMode] = useState<ConsoleMode>({ type: 'idle' });
-  const [editSaving, setEditSaving] = useState(false);
   const [deploymentSaving, setDeploymentSaving] = useState(false);
   const [reprocessDialogOpen, setReprocessDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -371,7 +282,7 @@ export default function ConsolePage() {
   const [nodeDetailStep, setNodeDetailStep] = useState<PipelineStepDefinition | null>(null);
   const [fileInputConfigStep, setFileInputConfigStep] = useState<PipelineStepDefinition | null>(null);
   const [archivePipelineTarget, setArchivePipelineTarget] = useState<PipelineDefinition | null>(null);
-  const [editPipelineTarget, setEditPipelineTarget] = useState<PipelineDefinition | null>(null);
+  const [deletePipelineTarget, setDeletePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [undeployTarget, setUndeployTarget] = useState<PipelineDefinition | null>(null);
   const [activeStepOrder, setActiveStepOrder] = useState<number | null>(null);
   const [popoverClickY, setPopoverClickY] = useState(0);
@@ -457,7 +368,7 @@ export default function ConsolePage() {
   }, [service]);
 
   const updatePipeline = useCallback(
-    async (data: { name?: string; satelliteId?: string; mode?: string; steps?: Omit<PipelineStepDefinition, 'order'>[]; edges?: { source: number; target: number }[] }) => {
+    async (data: { name?: string; satelliteTags?: string[]; modeTags?: string[]; polarizationTags?: string[]; steps?: Omit<PipelineStepDefinition, 'order'>[]; edges?: { source: number; target: number }[] }) => {
       if (!selectedPipelineId) return;
       const res = await service.파이프라인을_수정한다(selectedPipelineId, data);
       if (res.data) {
@@ -767,29 +678,34 @@ export default function ConsolePage() {
     setArchivePipelineTarget(null);
   }, [service, selectedPipelineId, updateJobIdParam, canManage, refreshActivationRules]);
 
-  // --- Pipeline handlers ---
-  const handleSavePipeline = useCallback(async (data: { name: string; satelliteId: string; mode: string }) => {
-    if (!selectedPipelineId) return;
-    setEditSaving(true);
-    const res = await service.파이프라인을_수정한다(selectedPipelineId, data);
-    if (res.data) {
-      setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? res.data! : p)));
-      await refreshActivationRules();
+  const handleDeletePipeline = useCallback(async (id: string) => {
+    if (!canManage) return;
+    const res = await service.파이프라인을_삭제한다(id);
+    if (!res.success) {
+      toast.error(res.message);
+      return;
     }
-    setEditSaving(false);
-    setEditPipelineTarget(null);
-    setConsoleMode({ type: 'idle' });
-    setRightCollapsed(true);
-  }, [service, selectedPipelineId, refreshActivationRules]);
+    toast.success('Pipeline deleted.');
+    setPipelines((prev) => prev.filter((p) => p.id !== id));
+    await refreshActivationRules();
+    if (selectedPipelineId === id) {
+      setSelectedPipelineId(null);
+      setSelectedJob(null);
+      setActiveStepOrder(null);
+      setConsoleMode({ type: 'idle' });
+      updateJobIdParam(null);
+    }
+    setDeletePipelineTarget(null);
+  }, [service, selectedPipelineId, updateJobIdParam, canManage, refreshActivationRules]);
 
   const handleCreatePipeline = useCallback(() => {
     if (!canManage) return;
-    // 파이프라인 선택 해제 → 빈 캔버스로 이동 (거기서 모달 진입)
     setSelectedPipelineId(null);
     setSelectedJob(null);
     setActiveStepOrder(null);
     setConsoleMode({ type: 'idle' });
     setRightCollapsed(true);
+    setCreateStep('step1');
   }, [canManage]);
 
   const handleCreateStep1Next = useCallback((data: CreatePipelineBasicData) => {
@@ -900,7 +816,7 @@ export default function ConsolePage() {
         onCreatePipeline={handleCreatePipeline}
         onDeletePipeline={(id) => {
           const target = pipelines.find((p) => p.id === id);
-          if (target) setArchivePipelineTarget(target);
+          if (target) setDeletePipelineTarget(target);
         }}
         canManagePipelines={canManage}
         activePage="console"
@@ -910,16 +826,28 @@ export default function ConsolePage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-2.5 shrink-0">
             <PipelineManagementTabs active="pipelines" counts={{ pipelines: pipelines.length }} />
-            {canManage && selectedPipeline && (
-              <button
-                type="button"
-                onClick={() => setArchivePipelineTarget(selectedPipeline)}
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-[11px] font-semibold text-muted-foreground transition-colors hover:border-warning/45 hover:bg-warning/10 hover:text-warning"
-              >
-                <Archive className="h-3.5 w-3.5" />
-                Archive Pipeline
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={handleCreatePipeline}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-[11px] font-semibold text-accent-foreground transition-colors hover:brightness-110"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  New Pipeline
+                </button>
+              )}
+              {canManage && selectedPipeline && (
+                <button
+                  type="button"
+                  onClick={() => setArchivePipelineTarget(selectedPipeline)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-[11px] font-semibold text-muted-foreground transition-colors hover:border-warning/45 hover:bg-warning/10 hover:text-warning"
+                >
+                  <Archive className="h-3.5 w-3.5" />
+                  Archive Pipeline
+                </button>
+              )}
+            </div>
           </div>
           {graphSteps.length > 0 ? (
             <div ref={canvasRef} className="flex-1 relative overflow-hidden">
@@ -943,11 +871,8 @@ export default function ConsolePage() {
               {selectedPipeline && (
                 <PipelineNameBadge
                   name={selectedPipeline.name}
-                  satellite={selectedPipeline.satelliteId}
-                  mode={selectedPipeline.mode}
                   editable={canvasEditable}
                   onRename={handleRenamePipeline}
-                  onEditProperties={() => setEditPipelineTarget(selectedPipeline)}
                 />
               )}
               {selectedPipeline && !selectedJob && (
@@ -1037,8 +962,6 @@ export default function ConsolePage() {
             onReprocessJob={handleReprocessJob}
             onPartialReprocess={handlePartialReprocess}
             onCancelJob={handleCancelJob}
-            onSavePipeline={handleSavePipeline}
-            pipelineSaving={editSaving}
             availableProfiles={profiles}
             onStepClick={(order, clickY) => { setActiveStepOrder(order); setPopoverClickY(clickY); }}
             activeStepOrder={activeStepOrder}
@@ -1076,8 +999,6 @@ export default function ConsolePage() {
       {canManage && createStep === 'step2' && createBasicData && (
         <SelectStartNodeDialog
           pipelineName={createBasicData.name}
-          satelliteId={createBasicData.satelliteId}
-          mode={createBasicData.mode}
           onConfirm={handleCreateStep2Confirm}
           onBack={() => setCreateStep('step1')}
           onCancel={handleCreateCancel}
@@ -1101,8 +1022,8 @@ export default function ConsolePage() {
           onClose={() => setNodeDetailStep(null)}
           onSaveNode={canvasEditable ? handleSaveNode : undefined}
           availableProfiles={profiles}
-          satelliteId={selectedPipeline?.satelliteId}
-          mode={selectedPipeline?.mode}
+          satelliteId={undefined}
+          mode={undefined}
           prevNodes={getPrevNodes(nodeDetailStep.order)}
         />
       )}
@@ -1110,27 +1031,22 @@ export default function ConsolePage() {
       {archivePipelineTarget && (
         <PipelineArchiveConfirmDialog
           pipelineName={archivePipelineTarget.name}
-          satelliteId={archivePipelineTarget.satelliteId}
-          mode={archivePipelineTarget.mode}
           onConfirm={(reason) => handleArchivePipeline(archivePipelineTarget.id, reason)}
           onCancel={() => setArchivePipelineTarget(null)}
         />
       )}
 
-      {editPipelineTarget && (
-        <PipelineEditDialog
-          pipeline={editPipelineTarget}
-          saving={editSaving}
-          onSave={handleSavePipeline}
-          onCancel={() => setEditPipelineTarget(null)}
+      {deletePipelineTarget && (
+        <PipelineDeleteConfirmDialog
+          pipelineName={deletePipelineTarget.name}
+          onConfirm={() => handleDeletePipeline(deletePipelineTarget.id)}
+          onCancel={() => setDeletePipelineTarget(null)}
         />
       )}
 
       {undeployTarget && (
         <PipelineUndeployConfirmDialog
           pipelineName={undeployTarget.name}
-          satelliteId={undeployTarget.satelliteId}
-          mode={undeployTarget.mode}
           onConfirm={handleConfirmUndeploy}
           onCancel={() => setUndeployTarget(null)}
         />

@@ -298,8 +298,6 @@ export interface PipelineEdge {
 export interface PipelineDefinition {
   id: string;
   name: string;
-  satelliteId: string;
-  mode: string;
   steps: PipelineStepDefinition[];
   edges: PipelineEdge[];
   createdAt: string;
@@ -315,10 +313,11 @@ export interface PipelineActivationRule {
   active: boolean;
   eventType: PipelineEventType;
   sourceQueue: string;
+  /** 이벤트 매칭 조건. 각 필드는 OR 매칭 (둘 중 어느 값이든 매칭되면 통과). */
   match: {
-    satelliteId?: string;
-    mode?: string;
-    polarization?: string;
+    satelliteIds?: string[];
+    modes?: string[];
+    polarizations?: string[];
     inputLevel?: ProductLevel;
   };
   triggerSource: TriggerSource;
@@ -333,9 +332,9 @@ export interface SavePipelineActivationRuleData {
   eventType: PipelineEventType;
   sourceQueue: string;
   match: {
-    satelliteId?: string;
-    mode?: string;
-    polarization?: string;
+    satelliteIds?: string[];
+    modes?: string[];
+    polarizations?: string[];
     inputLevel?: ProductLevel;
   };
   triggerSource: TriggerSource;
@@ -344,16 +343,12 @@ export interface SavePipelineActivationRuleData {
 
 export interface CreatePipelineData {
   name: string;
-  satelliteId: string;
-  mode: string;
   steps: Omit<PipelineStepDefinition, 'order'>[];
   edges?: PipelineEdge[];
 }
 
 export interface UpdatePipelineData {
   name?: string;
-  satelliteId?: string;
-  mode?: string;
   steps?: Omit<PipelineStepDefinition, 'order'>[];
   edges?: PipelineEdge[];
 }

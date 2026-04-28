@@ -39,6 +39,8 @@ import {
   POLARIZATION_OPTIONS,
   PRODUCT_LEVEL_LABELS,
   QUEUE_NAME,
+  SATELLITE_OPTIONS,
+  MODE_OPTIONS,
   SAR_STAGE_TO_CSC,
   SAR_STAGE_TO_LEVEL,
   TRIGGER_SOURCE_LABELS,
@@ -96,9 +98,9 @@ function ruleToForm(rule: PipelineActivationRule): RuleFormState {
     active: rule.active,
     eventType: rule.eventType,
     sourceQueue: rule.sourceQueue,
-    satelliteId: rule.match.satelliteId ?? '',
-    mode: rule.match.mode ?? '',
-    polarization: rule.match.polarization ?? '',
+    satelliteId: rule.match.satelliteIds?.[0] ?? '',
+    mode: rule.match.modes?.[0] ?? '',
+    polarization: rule.match.polarizations?.[0] ?? '',
     inputLevel: rule.match.inputLevel ?? '',
     triggerSource: rule.triggerSource,
     description: rule.description,
@@ -107,9 +109,9 @@ function ruleToForm(rule: PipelineActivationRule): RuleFormState {
 
 function ruleConditions(rule: PipelineActivationRule): string[] {
   return [
-    rule.match.satelliteId,
-    rule.match.mode,
-    rule.match.polarization,
+    ...(rule.match.satelliteIds ?? []),
+    ...(rule.match.modes ?? []),
+    ...(rule.match.polarizations ?? []),
     rule.match.inputLevel ? PRODUCT_LEVEL_LABELS[rule.match.inputLevel] : undefined,
   ].filter((condition): condition is string => typeof condition === 'string' && condition.length > 0);
 }
@@ -118,9 +120,9 @@ function routeKey(rule: PipelineActivationRule): string {
   return [
     rule.sourceQueue,
     rule.eventType,
-    rule.match.satelliteId ?? '*',
-    rule.match.mode ?? '*',
-    rule.match.polarization ?? '*',
+    rule.match.satelliteIds?.join(',') ?? '*',
+    rule.match.modes?.join(',') ?? '*',
+    rule.match.polarizations?.join(',') ?? '*',
     rule.match.inputLevel ?? '*',
   ].join('|');
 }
@@ -259,12 +261,12 @@ export default function DeployedPipelinesPage() {
     return map;
   }, [pipelines]);
   const satelliteOptions = useMemo(
-    () => Array.from(new Set(pipelines.map((pipeline) => pipeline.satelliteId))).sort(),
-    [pipelines],
+    () => [...SATELLITE_OPTIONS],
+    [],
   );
   const modeOptions = useMemo(
-    () => Array.from(new Set(pipelines.map((pipeline) => pipeline.mode))).sort(),
-    [pipelines],
+    () => [...MODE_OPTIONS],
+    [],
   );
   const selectedRule = selectedRuleId ? rules.find((rule) => rule.id === selectedRuleId) ?? null : null;
   const selectedFormPipeline = ruleForm.pipelineId ? pipelineById.get(ruleForm.pipelineId) ?? null : null;
@@ -300,9 +302,9 @@ export default function DeployedPipelinesPage() {
       eventType: form.eventType,
       sourceQueue: form.sourceQueue,
       match: {
-        satelliteId: form.satelliteId || undefined,
-        mode: form.mode || undefined,
-        polarization: form.polarization || undefined,
+        satelliteIds: form.satelliteId ? [form.satelliteId] : undefined,
+        modes: form.mode ? [form.mode] : undefined,
+        polarizations: form.polarization ? [form.polarization] : undefined,
         inputLevel: form.inputLevel || undefined,
       },
       triggerSource: form.triggerSource,
@@ -450,7 +452,7 @@ export default function DeployedPipelinesPage() {
                             <p className="mt-1 text-[11px] text-muted-foreground truncate">
                               {hasDuplicateRoute
                                 ? '중복 라우트 확인 필요'
-                                : pipeline ? `${pipeline.satelliteId} · ${pipeline.mode}` : `created ${formatDate(rule.deployedAt)}`}
+                                : ruleConditions(rule).join(' · ') || `created ${formatDate(rule.deployedAt)}`}
                             </p>
                           </div>
 
@@ -683,8 +685,6 @@ export default function DeployedPipelinesPage() {
                           onClick={() => setRuleForm((prev) => ({
                             ...prev,
                             pipelineId: pipeline.id,
-                            satelliteId: prev.satelliteId || pipeline.satelliteId,
-                            mode: prev.mode || pipeline.mode,
                           }))}
                           className={`w-full rounded-lg border px-3 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                             selected
@@ -695,7 +695,6 @@ export default function DeployedPipelinesPage() {
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <p className="truncate text-sm font-semibold text-foreground">{pipeline.name}</p>
-                              <p className="mt-1 truncate text-[11px] text-muted-foreground">{pipeline.satelliteId} · {pipeline.mode}</p>
                             </div>
                             {selected && <CheckCircle2 className="h-4 w-4 shrink-0 text-accent" />}
                           </div>

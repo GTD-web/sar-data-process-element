@@ -872,9 +872,6 @@ function PipelineFilterPanel({
                   </span>
                   <span className="min-w-0">
                     <span className="block truncate text-[11px] font-semibold text-foreground">{pipeline.name}</span>
-                    <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
-                      {pipeline.satelliteId} · {pipeline.mode}
-                    </span>
                   </span>
                 </label>
               );
@@ -944,7 +941,6 @@ function PipelineQualityCard({ item, basePath }: { item: PipelineMetric; basePat
             </span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
-            <span>{item.pipeline.satelliteId} · {item.pipeline.mode}</span>
             <span>{item.jobs.length}회 실행</span>
             <span>{runningLabel}</span>
             <span>{failureLabel}</span>

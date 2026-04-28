@@ -65,10 +65,6 @@ function RestorePipelineConfirmDialog({
               <span className="text-muted-foreground">이름</span>
               <span className="font-semibold text-foreground text-right">{pipeline.name}</span>
             </div>
-            <div className="flex justify-between text-[11px]">
-              <span className="text-muted-foreground">대상</span>
-              <span className="font-mono text-foreground">{pipeline.satelliteId} · {pipeline.mode}</span>
-            </div>
             <div className="flex justify-between gap-3 text-[11px]">
               <span className="text-muted-foreground">폐기일</span>
               <span className="font-mono text-foreground text-right">{formatArchiveDate(pipeline.archivedAt)}</span>

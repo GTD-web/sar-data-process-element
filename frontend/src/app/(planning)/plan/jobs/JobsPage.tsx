@@ -458,9 +458,6 @@ export default function JobsPage() {
                       </span>
                       <span className="min-w-0">
                         <span className="block truncate font-semibold">{pipeline.name}</span>
-                        <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
-                          {pipeline.satelliteId} / {pipeline.mode}
-                        </span>
                       </span>
                     </button>
                   );
@@ -573,8 +570,6 @@ export default function JobsPage() {
           onReprocessJob={handleReprocessJob}
           onPartialReprocess={handlePartialReprocess}
           onCancelJob={handleCancelJob}
-          onSavePipeline={() => { /* jobs mode — 편집 불가 */ }}
-          pipelineSaving={false}
           availableProfiles={[]}
           onStepClick={(order, clickY) => { setActiveStepOrder(order); setPopoverClickY(clickY); }}
           activeStepOrder={activeStepOrder}

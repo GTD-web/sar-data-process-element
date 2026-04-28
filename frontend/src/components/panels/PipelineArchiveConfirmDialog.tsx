@@ -6,16 +6,12 @@ import { cn } from '@/lib/utils';
 
 interface PipelineArchiveConfirmDialogProps {
   pipelineName: string;
-  satelliteId: string;
-  mode: string;
   onConfirm: (reason: string) => void;
   onCancel: () => void;
 }
 
 export default function PipelineArchiveConfirmDialog({
   pipelineName,
-  satelliteId,
-  mode,
   onConfirm,
   onCancel,
 }: PipelineArchiveConfirmDialogProps) {
@@ -44,14 +40,10 @@ export default function PipelineArchiveConfirmDialog({
             Archived pipelines move to the archive and cannot be activated for operational events. The reason remains available from the Archive page.
           </p>
 
-          <div className="bg-muted/30 rounded-lg px-3 py-2.5 space-y-1">
+          <div className="bg-muted/30 rounded-lg px-3 py-2.5">
             <div className="flex justify-between gap-3 text-[11px]">
               <span className="text-muted-foreground">Name</span>
               <span className="font-semibold text-foreground text-right">{pipelineName}</span>
-            </div>
-            <div className="flex justify-between text-[11px]">
-              <span className="text-muted-foreground">Target</span>
-              <span className="font-mono text-foreground">{satelliteId} · {mode}</span>
             </div>
           </div>
 

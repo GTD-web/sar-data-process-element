@@ -45,6 +45,8 @@ import {
   QUEUE_NAME,
   SAR_STAGE_TO_CSC,
   SAR_STAGE_TO_LEVEL,
+  SATELLITE_OPTIONS,
+  MODE_OPTIONS,
 } from '@/types/pipeline';
 import type {
   CreateUserRequest,
@@ -79,13 +81,13 @@ const SCENE_IDS = [
   'LX1-20260408-010', 'LX1-20260409-011', 'LX1-20260410-012',
 ];
 
-const SATELLITE_IDS = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'];
+const SATELLITE_IDS = SATELLITE_OPTIONS;
 const SATELLITE_SHORT_NAMES: Record<string, string> = {
   'Lumir-X1': 'X1',
   'Lumir-X2': 'X2',
   'Lumir-X3': 'X3',
 };
-const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
+const MODES = MODE_OPTIONS;
 
 const MOCK_PROCESSING_PROFILES: ProcessingProfile[] = [
   { id: 'PROF-L0-INGEST-BASELINE', name: 'L0 Ingest Baseline', processingStage: 'L0', priority: 3, description: 'Generic L0 ingest and raw product preparation profile.', parameters: { rangeLooks: 1, azimuthLooks: 1 }, referencedPipelineCount: 2, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
@@ -389,8 +391,8 @@ function generateJobs(count: number, pipelines: PipelineDefinition[]): JobDetail
 
     const pipeline = pipelines[idx % pipelines.length];
     const pipelineStepDefs = toStepDefs(pipeline);
-    const satelliteId = pipeline.satelliteId;
-    const mode = pipeline.mode;
+    const satelliteId = SATELLITE_IDS[idx % SATELLITE_IDS.length];
+    const mode = MODES[idx % MODES.length];
 
     const retryCount = status === 'FAILED' ? Math.floor(Math.random() * 4) : 0;
     const steps = buildSteps(pipelineStepDefs, status, retryCount);
@@ -627,16 +629,38 @@ function generateExecutionLogs(jobs: JobDetail[]): ExecutionLog[] {
 // Product Mock Data
 // =============================================================================
 
-function generateProducts(jobs: JobDetail[], rawData: RawDataSummary[]): Product[] {
+function generateProducts(jobs: JobDetail[], rawData: RawDataSummary[], pipelines: PipelineDefinition[]): Product[] {
   const completedJobs = jobs.filter((j) => j.status === 'COMPLETED' || j.status === 'FAILED');
   const products: Product[] = [];
-  const levels: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
+  const pipelinesById = new Map(pipelines.map((p) => [p.id, p]));
+  const levelOrder: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
 
   for (const [jobIndex, job] of completedJobs.entries()) {
     const sourceRawData = rawData[jobIndex % rawData.length];
-    const numProducts = job.status === 'COMPLETED' ? 1 + Math.floor(Math.random() * 3) : (Math.random() > 0.5 ? 1 : 0);
+    const pipeline = pipelinesById.get(job.pipelineId);
+
+    // Levels actually produced by this pipeline = unique product levels of SAR steps,
+    // ordered by pipeline step order. Excludes FILE_INPUT (input only, not output).
+    const pipelineProducedLevels: ProductLevel[] = pipeline
+      ? Array.from(
+          new Set(
+            pipeline.steps
+              .filter((s) => s.kind === 'SAR' && s.sarStage)
+              .map((s) => SAR_STAGE_TO_LEVEL[s.sarStage!]),
+          ),
+        ).sort((a, b) => levelOrder.indexOf(a) - levelOrder.indexOf(b))
+      : levelOrder;
+
+    if (pipelineProducedLevels.length === 0) continue;
+
+    // Choose how many of the produced levels to populate (truncate from the end on FAILED).
+    const maxProducts = pipelineProducedLevels.length;
+    const numProducts = job.status === 'COMPLETED'
+      ? Math.max(1, Math.min(maxProducts, 1 + Math.floor(Math.random() * maxProducts)))
+      : (Math.random() > 0.5 ? 1 : 0);
+
     for (let i = 0; i < numProducts; i++) {
-      const level = levels[Math.min(i, levels.length - 1)];
+      const level = pipelineProducedLevels[i];
       const status: ProductStatus = job.status === 'FAILED' && i === numProducts - 1 ? 'FAILED' : 'COMPLETED';
 
       const quality: ProductQuality | undefined = status === 'COMPLETED' ? {
@@ -737,9 +761,7 @@ function generateRawData(pipelines: PipelineDefinition[]): RawDataSummary[] {
     const footprintKm = 22 + (idx % 6) * 4.5;
     const preferredPipeline = pipelines.find((pipeline) => (
       !pipeline.archived &&
-      pipeline.satelliteId === satelliteId &&
-      pipeline.mode === mode &&
-      !pipeline.name.includes('부분 재처리')
+      pipeline.steps[0]?.kind !== 'FILE_INPUT'
     )) ?? null;
     const mapped = idx % 5 !== 0 && preferredPipeline;
     const status: RawDataStatus = mapped ? (idx % 4 === 0 ? 'READY' : 'MAPPED') : (idx % 7 === 0 ? 'HOLD' : 'RECEIVED');
@@ -1142,17 +1164,17 @@ const MODE_STEP_VARIANTS: Record<string, StepDef[]> = {
 function buildPipelineFromSteps(
   id: string,
   name: string,
-  sat: string,
-  mode: string,
   stepDefs: StepDef[],
   createdAt = '2026-01-15T09:00:00Z',
 ): PipelineDefinition {
-  const pol = MODE_DEFAULT_POLARIZATION[mode] ?? 'HH';
   const matchingProfile = MOCK_PROCESSING_PROFILES.find((p) => p.processingStage === 'L1A') ?? MOCK_PROCESSING_PROFILES[0];
+  const defaultPolarization = matchingProfile?.polarizationTags?.[0]
+    ?? matchingProfile?.polarization
+    ?? 'HH';
   const stepsWithConfig = stepDefs.map((s) => {
     if (s.kind === 'JOB_INIT') {
       const config: JobInitConfig = {
-        polarization: pol,
+        polarization: defaultPolarization,
         profileId: matchingProfile?.id,
         priority: 5,
         deadlineHours: 4,
@@ -1163,21 +1185,28 @@ function buildPipelineFromSteps(
     return s;
   });
   const { steps, edges } = toDAGSteps(stepsWithConfig);
-  return { id, name, satelliteId: sat, mode, steps, edges, createdAt, updatedAt: createdAt };
+  return {
+    id,
+    name,
+    steps,
+    edges,
+    createdAt,
+    updatedAt: createdAt,
+  };
 }
 
 /** 명시적 엣지를 받아 분기형 DAG 파이프라인을 생성한다 (fan-out, fan-in, 복수 진입점 등). */
 function buildBranchedPipeline(
   id: string,
   name: string,
-  sat: string,
-  mode: string,
   stepDefs: StepDef[],
   edges: BranchedEdge[],
   createdAt = '2026-03-20T09:00:00Z',
 ): PipelineDefinition {
-  const pol = MODE_DEFAULT_POLARIZATION[mode] ?? 'HH';
   const matchingProfile = MOCK_PROCESSING_PROFILES.find((p) => p.processingStage === 'L1A') ?? MOCK_PROCESSING_PROFILES[0];
+  const defaultPolarization = matchingProfile?.polarizationTags?.[0]
+    ?? matchingProfile?.polarization
+    ?? 'HH';
   const steps = stepDefs.map((s, i) => {
     const base = {
       order: i + 1,
@@ -1188,7 +1217,7 @@ function buildBranchedPipeline(
     };
     if (s.kind === 'JOB_INIT') {
       const config: JobInitConfig = {
-        polarization: pol,
+        polarization: defaultPolarization,
         profileId: matchingProfile?.id,
         priority: 5,
         deadlineHours: 4,
@@ -1198,139 +1227,92 @@ function buildBranchedPipeline(
     }
     return base;
   });
-  return { id, name, satelliteId: sat, mode, steps, edges: edges.map((e) => ({ ...e })), createdAt, updatedAt: createdAt };
+  return {
+    id,
+    name,
+    steps,
+    edges: edges.map((e) => ({ ...e })),
+    createdAt,
+    updatedAt: createdAt,
+  };
 }
 
 function generatePipelines(): PipelineDefinition[] {
-  // 전체 처리 파이프라인 (위성 × 모드)
-  const full = SATELLITE_IDS.flatMap((sat) =>
-    MODES.map((mode) => {
-      const modeSteps = MODE_STEP_VARIANTS[mode] ?? PIPELINE_STEPS;
-      return buildPipelineFromSteps(
-        `PL-${sat}-${mode}`.replace(/\s/g, ''),
-        `${sat} ${mode} Pipeline`,
-        sat, mode, modeSteps,
-      );
-    }),
-  );
-
-  // 부분 재처리 파이프라인 (OPS-06) — FILE_INPUT 시작
-  const partial: PipelineDefinition[] = [
-    buildPipelineFromSteps(
-      'PL-LX1-Partial-L1-Stripmap',
-      'Lumir-X1 L1 입력 재처리 (Stripmap)',
-      'Lumir-X1', 'Stripmap', PARTIAL_L1_STRIPMAP_STEPS, '2026-02-01T09:00:00Z',
-    ),
-    buildPipelineFromSteps(
-      'PL-LX2-Partial-L1-Stripmap',
-      'Lumir-X2 L1 입력 재처리 (Stripmap)',
-      'Lumir-X2', 'Stripmap', PARTIAL_L1_STRIPMAP_STEPS, '2026-02-10T09:00:00Z',
-    ),
-    buildPipelineFromSteps(
-      'PL-LX3-Partial-L1-Stripmap',
-      'Lumir-X3 L1 입력 재처리 (Stripmap)',
-      'Lumir-X3', 'Stripmap', PARTIAL_L1_STRIPMAP_STEPS, '2026-02-10T09:00:00Z',
-    ),
-    buildPipelineFromSteps(
-      'PL-LX1-Partial-L1-ScanSAR',
-      'Lumir-X1 L1 입력 재처리 (ScanSAR)',
-      'Lumir-X1', 'ScanSAR', PARTIAL_L1_SCANSAR_STEPS, '2026-02-15T09:00:00Z',
-    ),
-    buildPipelineFromSteps(
-      'PL-LX1-Partial-L1-Spotlight',
-      'Lumir-X1 L1 입력 재처리 (Spotlight)',
-      'Lumir-X1', 'Spotlight', PARTIAL_L1_SPOTLIGHT_STEPS, '2026-02-15T09:00:00Z',
-    ),
-    buildPipelineFromSteps(
-      'PL-LX1-Partial-L2-Stripmap',
-      'Lumir-X1 L2 입력 재처리 (Stripmap)',
-      'Lumir-X1', 'Stripmap', PARTIAL_L2_STEPS, '2026-03-01T09:00:00Z',
-    ),
-    buildPipelineFromSteps(
-      'PL-LX2-Partial-L2-Stripmap',
-      'Lumir-X2 L2 입력 재처리 (Stripmap)',
-      'Lumir-X2', 'Stripmap', PARTIAL_L2_STEPS, '2026-03-01T09:00:00Z',
-    ),
+  // 운영 환경에서는 위성/모드/편파가 한 종류씩이므로, 의도(처리 목적) 기반으로 파이프라인을
+  // 구성한다. satellite/mode/polarization은 태그로 표현해 다중 매칭은 가능하지만 기본적으로
+  // 하나씩만 부여한다.
+  const active: PipelineDefinition[] = [
+    buildPipelineFromSteps('PL-FULL-SAR-PROCESSING', 'Full SAR Processing', PIPELINE_STEPS, '2026-01-15T09:00:00Z'),
+    buildPipelineFromSteps('PL-PARTIAL-REPROCESS-FROM-L1', 'Partial Reprocess from L1', PARTIAL_L1_STRIPMAP_STEPS, '2026-02-01T09:00:00Z'),
+    buildPipelineFromSteps('PL-PARTIAL-REPROCESS-FROM-L2', 'Partial Reprocess from L2', PARTIAL_L2_STEPS, '2026-03-01T09:00:00Z'),
+    buildBranchedPipeline('PL-MULTI-LEVEL-BRANCHED', 'Multi-level Branched', MULTI_LEVEL_BRANCH_STEPS, MULTI_LEVEL_BRANCH_EDGES, '2026-03-20T09:00:00Z'),
+    buildBranchedPipeline('PL-MULTI-LEVEL-CUSTOM-OUTPUT', 'Multi-level Branched (L3 Only Output)', MULTI_LEVEL_CUSTOM_OUTPUT_STEPS, MULTI_LEVEL_CUSTOM_OUTPUT_EDGES, '2026-03-22T09:00:00Z'),
+    buildBranchedPipeline('PL-DUAL-POL-BRANCHED', 'Dual-Polarization Branched', DUAL_POL_BRANCH_STEPS, DUAL_POL_BRANCH_EDGES, '2026-03-25T09:00:00Z'),
+    buildBranchedPipeline('PL-QUICK-LOOK-BRANCHED', 'Quick-look Branched', QUICK_LOOK_BRANCH_STEPS, QUICK_LOOK_BRANCH_EDGES, '2026-04-15T09:00:00Z'),
   ];
 
-  // 분기형 DAG 파이프라인 (DAG-RATIONALE §5) — fan-out/fan-in, 병렬 처리, 복수 진입점 검증용
-  const branched: PipelineDefinition[] = [
-    buildBranchedPipeline(
-      'PL-LX1-Branched-MultiLevel-Stripmap',
-      'Lumir-X1 다중 레벨 동시 생성 (Stripmap)',
-      'Lumir-X1', 'Stripmap',
-      MULTI_LEVEL_BRANCH_STEPS, MULTI_LEVEL_BRANCH_EDGES,
-      '2026-03-20T09:00:00Z',
-    ),
-    buildBranchedPipeline(
-      'PL-LX1-Branched-MultiLevel-CustomOutput-Stripmap',
-      'Lumir-X1 다중 레벨 커스텀 저장 구성 (L2A/L2B 저장 해제)',
-      'Lumir-X1', 'Stripmap',
-      MULTI_LEVEL_CUSTOM_OUTPUT_STEPS, MULTI_LEVEL_CUSTOM_OUTPUT_EDGES,
-      '2026-03-22T09:00:00Z',
-    ),
-    buildBranchedPipeline(
-      'PL-LX2-Branched-DualPol-Stripmap',
-      'Lumir-X2 편파 병렬 처리 [ICD TBD 가정: 채널별 파일]',
-      'Lumir-X2', 'Stripmap',
-      DUAL_POL_BRANCH_STEPS, DUAL_POL_BRANCH_EDGES,
-      '2026-03-25T09:00:00Z',
-    ),
-    buildBranchedPipeline(
-      'PL-LX3-Branched-QuickLook-Stripmap',
-      'Lumir-X3 Quick-look 조기 분기 (Stripmap)',
-      'Lumir-X3', 'Stripmap',
-      QUICK_LOOK_BRANCH_STEPS, QUICK_LOOK_BRANCH_EDGES,
-      '2026-04-15T09:00:00Z',
-    ),
-  ];
-
-  // 아카이브된 파이프라인 (구버전, 테스트용 등)
   const archived: PipelineDefinition[] = [
-    { ...buildPipelineFromSteps(
-      'PL-LX1-Archive-1', 'Lumir-X1 Stripmap Pipeline (v1 — 폐기)',
-      'Lumir-X1', 'Stripmap', PIPELINE_STEPS, '2025-06-01T09:00:00Z',
-    ), archived: true, archivedAt: '2026-01-12T02:40:00Z', archiveReason: '초기 Stripmap DAG 기준으로 작성되어 현재 운영 라우팅 조건과 맞지 않습니다.' },
-    { ...buildPipelineFromSteps(
-      'PL-LX1-Archive-2', 'Lumir-X1 ScanSAR 테스트 파이프라인',
-      'Lumir-X1', 'ScanSAR', MODE_STEP_VARIANTS['ScanSAR'] ?? PIPELINE_STEPS, '2025-08-15T09:00:00Z',
-    ), archived: true, archivedAt: '2026-02-18T05:15:00Z', archiveReason: '성능 검증용 테스트 파이프라인으로 운영 자동 실행 대상에서 제외했습니다.' },
-    { ...buildPipelineFromSteps(
-      'PL-LX2-Archive-1', 'Lumir-X2 Spotlight 실험 파이프라인',
-      'Lumir-X2', 'Spotlight', MODE_STEP_VARIANTS['Spotlight'] ?? PIPELINE_STEPS, '2025-10-20T09:00:00Z',
-    ), archived: true, archivedAt: '2026-03-07T08:30:00Z', archiveReason: 'Spotlight 처리 프로파일이 신규 프로파일로 대체되어 기존 실험 구성을 폐기했습니다.' },
+    {
+      ...buildPipelineFromSteps('PL-ARCHIVE-FULL-V1', 'Full SAR Processing (v1 — 폐기)', PIPELINE_STEPS, '2025-06-01T09:00:00Z'),
+      archived: true,
+      archivedAt: '2026-01-12T02:40:00Z',
+      archiveReason: '초기 DAG 기준으로 작성되어 현재 운영 라우팅 조건과 맞지 않습니다.',
+    },
+    {
+      ...buildPipelineFromSteps('PL-ARCHIVE-SCANSAR-LEGACY', 'Legacy ScanSAR Pipeline', MODE_STEP_VARIANTS['ScanSAR'] ?? PIPELINE_STEPS, '2025-08-15T09:00:00Z'),
+      archived: true,
+      archivedAt: '2026-02-18T05:15:00Z',
+      archiveReason: '성능 검증용 테스트 파이프라인으로 운영 자동 실행 대상에서 제외했습니다.',
+    },
+    {
+      ...buildPipelineFromSteps('PL-ARCHIVE-SPOTLIGHT-LEGACY', 'Legacy Spotlight Pipeline', MODE_STEP_VARIANTS['Spotlight'] ?? PIPELINE_STEPS, '2025-10-20T09:00:00Z'),
+      archived: true,
+      archivedAt: '2026-03-07T08:30:00Z',
+      archiveReason: 'Spotlight 처리 프로파일이 신규 프로파일로 대체되어 기존 실험 구성을 폐기했습니다.',
+    },
   ];
 
-  return [...full, ...partial, ...branched, ...archived];
+  return [...active, ...archived];
 }
 
 const DEFAULT_DEPLOYED_PIPELINE_IDS = new Set([
-  // RAW_DATA_RECEIVED: 위성/모드/편파 조건별 자동 처리 라우팅 샘플
-  'PL-Lumir-X1-Stripmap',
-  'PL-Lumir-X1-ScanSAR',
-  'PL-Lumir-X1-Spotlight',
-  'PL-Lumir-X2-Stripmap',
-  'PL-Lumir-X2-ScanSAR',
-  'PL-Lumir-X2-Spotlight',
-  'PL-Lumir-X3-Stripmap',
-  'PL-Lumir-X3-ScanSAR',
-  'PL-Lumir-X3-Spotlight',
+  // RAW_DATA_RECEIVED 라우팅: 자동 실행 활성화 샘플
+  'PL-FULL-SAR-PROCESSING',
+  'PL-MULTI-LEVEL-BRANCHED',
+  'PL-QUICK-LOOK-BRANCHED',
 
-  // PRODUCT_REPROCESS_REQUESTED: 입력 레벨/위성/모드별 부분 재처리 라우팅 샘플
-  'PL-LX1-Partial-L1-Stripmap',
-  'PL-LX2-Partial-L1-Stripmap',
-  'PL-LX3-Partial-L1-Stripmap',
-  'PL-LX1-Partial-L1-ScanSAR',
-  'PL-LX1-Partial-L1-Spotlight',
-  'PL-LX1-Partial-L2-Stripmap',
-  'PL-LX2-Partial-L2-Stripmap',
+  // PRODUCT_REPROCESS_REQUESTED 라우팅: 부분 재처리 자동 실행 샘플
+  'PL-PARTIAL-REPROCESS-FROM-L1',
+  'PL-PARTIAL-REPROCESS-FROM-L2',
 ]);
 
-function buildActivationRuleForPipeline(pipeline: PipelineDefinition, active = false): PipelineActivationRule | null {
+/**
+ * 파이프라인의 매칭 태그는 JOB_INIT 스텝에 할당된 처리 프로파일에서 파생된다.
+ * 프로파일이 없거나 프로파일에 태그가 없으면 빈 배열을 반환한다.
+ */
+function getPipelineProfileTags(
+  pipeline: PipelineDefinition,
+  profiles: ProcessingProfile[],
+): { satelliteTags: string[]; modeTags: string[]; polarizationTags: string[] } {
+  const jobInitStep = pipeline.steps.find((s) => s.kind === 'JOB_INIT');
+  const profileId = jobInitStep?.jobInitConfig?.profileId;
+  const profile = profileId ? profiles.find((p) => p.id === profileId) : undefined;
+  return {
+    satelliteTags: profile?.satelliteTags ?? [],
+    modeTags: profile?.modeTags ?? [],
+    polarizationTags: profile?.polarizationTags ?? [],
+  };
+}
+
+function buildActivationRuleForPipeline(
+  pipeline: PipelineDefinition,
+  profiles: ProcessingProfile[],
+  active = false,
+): PipelineActivationRule | null {
   if (pipeline.archived) return null;
   const entry = pipeline.steps[0];
   const isPartial = entry?.kind === 'FILE_INPUT';
-  const pol = MODE_DEFAULT_POLARIZATION[pipeline.mode] ?? 'HH';
+  const tags = getPipelineProfileTags(pipeline, profiles);
 
   return {
     id: `AR-${pipeline.id}`,
@@ -1339,22 +1321,27 @@ function buildActivationRuleForPipeline(pipeline: PipelineDefinition, active = f
     eventType: isPartial ? 'PRODUCT_REPROCESS_REQUESTED' : 'RAW_DATA_RECEIVED',
     sourceQueue: isPartial ? QUEUE_NAME.PROCESSING_EVENTS : QUEUE_NAME.RECEPTION_EVENTS,
     match: {
-      satelliteId: pipeline.satelliteId,
-      mode: pipeline.mode,
-      polarization: isPartial ? undefined : pol,
+      satelliteIds: tags.satelliteTags.length > 0 ? [...tags.satelliteTags] : undefined,
+      modes: tags.modeTags.length > 0 ? [...tags.modeTags] : undefined,
+      polarizations: isPartial
+        ? undefined
+        : (tags.polarizationTags.length > 0 ? [...tags.polarizationTags] : undefined),
       inputLevel: entry?.kind === 'FILE_INPUT' ? entry.inputLevel : undefined,
     },
     triggerSource: isPartial ? 'PARTIAL_REPROCESS' : 'PIPELINE_AUTO',
     deployedAt: active ? pipeline.updatedAt : undefined,
     description: isPartial
       ? '제품/운영 재처리 요청이 들어오면 입력 레벨과 모드에 맞는 부분 재처리 DAG를 기동합니다.'
-      : '데이터 수집 백엔드가 원시 데이터 수신 이벤트를 pgmq에 기록하면 위성·모드·편파 조건으로 매칭됩니다.',
+      : '데이터 수집 백엔드가 원시 데이터 수신 이벤트를 pgmq에 기록하면 처리 프로파일의 태그 조건으로 매칭됩니다.',
   };
 }
 
-function generateActivationRules(pipelines: PipelineDefinition[]): PipelineActivationRule[] {
+function generateActivationRules(
+  pipelines: PipelineDefinition[],
+  profiles: ProcessingProfile[],
+): PipelineActivationRule[] {
   return pipelines
-    .map((pipeline) => buildActivationRuleForPipeline(pipeline, DEFAULT_DEPLOYED_PIPELINE_IDS.has(pipeline.id)))
+    .map((pipeline) => buildActivationRuleForPipeline(pipeline, profiles, DEFAULT_DEPLOYED_PIPELINE_IDS.has(pipeline.id)))
     .filter((rule): rule is PipelineActivationRule => rule !== null);
 }
 
@@ -1450,7 +1437,8 @@ class MockPipelineUIService implements IPipelineUIService {
 
   constructor() {
     this.pipelines = generatePipelines();
-    this.activationRules = generateActivationRules(this.pipelines);
+    this.profiles = [...MOCK_PROCESSING_PROFILES];
+    this.activationRules = generateActivationRules(this.pipelines, this.profiles);
     this.rawData = generateRawData(this.pipelines);
     this.hdf5Files = generateHdf5AttributeFiles(this.rawData);
     this.jobs = generateJobs(50, this.pipelines);
@@ -1458,13 +1446,12 @@ class MockPipelineUIService implements IPipelineUIService {
     this.auditEvents = generateAuditEvents(this.jobs);
     this.queueHealth = generateQueueHealth();
     this.executionLogs = generateExecutionLogs(this.jobs);
-    this.profiles = [...MOCK_PROCESSING_PROFILES];
-    this.products = generateProducts(this.jobs, this.rawData);
+    this.products = generateProducts(this.jobs, this.rawData, this.pipelines);
   }
 
   private upsertActivationRule(pipeline: PipelineDefinition, active?: boolean): PipelineActivationRule | null {
     const current = this.activationRules.find((rule) => rule.pipelineId === pipeline.id);
-    const nextRule = buildActivationRuleForPipeline(pipeline, active ?? current?.active ?? false);
+    const nextRule = buildActivationRuleForPipeline(pipeline, this.profiles, active ?? current?.active ?? false);
     this.activationRules = this.activationRules.filter((rule) => rule.pipelineId !== pipeline.id);
     if (nextRule) this.activationRules.push(nextRule);
     return nextRule;
@@ -1792,15 +1779,13 @@ class MockPipelineUIService implements IPipelineUIService {
     const pl: PipelineDefinition = {
       id,
       name: data.name,
-      satelliteId: data.satelliteId,
-      mode: data.mode,
       steps,
       edges: data.edges ?? edges,
       createdAt: now,
       updatedAt: now,
     };
     this.pipelines.push(pl);
-    const rule = buildActivationRuleForPipeline(pl, false);
+    const rule = buildActivationRuleForPipeline(pl, this.profiles, false);
     if (rule) this.activationRules.push(rule);
     return { success: true, message: '파이프라인이 생성되었습니다', data: { ...pl, steps: [...pl.steps] } };
   }
@@ -1809,8 +1794,6 @@ class MockPipelineUIService implements IPipelineUIService {
     const pl = this.pipelines.find((p) => p.id === id);
     if (!pl) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
     if (data.name !== undefined) pl.name = data.name;
-    if (data.satelliteId !== undefined) pl.satelliteId = data.satelliteId;
-    if (data.mode !== undefined) pl.mode = data.mode;
     if (data.steps !== undefined) {
       pl.steps = data.steps.map((s, i) => ({
         order: i + 1,
@@ -1855,7 +1838,7 @@ class MockPipelineUIService implements IPipelineUIService {
       archived: false,
     };
     this.pipelines.push(dup);
-    const rule = buildActivationRuleForPipeline(dup, false);
+    const rule = buildActivationRuleForPipeline(dup, this.profiles, false);
     if (rule) this.activationRules.push(rule);
     return { success: true, message: '파이프라인이 복제되었습니다', data: { ...dup, steps: [...dup.steps] } };
   }
@@ -1917,8 +1900,8 @@ class MockPipelineUIService implements IPipelineUIService {
       acquisitionStart: now,
       acquisitionEnd: now,
       receivedAt: now,
-      satelliteId: pl.satelliteId,
-      mode: pl.mode,
+      satelliteId: SATELLITE_IDS[0],
+      mode: MODES[0],
       rawDataPath: `/nas/raw/${jobId}/`,
       processingProfile: undefined,
     };
@@ -2001,6 +1984,11 @@ class MockPipelineUIService implements IPipelineUIService {
     const profile = this.profiles.find((p) => p.id === id);
     if (!profile) return { success: false, message: '프로파일을 찾을 수 없습니다' };
     Object.assign(profile, data, { updatedAt: new Date().toISOString() });
+    // 프로파일 태그 변경은 이를 참조하는 파이프라인의 활성화 규칙에 즉시 반영되어야 한다.
+    for (const pipeline of this.pipelines) {
+      const usesProfile = pipeline.steps.some((s) => s.jobInitConfig?.profileId === id);
+      if (usesProfile) this.upsertActivationRule(pipeline);
+    }
     return { success: true, message: '처리 프로파일이 수정되었습니다', data: { ...profile } };
   }
 

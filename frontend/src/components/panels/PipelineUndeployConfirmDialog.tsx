@@ -4,16 +4,12 @@ import { Radio, Unplug, X } from 'lucide-react';
 
 interface PipelineUndeployConfirmDialogProps {
   pipelineName: string;
-  satelliteId?: string;
-  mode?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
 export default function PipelineUndeployConfirmDialog({
   pipelineName,
-  satelliteId,
-  mode,
   onConfirm,
   onCancel,
 }: PipelineUndeployConfirmDialogProps) {
@@ -42,12 +38,6 @@ export default function PipelineUndeployConfirmDialog({
               <span className="text-muted-foreground">이름</span>
               <span className="font-semibold text-foreground text-right">{pipelineName}</span>
             </div>
-            {(satelliteId || mode) && (
-              <div className="flex justify-between text-[11px]">
-                <span className="text-muted-foreground">대상</span>
-                <span className="font-mono text-foreground">{[satelliteId, mode].filter(Boolean).join(' · ')}</span>
-              </div>
-            )}
             <div className="flex justify-between text-[11px]">
               <span className="text-muted-foreground">상태</span>
               <span className="inline-flex items-center gap-1 text-warning">

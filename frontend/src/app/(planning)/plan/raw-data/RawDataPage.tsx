@@ -123,7 +123,6 @@ function PipelineMiniPreview({ pipeline }: { pipeline: PipelineDefinition | null
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="min-w-0 px-3 pt-3">
           <div className="truncate text-sm font-semibold text-foreground">{pipeline.name}</div>
-          <div className="mt-0.5 text-[10px] text-muted-foreground">{pipeline.satelliteId} · {pipeline.mode}</div>
         </div>
         <div className="px-3 pt-3">
           <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-mono text-muted-foreground">
@@ -288,7 +287,7 @@ function RawDataCoverageMap({ rawData }: { rawData: RawDataSummary }) {
 
 function pipelineMatchesSearch(pipeline: PipelineDefinition, keyword: string): boolean {
   if (!keyword) return true;
-  const haystack = [pipeline.name, pipeline.id, pipeline.satelliteId, pipeline.mode].join(' ').toLowerCase();
+  const haystack = [pipeline.name, pipeline.id].join(' ').toLowerCase();
   return haystack.includes(keyword);
 }
 
@@ -323,7 +322,7 @@ function PipelineSearchOption({
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-semibold text-foreground">{pipeline.name}</span>
         <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
-          {pipeline.satelliteId} · {pipeline.mode} · {pipeline.steps.length} steps
+          {pipeline.steps.length} steps
         </span>
       </span>
     </button>
@@ -412,17 +411,11 @@ function PipelineSearchSelect({
               <span className="hidden text-[11px] text-muted-foreground sm:block">-&gt;</span>
               <span className="min-w-0">
                 <span className="block truncate font-semibold text-warning">{selectedPipeline.name}</span>
-                <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
-                  {selectedPipeline.satelliteId} · {selectedPipeline.mode}
-                </span>
               </span>
             </span>
           ) : selectedPipeline ? (
             <>
               <span className="block truncate font-semibold">{selectedPipeline.name}</span>
-              <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
-                {selectedPipeline.satelliteId} · {selectedPipeline.mode}
-              </span>
             </>
           ) : (
             <span className="text-muted-foreground">파이프라인 선택</span>
@@ -562,7 +555,9 @@ function MappingPanel({
   const pathname = usePathname();
   const base = pathname.startsWith('/current') ? '/current' : '/plan';
   const selectablePipelines = pipelines.filter(isRawDataCompatiblePipeline);
-  const recommended = selectablePipelines.filter((pipeline) => pipeline.satelliteId === rawData.satelliteId && pipeline.mode === rawData.mode);
+  // 매칭 태그는 처리 프로파일에서 파생되므로 raw 데이터의 위성/모드별 추천을 정확히 계산하려면
+  // 프로파일 데이터까지 필요하다. 이 화면에서는 프로파일이 없어 단순히 비-부분처리 파이프라인을 추천한다.
+  const recommended = selectablePipelines;
   const activePipeline = selectablePipelines.find((pipeline) => pipeline.id === (selectedPipelineId || rawData.mappedPipelineId)) ?? null;
 
   return (

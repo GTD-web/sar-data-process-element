@@ -1,11 +1,10 @@
 'use client';
 
-import type { PipelineDefinition, PipelineStepDefinition, JobDetail, SarStage, PipelineNodeKind, ProcessingProfileSummary, ProcessingProfile, ProductLevel, TriggerSource } from '@/types/pipeline';
+import type { PipelineStepDefinition, JobDetail, SarStage, PipelineNodeKind, ProcessingProfileSummary, ProcessingProfile, ProductLevel, TriggerSource } from '@/types/pipeline';
 import { TRIGGER_SOURCE_LABELS, MAX_RETRY_COUNT, RETRY_INTERVAL_LABELS, NODE_KIND_INFO } from '@/types/pipeline';
 import NodeEditPanel from './NodeEditPanel';
 import AddStepPanel from './AddStepPanel';
 import JobDetailPanel from './JobDetailPanel';
-import PipelineEditPanel from './PipelineEditPanel';
 import JobInitEditPanel from './JobInitEditPanel';
 import { MousePointer, Antenna, SlidersHorizontal, FileInput, Power } from 'lucide-react';
 import { formatKST } from '@/lib/utils';
@@ -15,7 +14,6 @@ export type ConsoleMode =
   | { type: 'node'; step: PipelineStepDefinition }
   | { type: 'addStep'; afterOrder: number; beforeOrder?: number; asSeparateStart?: boolean }
   | { type: 'job'; job: JobDetail }
-  | { type: 'pipelineProps'; pipeline: PipelineDefinition }
   | { type: 'trigger'; receivedAt: string; rawDataPath: string }
   | { type: 'jobInit'; processingProfile?: ProcessingProfileSummary; jobCreatedAt?: string; priority?: number; triggerSource?: TriggerSource }
   | { type: 'jobInitEdit'; step: PipelineStepDefinition; satelliteId: string; mode: string }
@@ -30,8 +28,6 @@ interface ConsoleTabProps {
   onReprocessJob: () => void;
   onPartialReprocess: (sarStage: SarStage) => void;
   onCancelJob: () => void;
-  onSavePipeline: (data: { name: string; satelliteId: string; mode: string }) => void;
-  pipelineSaving: boolean;
   availableProfiles: ProcessingProfile[];
   onStepClick?: (stepOrder: number, clickY: number) => void;
   activeStepOrder?: number | null;
@@ -45,8 +41,6 @@ export default function ConsoleTab({
   onReprocessJob,
   onPartialReprocess,
   onCancelJob,
-  onSavePipeline,
-  pipelineSaving,
   availableProfiles,
   onStepClick,
   activeStepOrder,
@@ -82,17 +76,6 @@ export default function ConsoleTab({
         onCancel={onCancelJob}
         onStepClick={onStepClick}
         activeStepOrder={activeStepOrder}
-      />
-    );
-  }
-
-  if (mode.type === 'pipelineProps') {
-    return (
-      <PipelineEditPanel
-        key={mode.pipeline.id}
-        pipeline={mode.pipeline}
-        onSave={onSavePipeline}
-        saving={pipelineSaving}
       />
     );
   }

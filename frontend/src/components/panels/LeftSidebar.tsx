@@ -16,7 +16,7 @@ import {
   GitBranch, Plus, PanelLeftClose, PanelLeftOpen,
   Settings, User, Bell, Trash2, ChevronDown, Briefcase,
   LayoutDashboard, Layers, Archive, FileText, Database,
-  Users as UsersIcon, KeyRound, LogOut, Radio, Sun, Moon, Package,
+  Users as UsersIcon, KeyRound, LogOut, Radio, Sun, Moon,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -120,8 +120,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
 
   const navItems: { id: NonNullable<LeftSidebarBaseProps['activePage']>; icon: React.ElementType; label: string; href: string; adminOnly?: boolean }[] = [
     { id: 'home', icon: LayoutDashboard, label: '대시보드', href: base },
-    { id: 'data-catalog', icon: Database, label: '데이터 카탈로그', href: `${base}/data-catalog` },
-    { id: 'products', icon: Package, label: 'Production 목록', href: `${base}/products` },
+    { id: 'data-catalog', icon: Database, label: '데이터', href: `${base}/data-catalog` },
     { id: 'console', icon: GitBranch, label: '파이프라인 관리', href: `${base}/console` },
     { id: 'queues', icon: Layers, label: '시스템 운영 모니터링', href: `${base}/queues` },
     { id: 'alerts', icon: Bell, label: '알림', href: `${base}/alerts` },
@@ -183,11 +182,6 @@ export default function LeftSidebar(props: LeftSidebarProps) {
               </span>
               <span className="text-xs font-bold text-foreground tracking-tight truncate">SDPE DAG</span>
             </a>
-            {isConsole && consolePl && consolePl.canManagePipelines !== false && (
-              <button onClick={consolePl.onCreatePipeline} className="p-1.5 rounded-md hover:bg-muted/50 transition-colors" title="새 파이프라인">
-                <Plus className="w-3.5 h-3.5 text-muted-foreground" />
-              </button>
-            )}
             <button onClick={onToggle} className="p-1.5 rounded-md hover:bg-muted/50 transition-colors" title="사이드바 닫기">
               <PanelLeftClose className="w-3.5 h-3.5 text-muted-foreground" />
             </button>
@@ -278,15 +272,29 @@ export default function LeftSidebar(props: LeftSidebarProps) {
           {/* ── Console mode: 파이프라인 섹션만 ── */}
           {isConsole && consolePl && (
             <div className="border-b border-border">
-              <button
-                onClick={() => setPipelinesOpen((v) => !v)}
-                className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:bg-muted/20 transition-colors"
-              >
-                <ChevronDown className={cn('w-3 h-3 transition-transform', !pipelinesOpen && '-rotate-90')} />
-                <GitBranch className="w-3 h-3" />
-                <span className="flex-1 text-left">파이프라인</span>
-                <span className="text-[9px] font-mono font-normal normal-case">{consolePl.pipelines.length}</span>
-              </button>
+              <div className="w-full flex items-center gap-1.5 px-3 py-2">
+                <button
+                  type="button"
+                  onClick={() => setPipelinesOpen((v) => !v)}
+                  className="flex flex-1 min-w-0 items-center gap-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
+                >
+                  <ChevronDown className={cn('w-3 h-3 transition-transform', !pipelinesOpen && '-rotate-90')} />
+                  <GitBranch className="w-3 h-3" />
+                  <span className="text-left">파이프라인</span>
+                  <span className="text-[9px] font-mono font-normal normal-case">{consolePl.pipelines.length}</span>
+                  <span className="flex-1" />
+                </button>
+                {consolePl.canManagePipelines !== false && (
+                  <button
+                    type="button"
+                    onClick={consolePl.onCreatePipeline}
+                    className="shrink-0 p-1 rounded-md hover:bg-accent/15 hover:text-accent transition-colors text-muted-foreground"
+                    title="새 파이프라인"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
               {pipelinesOpen && (
                 <div className="px-1.5 pb-2">
                   <div className="space-y-0.5">
@@ -313,7 +321,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                           <button
                             onClick={(e) => { e.stopPropagation(); consolePl.onDeletePipeline(pl.id); }}
                             className="flex-shrink-0 p-1 mr-1 rounded opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
-                            title="파이프라인 폐기"
+                            title="파이프라인 삭제"
                           >
                             <Trash2 className="w-3 h-3" />
                           </button>
@@ -462,9 +470,6 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                       <div className="flex items-center gap-1.5">
                         <GitBranch className="w-3 h-3 flex-shrink-0" />
                         <span className="truncate">{pl.name}</span>
-                      </div>
-                      <div className="text-[9px] text-muted-foreground mt-0.5 ml-[18px]">
-                        {pl.satelliteId} · {pl.mode}
                       </div>
                     </button>
                   ))}

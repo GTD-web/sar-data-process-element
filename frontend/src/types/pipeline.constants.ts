@@ -178,6 +178,18 @@ export const QUEUE_NAME = {
 /** EI-01 TBC: 편파 구성 옵션. 위성팀 협의 후 확정 예정. */
 export const POLARIZATION_OPTIONS = ['HH', 'VV', 'HH+HV', 'VV+VH', 'HH+HV+VH+VV'] as const;
 
+/**
+ * 매칭 가능한 위성 식별자.
+ * 처리 프로파일 / 파이프라인 / 자동 실행 규칙이 공통으로 사용한다.
+ */
+export const SATELLITE_OPTIONS = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'] as const;
+
+/**
+ * 매칭 가능한 관측 모드.
+ * 처리 프로파일 / 파이프라인 / 자동 실행 규칙이 공통으로 사용한다.
+ */
+export const MODE_OPTIONS = ['Stripmap', 'ScanSAR', 'Spotlight'] as const;
+
 /** ICD 3.5, 시스템 설계서 2.2: 최대 자동 재시도 횟수 (확정) */
 export const MAX_RETRY_COUNT = 3;
 

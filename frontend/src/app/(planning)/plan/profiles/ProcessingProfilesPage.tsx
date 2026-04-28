@@ -7,7 +7,7 @@ import PipelineManagementTabs from '@/components/panels/PipelineManagementTabs';
 import { toast } from '@/components/ui/Toast';
 import { useMockRole } from '@/components/auth/RolePreviewSelect';
 import type { PipelineDefinition, ProcessingProfile } from '@/types/pipeline';
-import { POLARIZATION_OPTIONS } from '@/types/pipeline';
+import { POLARIZATION_OPTIONS, SATELLITE_OPTIONS, MODE_OPTIONS } from '@/types/pipeline';
 import { cn, formatKST } from '@/lib/utils';
 import {
   Plus, Pencil, Trash2, X, Search, GitBranch, ArrowUp, ArrowDown, ArrowUpDown,
@@ -17,8 +17,6 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-const SATELLITES = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'];
-const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
 const PROCESSING_STAGES = ['L0', 'L1A', 'L1B', 'L1C', 'L2', 'L2A', 'L2B', 'L3'];
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 const PROFILE_TABLE_COLUMNS = [
@@ -40,8 +38,6 @@ function SortIcon({ active, order }: { active: boolean; order: 'asc' | 'desc' })
 interface ReferencingPipelineInfo {
   id: string;
   name: string;
-  satelliteId: string;
-  mode: string;
   archived?: boolean;
 }
 
@@ -60,8 +56,6 @@ function buildProfileReferenceMap(pipelines: PipelineDefinition[]): Record<strin
       map[profileId].push({
         id: pipeline.id,
         name: pipeline.name,
-        satelliteId: pipeline.satelliteId,
-        mode: pipeline.mode,
         archived: pipeline.archived,
       });
     }
@@ -355,8 +349,8 @@ function ProfileFormDialog({ profile, onSave, onCancel }: ProfileFormProps) {
               </div>
             </div>
             <div className="space-y-2.5">
-              <TagPicker label="Satellite" options={SATELLITES} selected={satelliteTags} onChange={setSatelliteTags} />
-              <TagPicker label="Mode" options={MODES} selected={modeTags} onChange={setModeTags} />
+              <TagPicker label="Satellite" options={SATELLITE_OPTIONS} selected={satelliteTags} onChange={setSatelliteTags} />
+              <TagPicker label="Mode" options={MODE_OPTIONS} selected={modeTags} onChange={setModeTags} />
               <TagPicker label="Polarization" options={POLARIZATION_OPTIONS} selected={polarizationTags} onChange={setPolarizationTags} />
             </div>
           </div>
@@ -525,9 +519,6 @@ function ProfileDetailDialog({
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-xs font-medium text-foreground truncate">{pipeline.name}</div>
-                        <div className="mt-0.5 text-[11px] text-muted-foreground">
-                          {pipeline.satelliteId} · {pipeline.mode}
-                        </div>
                       </div>
                       {pipeline.archived && (
                         <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground bg-muted">

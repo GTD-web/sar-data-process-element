@@ -67,8 +67,6 @@ const OPTIONS: StartNodeOption[] = [
 
 interface SelectStartNodeDialogProps {
   pipelineName: string;
-  satelliteId: string;
-  mode: string;
   onConfirm: (selection: StartNodeSelection) => void;
   onBack: () => void;
   onCancel: () => void;
@@ -77,8 +75,6 @@ interface SelectStartNodeDialogProps {
 /** 파이프라인 생성 2단계 — 시작 노드 선택 */
 export default function SelectStartNodeDialog({
   pipelineName,
-  satelliteId,
-  mode,
   onConfirm,
   onBack,
   onCancel,
@@ -112,12 +108,8 @@ export default function SelectStartNodeDialog({
         </div>
 
         {/* Pipeline summary */}
-        <div className="px-4 pt-3 pb-1 flex items-center gap-2 text-[11px] text-muted-foreground">
-          <span className="font-medium text-foreground truncate">{pipelineName}</span>
-          <span className="text-border">·</span>
-          <span>{satelliteId}</span>
-          <span className="text-border">·</span>
-          <span>{mode}</span>
+        <div className="px-4 pt-3 pb-1">
+          <div className="text-[11px] font-medium text-foreground truncate">{pipelineName}</div>
         </div>
 
         {/* Options */}

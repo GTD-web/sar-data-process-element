@@ -6,16 +6,12 @@ import { cn } from '@/lib/utils';
 
 interface PipelineDeleteConfirmDialogProps {
   pipelineName: string;
-  satelliteId: string;
-  mode: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
 export default function PipelineDeleteConfirmDialog({
   pipelineName,
-  satelliteId,
-  mode,
   onConfirm,
   onCancel,
 }: PipelineDeleteConfirmDialogProps) {
@@ -43,14 +39,10 @@ export default function PipelineDeleteConfirmDialog({
             파이프라인 정의와 DAG 구성을 삭제합니다. 운영 목록에서 제거되며 되돌릴 수 없습니다.
           </p>
 
-          <div className="bg-muted/30 rounded-lg px-3 py-2.5 space-y-1">
+          <div className="bg-muted/30 rounded-lg px-3 py-2.5">
             <div className="flex justify-between gap-3 text-[11px]">
               <span className="text-muted-foreground">이름</span>
               <span className="font-semibold text-foreground text-right">{pipelineName}</span>
-            </div>
-            <div className="flex justify-between text-[11px]">
-              <span className="text-muted-foreground">대상</span>
-              <span className="font-mono text-foreground">{satelliteId} · {mode}</span>
             </div>
           </div>
 
