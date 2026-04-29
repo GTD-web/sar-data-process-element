@@ -40,7 +40,7 @@ function ChartTooltip({ active, payload }: { active?: boolean; payload?: { paylo
       <div className="text-muted-foreground mb-1">{d.time}</div>
       <div className="flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-accent" />
-        <span className="text-foreground">Depth(적체량): <span className="font-mono font-bold">{d.depth}</span></span>
+        <span className="text-foreground">Depth: <span className="font-mono font-bold">{d.depth}</span></span>
       </div>
     </div>
   );
@@ -94,10 +94,10 @@ export default function QueueDetailPanel({ queue: q, onClose }: QueueDetailPanel
       <div className="flex-1 min-h-0 flex flex-col">
         {/* Metrics row */}
         <div className="grid grid-cols-4 gap-px bg-border/30 shrink-0">
-          <MetricCell label="Depth(적체량)" value={String(q.depth)} accent={q.depth > 10} />
-          <MetricCell label="Consumers(소비자)" value={String(q.consumers)} />
-          <MetricCell label="Oldest(최장 대기)" value={q.oldestMessageAge > 0 ? formatDuration(q.oldestMessageAge * 1000) : '—'} />
-          <MetricCell label="Dead Letters(실패 메시지)" value={String(q.deadLetters.length)} destructive={q.deadLetters.length > 0} />
+          <MetricCell label="Depth" value={String(q.depth)} accent={q.depth > 10} />
+          <MetricCell label="Consumers" value={String(q.consumers)} />
+          <MetricCell label="Oldest" value={q.oldestMessageAge > 0 ? formatDuration(q.oldestMessageAge * 1000) : '—'} />
+          <MetricCell label="Dead Letters" value={String(q.deadLetters.length)} destructive={q.deadLetters.length > 0} />
         </div>
 
         {/* Chart + Throughput — 2:1 side-by-side */}
@@ -105,7 +105,7 @@ export default function QueueDetailPanel({ queue: q, onClose }: QueueDetailPanel
           {/* Depth Chart (2/3 width) */}
           <div className="col-span-2">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground">Depth(적체량) 추이 (최근 1시간)</span>
+              <span className="text-xs font-medium text-muted-foreground">Depth Trend (Last Hour)</span>
               <TrendBadge data={q.depthHistory} />
             </div>
             <div className="bg-muted/15 rounded-lg p-2">
@@ -149,12 +149,12 @@ export default function QueueDetailPanel({ queue: q, onClose }: QueueDetailPanel
           <div className="col-span-1 flex flex-col">
             <div className="flex items-center gap-1.5 mb-2">
               <TrendingUp className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-xs font-medium text-muted-foreground">처리량 통계</span>
+              <span className="text-xs font-medium text-muted-foreground">Throughput</span>
             </div>
             <div className="flex-1 flex flex-col gap-2">
-              <ThroughputCard value={String(q.throughput.processed1h)} label="최근 1h" />
-              <ThroughputCard value={String(q.throughput.processed24h)} label="최근 24h" />
-              <ThroughputCard value={formatDuration(q.throughput.avgProcessingMs)} label="평균 처리" />
+              <ThroughputCard value={String(q.throughput.processed1h)} label="Last 1h" />
+              <ThroughputCard value={String(q.throughput.processed24h)} label="Last 24h" />
+              <ThroughputCard value={formatDuration(q.throughput.avgProcessingMs)} label="Avg Processing" />
             </div>
           </div>
         </div>
@@ -170,7 +170,7 @@ export default function QueueDetailPanel({ queue: q, onClose }: QueueDetailPanel
             onClick={() => setSection('messages')}
           >
             <Inbox className="w-3.5 h-3.5 inline mr-1.5" />
-            대기 메시지 ({q.messages.length})
+            Pending Messages ({q.messages.length})
           </button>
           <button
             type="button"
@@ -189,16 +189,16 @@ export default function QueueDetailPanel({ queue: q, onClose }: QueueDetailPanel
         {section === 'messages' && (
           <div className="flex-1 min-h-0 overflow-y-auto">
             {sortedMessages.length === 0 ? (
-              <div className="py-8 text-center text-xs text-muted-foreground">대기 중인 메시지가 없습니다</div>
+              <div className="py-8 text-center text-xs text-muted-foreground">No pending messages</div>
             ) : (
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-card z-10">
                   <tr className="border-b border-border/30 text-muted-foreground">
                     <th className="text-left px-4 py-1.5 font-medium">Job ID</th>
-                    <th className="text-left px-2 py-1.5 font-medium">위성</th>
-                    <th className="text-left px-2 py-1.5 font-medium">스테이지</th>
-                    <th className="text-center px-2 py-1.5 font-medium">P (우선순위)</th>
-                    <th className="text-right px-4 py-1.5 font-medium">대기</th>
+                    <th className="text-left px-2 py-1.5 font-medium">Satellite</th>
+                    <th className="text-left px-2 py-1.5 font-medium">Stage</th>
+                    <th className="text-center px-2 py-1.5 font-medium">P (Priority)</th>
+                    <th className="text-right px-4 py-1.5 font-medium">Waiting</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -230,7 +230,7 @@ export default function QueueDetailPanel({ queue: q, onClose }: QueueDetailPanel
         {section === 'deadLetters' && (
           <div className="flex-1 min-h-0 overflow-y-auto">
             {q.deadLetters.length === 0 ? (
-              <div className="py-8 text-center text-xs text-muted-foreground">실패 메시지가 없습니다</div>
+              <div className="py-8 text-center text-xs text-muted-foreground">No failed messages</div>
             ) : (
               <div className="divide-y divide-border/30">
                 {q.deadLetters.map((dl) => (
@@ -239,7 +239,7 @@ export default function QueueDetailPanel({ queue: q, onClose }: QueueDetailPanel
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-mono font-medium text-foreground">{dl.jobId}</span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-destructive/10 text-destructive font-mono">
-                          재시도 {dl.retryCount}회
+                          Retries: {dl.retryCount}
                         </span>
                       </div>
                       <button
@@ -247,7 +247,7 @@ export default function QueueDetailPanel({ queue: q, onClose }: QueueDetailPanel
                         className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
                       >
                         <RotateCcw className="w-3 h-3" />
-                        재시도
+                        Retry
                       </button>
                     </div>
                     <p className="text-xs text-destructive/80 leading-snug break-all">{dl.errorMessage}</p>

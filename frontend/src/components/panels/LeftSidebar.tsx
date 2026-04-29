@@ -38,6 +38,8 @@ interface LeftSidebarConsoleProps extends LeftSidebarBaseProps {
   onCreatePipeline: () => void;
   onDeletePipeline: (id: string) => void;
   canManagePipelines?: boolean;
+  /** 자동 실행이 활성화된(deployed) 파이프라인 ID 집합 */
+  activePipelineIds?: ReadonlySet<string>;
 }
 
 interface LeftSidebarJobsProps extends LeftSidebarBaseProps {
@@ -105,7 +107,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
   const handleLogout = async () => {
     setProfileMenuOpen(false);
     const res = await service.로그아웃한다();
-    if (res.success) toast.success('로그아웃되었습니다');
+    if (res.success) toast.success('Logged out');
     router.push('/login');
   };
 
@@ -122,22 +124,22 @@ export default function LeftSidebar(props: LeftSidebarProps) {
   );
 
   const navItems: { id: NonNullable<LeftSidebarBaseProps['activePage']>; icon: React.ElementType; label: string; href: string; adminOnly?: boolean }[] = [
-    { id: 'home', icon: LayoutDashboard, label: '대시보드', href: base },
-    { id: 'data-catalog', icon: Database, label: '데이터', href: `${base}/data-catalog` },
-    { id: 'console', icon: GitBranch, label: '파이프라인 관리', href: `${base}/console` },
-    { id: 'queues', icon: Layers, label: '시스템 운영 모니터링', href: `${base}/queues` },
-    { id: 'alerts', icon: Bell, label: '알림', href: `${base}/alerts` },
-    { id: 'audit', icon: FileText, label: '감사 로그', href: `${base}/audit`, adminOnly: true },
-    { id: 'users', icon: UsersIcon, label: '사용자 관리', href: `${base}/users`, adminOnly: true },
+    { id: 'home', icon: LayoutDashboard, label: 'Dashboard', href: base },
+    { id: 'data-catalog', icon: Database, label: 'Data', href: `${base}/data-catalog` },
+    { id: 'console', icon: GitBranch, label: 'Pipeline Management', href: `${base}/console` },
+    { id: 'queues', icon: Layers, label: 'System Monitoring', href: `${base}/queues` },
+    { id: 'alerts', icon: Bell, label: 'Alerts', href: `${base}/alerts` },
+    { id: 'audit', icon: FileText, label: 'Audit Log', href: `${base}/audit`, adminOnly: true },
+    { id: 'users', icon: UsersIcon, label: 'User Management', href: `${base}/users`, adminOnly: true },
   ];
   const visibleNavItems = navItems.filter((item) => !item.adminOnly || canSeeUsers);
   const executionActive = activePage === 'deployed' || activePage === 'jobs';
   const jobStatusLabels: Record<JobStatus, string> = {
-    CREATED: '대기',
-    ASSIGNED: '실행 중',
-    COMPLETED: '완료',
-    FAILED: '실패',
-    CANCELED: '취소',
+    CREATED: 'Pending',
+    ASSIGNED: 'Running',
+    COMPLETED: 'Completed',
+    FAILED: 'Failed',
+    CANCELED: 'Canceled',
   };
   const jobStatuses = Object.keys(jobStatusLabels) as JobStatus[];
 
@@ -166,7 +168,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                 priority
               />
             </a>
-            <button onClick={onToggle} className="p-1 rounded-md hover:bg-muted/50 transition-colors" title="사이드바 열기">
+            <button onClick={onToggle} className="p-1 rounded-md hover:bg-muted/50 transition-colors" title="Open sidebar">
               <PanelLeftOpen className="w-3.5 h-3.5 text-muted-foreground" />
             </button>
           </div>
@@ -185,7 +187,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
               </span>
               <span className="text-xs font-bold text-foreground tracking-tight truncate">SDPE DAG</span>
             </a>
-            <button onClick={onToggle} className="p-1.5 rounded-md hover:bg-muted/50 transition-colors" title="사이드바 닫기">
+            <button onClick={onToggle} className="p-1.5 rounded-md hover:bg-muted/50 transition-colors" title="Close sidebar">
               <PanelLeftClose className="w-3.5 h-3.5 text-muted-foreground" />
             </button>
           </>
@@ -215,7 +217,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                       'p-2 rounded-md transition-colors',
                       executionActive ? 'bg-accent/10 text-accent' : 'hover:bg-muted/50 text-muted-foreground',
                     )}
-                    title="파이프라인 실행 관리"
+                    title="Pipeline Execution"
                   >
                     <Radio className="w-4 h-4" />
                   </a>
@@ -227,8 +229,8 @@ export default function LeftSidebar(props: LeftSidebarProps) {
             type="button"
             onClick={toggleTheme}
             className="p-2 rounded-md text-muted-foreground hover:bg-muted/50 transition-colors"
-            title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
-            aria-label="테마 전환"
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-label="Toggle theme"
           >
             {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
@@ -264,7 +266,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                       )}
                     >
                       <Radio className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span className="leading-4 break-words">파이프라인 실행 관리</span>
+                      <span className="leading-4 break-words">Pipeline Execution</span>
                     </a>
                   </div>
                 )}
@@ -283,7 +285,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                 >
                   <ChevronDown className={cn('w-3 h-3 transition-transform', !pipelinesOpen && '-rotate-90')} />
                   <GitBranch className="w-3 h-3" />
-                  <span className="text-left">파이프라인</span>
+                  <span className="text-left">Pipelines</span>
                   <span className="text-[9px] font-mono font-normal normal-case">{consolePl.pipelines.length}</span>
                   <span className="flex-1" />
                 </button>
@@ -292,7 +294,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                     type="button"
                     onClick={consolePl.onCreatePipeline}
                     className="shrink-0 p-1 rounded-md hover:bg-accent/15 hover:text-accent transition-colors text-muted-foreground"
-                    title="새 파이프라인"
+                    title="New pipeline"
                   >
                     <Plus className="w-3.5 h-3.5" />
                   </button>
@@ -301,7 +303,9 @@ export default function LeftSidebar(props: LeftSidebarProps) {
               {pipelinesOpen && (
                 <div className="px-1.5 pb-2">
                   <div className="space-y-0.5">
-                    {consolePl.pipelines.map((pl) => (
+                    {consolePl.pipelines.map((pl) => {
+                      const isActive = consolePl.activePipelineIds?.has(pl.id) ?? false;
+                      return (
                       <div
                         key={pl.id}
                         className={cn(
@@ -314,23 +318,37 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                         <button
                           onClick={() => consolePl.onSelectPipeline(pl.id)}
                           className="flex-1 min-w-0 text-left px-2 py-1.5"
+                          title={isActive ? `${pl.name} · Active` : `${pl.name} · Inactive`}
                         >
                           <div className="flex items-center gap-1.5">
                             <GitBranch className="w-3 h-3 flex-shrink-0" />
-                            <span className="truncate">{pl.name}</span>
+                            <span className="truncate flex-1">{pl.name}</span>
+                            <span
+                              className={cn(
+                                'flex-shrink-0 inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wider',
+                                isActive
+                                  ? 'bg-success/10 text-success'
+                                  : 'bg-muted/40 text-muted-foreground/70',
+                              )}
+                              aria-label={isActive ? 'Active pipeline' : 'Inactive pipeline'}
+                            >
+                              <Radio className="w-2.5 h-2.5" />
+                              {isActive ? 'On' : 'Off'}
+                            </span>
                           </div>
                         </button>
                         {consolePl.canManagePipelines !== false && (
                           <button
                             onClick={(e) => { e.stopPropagation(); consolePl.onDeletePipeline(pl.id); }}
                             className="flex-shrink-0 p-1 mr-1 rounded opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
-                            title="파이프라인 삭제"
+                            title="Delete pipeline"
                           >
                             <Trash2 className="w-3 h-3" />
                           </button>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -372,9 +390,9 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                       value={jobsPl.statusFilter ?? ''}
                       onChange={(e) => jobsPl.onStatusFilterChange?.(e.target.value as JobStatus | '')}
                       className="w-full min-w-0 bg-background border border-border rounded-md px-1.5 py-1.5 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-                      aria-label="Job 상태 필터"
+                      aria-label="Job status filter"
                     >
-                      <option value="">전체 상태</option>
+                      <option value="">All statuses</option>
                       {jobStatuses.map((status) => (
                         <option key={status} value={status}>
                           {jobStatusLabels[status]} ({status})
@@ -385,17 +403,17 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                       value={jobsPl.pageSize ?? 20}
                       onChange={(e) => jobsPl.onPageSizeChange?.(Number(e.target.value))}
                       className="w-full min-w-0 bg-background border border-border rounded-md px-1.5 py-1.5 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-                      aria-label="Job 페이지 크기"
+                      aria-label="Job page size"
                     >
                       {(jobsPl.pageSizeOptions ?? [10, 20, 50]).map((size) => (
-                        <option key={size} value={size}>{size}개씩 보기</option>
+                        <option key={size} value={size}>{size} per page</option>
                       ))}
                     </select>
                     </div>
                   </div>
                   <div className="flex-1 min-h-0 overflow-y-auto pb-1">
                   {jobsPl.jobs.length === 0 ? (
-                    <div className="px-3 py-3 text-[10px] text-muted-foreground/60 text-center">실행 기록 없음</div>
+                    <div className="px-3 py-3 text-[10px] text-muted-foreground/60 text-center">No execution history</div>
                   ) : (
                     <div className="space-y-0.5 px-1.5">
                       {jobsPl.jobs.map((job) => (
@@ -411,7 +429,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                         >
                           <div className="flex items-center justify-between gap-1">
                             <span className="text-[10px] font-semibold truncate text-foreground">
-                              {pipelineNameById.get(job.pipelineId) ?? '파이프라인 미확인'}
+                              {pipelineNameById.get(job.pipelineId) ?? 'Unknown pipeline'}
                             </span>
                             <JobStatusBadge status={job.status} retryCount={job.retryCount} />
                           </div>
@@ -441,7 +459,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                         onClick={() => jobsPl.onPageChange?.(Math.max(1, (jobsPl.page ?? 1) - 1))}
                         className="px-2 py-1 rounded-md border border-border text-[10px] text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
                       >
-                        이전
+                        Prev
                       </button>
                       <button
                         type="button"
@@ -449,7 +467,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                         onClick={() => jobsPl.onPageChange?.(Math.min(jobsPl.totalPages ?? 1, (jobsPl.page ?? 1) + 1))}
                         className="px-2 py-1 rounded-md border border-border text-[10px] text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
                       >
-                        다음
+                        Next
                       </button>
                     </div>
                   </div>
@@ -467,7 +485,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
               >
                 <ChevronDown className={cn('w-3 h-3 transition-transform', !navArchiveOpen && '-rotate-90')} />
                 <Archive className="w-3 h-3" />
-                <span className="flex-1 text-left">아카이브</span>
+                <span className="flex-1 text-left">Archive</span>
                 <span className="font-mono font-normal normal-case">{navProps.archivePipelines.length}</span>
               </button>
               {navArchiveOpen && (
@@ -501,7 +519,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
         <div className="border-t border-border px-2 py-2 space-y-1.5">
           <div className="rounded-md border border-border bg-background/35 px-2 py-2">
             <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-              권한 미리보기
+              Role preview
             </div>
             <RolePreviewSelect role={mockRole} onChange={setMockRole} />
           </div>
@@ -516,7 +534,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
             )}
           >
             <Settings className="w-3 h-3 flex-shrink-0" />
-            <span className="truncate">설정</span>
+            <span className="truncate">Settings</span>
           </button>
           <div className="relative" ref={profileRef}>
             <button
@@ -545,7 +563,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                   className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-foreground hover:bg-muted/30 transition-colors"
                 >
                   <KeyRound className="w-3 h-3 text-muted-foreground" />
-                  <span>비밀번호 변경</span>
+                  <span>Change password</span>
                 </button>
                 <button
                   type="button"
@@ -553,7 +571,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                   className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-destructive hover:bg-destructive/10 transition-colors"
                 >
                   <LogOut className="w-3 h-3" />
-                  <span>로그아웃</span>
+                  <span>Logout</span>
                 </button>
               </div>
             )}
@@ -564,18 +582,18 @@ export default function LeftSidebar(props: LeftSidebarProps) {
               type="button"
               onClick={toggleTheme}
               className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] text-muted-foreground hover:bg-muted/30 hover:text-foreground transition-colors"
-              title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
-              aria-label="테마 전환"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label="Toggle theme"
             >
               {theme === 'dark' ? (
                 <>
                   <Sun className="w-3 h-3" />
-                  <span>라이트</span>
+                  <span>Light</span>
                 </>
               ) : (
                 <>
                   <Moon className="w-3 h-3" />
-                  <span>다크</span>
+                  <span>Dark</span>
                 </>
               )}
             </button>

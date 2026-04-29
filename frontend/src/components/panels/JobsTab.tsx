@@ -15,7 +15,7 @@ interface JobsTabProps {
 }
 
 const STATUS_FILTERS: { label: string; value: JobStatus | '' }[] = [
-  { label: '전체', value: '' },
+  { label: 'All', value: '' },
   { label: 'Running', value: 'ASSIGNED' },
   { label: 'Failed', value: 'FAILED' },
   { label: 'Done', value: 'COMPLETED' },
@@ -46,14 +46,14 @@ export default function JobsTab({ jobs, selectedJobId, onSelectJob }: JobsTabPro
               {f.label}
             </button>
           ))}
-          <span className="text-[10px] text-muted-foreground ml-auto">{filtered.length}건</span>
+          <span className="text-[10px] text-muted-foreground ml-auto">{filtered.length}</span>
         </div>
         <div className="relative">
           <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Job ID / Scene ID 검색..."
+            placeholder="Search Job ID / Scene ID..."
             className="w-full pl-7 pr-3 py-1.5 text-[11px] bg-muted/50 border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
           />
         </div>

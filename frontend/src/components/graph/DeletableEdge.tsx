@@ -147,14 +147,14 @@ export function DeletableEdge({
             <button
               onClick={handleInsert}
               style={{ ...btnBase, background: t.surfaceRaised, color: t.textSecondary }}
-              title="노드 추가"
+              title="Add node"
             >
               <Plus size={14} strokeWidth={2.5} />
             </button>
             <button
               onClick={handleDelete}
               style={{ ...btnBase, background: t.surfaceRaised, color: t.textSecondary }}
-              title="연결 삭제"
+              title="Remove connection"
             >
               <Trash2 size={14} strokeWidth={2.5} />
             </button>

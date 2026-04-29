@@ -40,7 +40,7 @@ export default function FileInputConfigDialog({
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <FileInput className="w-4 h-4 text-accent" />
-            <h2 className="text-sm font-semibold text-foreground">결과 입력 설정</h2>
+            <h2 className="text-sm font-semibold text-foreground">Result Input Settings</h2>
             <span className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full">
               {PRODUCT_LEVEL_LABELS[inputLevel]} · SI-07
             </span>
@@ -53,16 +53,16 @@ export default function FileInputConfigDialog({
         {/* Body */}
         <div className="p-4 space-y-4">
           <p className="text-xs text-muted-foreground">
-            파이프라인에 입력할 기존 처리 결과 파일을 지정합니다. 지정된 파일부터 이후 처리 단계가 시작됩니다.
+            Specify the existing processing result file to feed into the pipeline. Subsequent processing stages will begin from the specified file.
           </p>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">씬 식별자 (Scene ID)</label>
+            <label className="text-xs font-medium text-foreground">Scene Identifier (Scene ID)</label>
             <input
               type="text"
               value={sceneId}
               onChange={(e) => setSceneId(e.target.value)}
-              placeholder="예: SCENE-LX1-20260101-001"
+              placeholder="e.g. SCENE-LX1-20260101-001"
               autoFocus
               className={cn(
                 'w-full bg-muted border rounded-md px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1',
@@ -72,12 +72,12 @@ export default function FileInputConfigDialog({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">입력 파일 경로</label>
+            <label className="text-xs font-medium text-foreground">Input File Path</label>
             <input
               type="text"
               value={inputFilePath}
               onChange={(e) => setInputFilePath(e.target.value)}
-              placeholder="예: /data/processed/l1/SCENE-LX1-20260101-001.h5"
+              placeholder="e.g. /data/processed/l1/SCENE-LX1-20260101-001.h5"
               className={cn(
                 'w-full bg-muted border rounded-md px-3 py-1.5 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1',
                 inputFilePath.trim() ? 'border-accent/40 focus:ring-accent/50' : 'border-border focus:ring-accent/50',
@@ -92,7 +92,7 @@ export default function FileInputConfigDialog({
             onClick={onCancel}
             className="flex-1 py-1.5 rounded-md border border-border text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
           >
-            취소
+            Cancel
           </button>
           <button
             onClick={handleConfirm}
@@ -104,7 +104,7 @@ export default function FileInputConfigDialog({
                 : 'bg-muted text-muted-foreground cursor-not-allowed',
             )}
           >
-            적용
+            Apply
           </button>
         </div>
       </div>

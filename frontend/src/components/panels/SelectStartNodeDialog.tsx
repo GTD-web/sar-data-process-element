@@ -31,11 +31,11 @@ const OPTIONS: StartNodeOption[] = [
     iconColor: 'text-emerald-400',
     borderActive: 'border-emerald-500/70',
     bgActive: 'bg-emerald-500/8',
-    badgeText: '전체 처리',
+    badgeText: 'Full Processing',
     badgeColor: 'bg-emerald-500/20 text-emerald-400',
-    label: '원시 데이터 수신 트리거',
+    label: 'Raw Data Reception Trigger',
     sublabel: 'EI-01',
-    description: '위성 수신국에서 전달된 원시 데이터부터 L0 → L1 → L2 → L3 전 구간을 처리합니다.',
+    description: 'Processes the entire L0 → L1 → L2 → L3 pipeline starting from raw data delivered by the ground station.',
   },
   {
     kind: 'FILE_INPUT',
@@ -44,11 +44,11 @@ const OPTIONS: StartNodeOption[] = [
     iconColor: 'text-amber-400',
     borderActive: 'border-amber-500/70',
     bgActive: 'bg-amber-500/8',
-    badgeText: '부분 재처리',
+    badgeText: 'Partial Reprocessing',
     badgeColor: 'bg-amber-500/20 text-amber-400',
-    label: 'L1 결과 입력',
+    label: 'L1 Result Input',
     sublabel: 'SI-07',
-    description: '기존 L1 처리 결과 파일을 입력으로 받아 L2 → L3 구간만 재처리합니다.',
+    description: 'Takes existing L1 processing result files as input and reprocesses only the L2 → L3 segment.',
   },
   {
     kind: 'FILE_INPUT',
@@ -57,11 +57,11 @@ const OPTIONS: StartNodeOption[] = [
     iconColor: 'text-sky-400',
     borderActive: 'border-sky-500/70',
     bgActive: 'bg-sky-500/8',
-    badgeText: '부분 재처리',
+    badgeText: 'Partial Reprocessing',
     badgeColor: 'bg-sky-500/20 text-sky-400',
-    label: 'L2 결과 입력',
+    label: 'L2 Result Input',
     sublabel: 'SI-07',
-    description: '기존 L2 처리 결과 파일을 입력으로 받아 L3 구간만 재처리합니다.',
+    description: 'Takes existing L2 processing result files as input and reprocesses only the L3 segment.',
   },
 ];
 
@@ -96,11 +96,11 @@ export default function SelectStartNodeDialog({
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <GitBranch className="w-4 h-4 text-accent" />
-            <h2 className="text-sm font-semibold text-foreground">시작 노드 선택</h2>
+            <h2 className="text-sm font-semibold text-foreground">Select Start Node</h2>
             <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">2 / 2</span>
           </div>
           <button onClick={onCancel} className="p-1 rounded-md hover:bg-muted/50 transition-colors">
-            <span className="sr-only">닫기</span>
+            <span className="sr-only">Close</span>
             <svg className="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -171,14 +171,14 @@ export default function SelectStartNodeDialog({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            뒤로
+            Back
           </button>
           <button
             onClick={handleConfirm}
             className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 transition-colors"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            파이프라인 생성
+            Create Pipeline
           </button>
         </div>
       </div>

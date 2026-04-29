@@ -23,10 +23,10 @@ const EVENT_COLORS: Record<AuditEventType, string> = {
 };
 
 const COLUMNS: { id: keyof AuditEvent; label: string }[] = [
-  { id: 'timestamp', label: '시각' },
-  { id: 'eventType', label: '이벤트' },
+  { id: 'timestamp', label: 'Time' },
+  { id: 'eventType', label: 'Event' },
   { id: 'jobId', label: 'Job' },
-  { id: 'detail', label: '상세' },
+  { id: 'detail', label: 'Detail' },
 ];
 
 interface AuditTabProps {

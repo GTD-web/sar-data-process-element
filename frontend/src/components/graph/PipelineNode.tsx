@@ -145,7 +145,7 @@ const NodeWarningHint = memo(function NodeWarningHint({ text }: { text: string }
       <button
         type="button"
         className="rounded p-0.5 text-amber-500 hover:bg-amber-500/15 cursor-help outline-none focus-visible:ring-1 focus-visible:ring-amber-500/50"
-        aria-label="설정 경고"
+        aria-label="Configuration warning"
         aria-expanded={open}
       >
         <AlertTriangle className="w-3.5 h-3.5" strokeWidth={2.25} />
@@ -203,7 +203,7 @@ const NodeHoverToolbar = memo(function NodeHoverToolbar({
       <button
         type="button"
         className={btnClass}
-        title="노드 실행 (상세 보기)"
+        title="Run node (view details)"
         onClick={(e) => { e.stopPropagation(); onExecute?.(); }}
       >
         <Play className="w-3.5 h-3.5" fill="currentColor" strokeWidth={0} />
@@ -212,7 +212,7 @@ const NodeHoverToolbar = memo(function NodeHoverToolbar({
         <button
           type="button"
           className={cn(btnClass, 'hover:text-amber-400')}
-          title="이 단계부터 재처리"
+          title="Reprocess from this stage"
           onClick={(e) => { e.stopPropagation(); onReprocess(); }}
         >
           <RotateCcw className="w-3.5 h-3.5" />
@@ -222,7 +222,7 @@ const NodeHoverToolbar = memo(function NodeHoverToolbar({
         <button
           type="button"
           className={cn(btnClass, !isEnabled && 'text-muted-foreground')}
-          title={isEnabled ? '비활성화 (바이패스)' : '활성화'}
+          title={isEnabled ? 'Disable (bypass)' : 'Enable'}
           onClick={(e) => { e.stopPropagation(); onToggle?.(); }}
         >
           <Power className="w-3.5 h-3.5" />
@@ -232,7 +232,7 @@ const NodeHoverToolbar = memo(function NodeHoverToolbar({
         <button
           type="button"
           className={cn(btnClass, 'hover:text-destructive')}
-          title="노드 삭제"
+          title="Delete node"
           onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
         >
           <Trash2 className="w-3.5 h-3.5" />
@@ -300,26 +300,26 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
   let label: string;
   let subLabel: string;
   if (isTrigger) {
-    label = '원시 데이터 수신 트리거';
+    label = 'Raw data received trigger';
     subLabel = 'EI-01 · RAW_DATA_RECEIVED';
   } else if (isFileInput) {
     const levelStr = inputLevel === 'LEVEL_0' ? 'L0' : inputLevel === 'LEVEL_1' ? 'L1' : inputLevel === 'LEVEL_2' ? 'L2' : 'L?';
-    label = `${levelStr} 결과 입력`;
-    subLabel = 'SI-07 · 부분 재처리';
+    label = `${levelStr} result input`;
+    subLabel = 'SI-07 · Partial reprocessing';
   } else if (isJobInit) {
-    label = '작업 초기화';
-    subLabel = 'CSU-08.02 · 프로파일 선택';
+    label = 'Job initialization';
+    subLabel = 'CSU-08.02 · Profile selection';
   } else if (isCatalog) {
-    label = '카탈로그 등록';
-    subLabel = 'CSC-07 · 등록';
+    label = 'Catalog registration';
+    subLabel = 'CSC-07 · Register';
   } else if (isThumbnail) {
-    label = 'Quick-look 생성';
-    subLabel = 'CSU-07.06 · 조기 미리보기';
+    label = 'Quick-look generation';
+    subLabel = 'CSU-07.06 · Early preview';
   } else if (isSAR && sarStage) {
     label = SAR_STAGE_LABELS[sarStage];
     subLabel = `${sarStage} · ${PRODUCT_LEVEL_LABELS[SAR_STAGE_TO_LEVEL[sarStage]]}`;
   } else {
-    label = '알 수 없음';
+    label = 'Unknown';
     subLabel = '—';
   }
 
@@ -367,10 +367,10 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
               'node-trigger-btn flex items-center gap-2 pl-2.5 pr-3.5 py-2 rounded-lg text-[11px] font-semibold shadow-lg whitespace-nowrap',
               'bg-accent text-accent-foreground cursor-pointer hover:brightness-110 active:brightness-95',
             )}
-            title="파이프라인을 실행합니다 (설정 경고는 작업 초기화 노드에서 확인)"
+            title="Run the pipeline (check job initialization node for configuration warnings)"
           >
             <FlaskConical className="w-3.5 h-3.5" />
-            파이프라인 실행
+            Run pipeline
           </button>
         </div>
       )}
@@ -485,7 +485,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
           <div className={cn('text-[11px] font-semibold leading-tight', !isEnabled || status === 'CANCELED' || (isJobMode && status === 'PENDING') ? 'text-muted-foreground/50' : 'text-foreground')}>{label}</div>
           <div className="text-[10px] text-muted-foreground">{subLabel}</div>
           {!isEnabled && (
-            <div className="text-[9px] font-semibold text-muted-foreground/50 mt-0.5 tracking-wide uppercase">바이패스</div>
+            <div className="text-[9px] font-semibold text-muted-foreground/50 mt-0.5 tracking-wide uppercase">Bypassed</div>
           )}
           {taskCount > 0 && isEnabled && (
             <div className={`text-[9px] ${hasPartialTasks ? 'text-accent font-semibold' : 'text-muted-foreground/60'}`}>

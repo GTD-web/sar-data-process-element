@@ -33,7 +33,7 @@ const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
   ssr: false,
   loading: () => (
     <div className="mt-3 flex h-52 items-center justify-center rounded-xl border border-border bg-background/50 text-sm text-muted-foreground">
-      파이프라인 미리보기 불러오는 중...
+      Loading pipeline preview...
     </div>
   ),
 });
@@ -57,10 +57,10 @@ function RawDataStatusBadge({ status }: { status: RawDataStatus }) {
     HOLD: 'bg-destructive/15 text-destructive',
   }[status];
   const label = {
-    RECEIVED: '수신됨',
-    MAPPED: '매핑됨',
-    READY: '준비 완료',
-    HOLD: '보류',
+    RECEIVED: 'Received',
+    MAPPED: 'Mapped',
+    READY: 'Ready',
+    HOLD: 'On Hold',
   }[status];
 
   return <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold', tone)}>{label}</span>;
@@ -96,7 +96,7 @@ function PipelineMiniPreview({ pipeline }: { pipeline: PipelineDefinition | null
   if (!pipeline) {
     return (
       <div className="mt-3 rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
-        미리볼 파이프라인을 선택하면 여기서 처리 흐름을 확인할 수 있습니다.
+        Select a pipeline to preview its processing flow here.
       </div>
     );
   }
@@ -140,7 +140,7 @@ function PipelineMiniPreview({ pipeline }: { pipeline: PipelineDefinition | null
       </div>
       <div className="border-t border-border bg-card px-3 py-2">
         <div className="text-[10px] text-muted-foreground">
-          현재 선택된 파이프라인의 처리 흐름 미리보기입니다.
+          Preview of the processing flow for the selected pipeline.
         </div>
       </div>
     </div>
@@ -383,12 +383,12 @@ function PipelineSearchSelect({
       >
         <span className="min-w-0 flex-1">
           <span className="mb-1 flex items-center gap-1.5">
-            <span className="text-[10px] font-medium text-muted-foreground">파이프라인 연결</span>
+            <span className="text-[10px] font-medium text-muted-foreground">Pipeline Mapping</span>
             {connectionState === 'pending' ? (
               <>
-                <span className="rounded-full bg-accent/15 px-1.5 py-px text-[9px] font-semibold text-accent">현재 적용</span>
+                <span className="rounded-full bg-accent/15 px-1.5 py-px text-[9px] font-semibold text-accent">Current</span>
                 <span className="text-[10px] text-muted-foreground">-&gt;</span>
-                <span className="rounded-full bg-warning/15 px-1.5 py-px text-[9px] font-semibold text-warning">변경 예정</span>
+                <span className="rounded-full bg-warning/15 px-1.5 py-px text-[9px] font-semibold text-warning">Pending</span>
               </>
             ) : (
               <span
@@ -398,7 +398,7 @@ function PipelineSearchSelect({
                   connectionState === 'empty' && 'bg-muted text-muted-foreground',
                 )}
               >
-                {connectionState === 'current' ? '현재 적용' : '미지정'}
+                {connectionState === 'current' ? 'Current' : 'Unassigned'}
               </span>
             )}
           </span>
@@ -406,7 +406,7 @@ function PipelineSearchSelect({
             <span className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
               <span className="min-w-0">
                 <span className="block truncate text-[11px] font-semibold text-accent">{currentPipelineName}</span>
-                <span className="mt-0.5 block text-[9px] text-muted-foreground">현재 적용</span>
+                <span className="mt-0.5 block text-[9px] text-muted-foreground">Current</span>
               </span>
               <span className="hidden text-[11px] text-muted-foreground sm:block">-&gt;</span>
               <span className="min-w-0">
@@ -418,11 +418,11 @@ function PipelineSearchSelect({
               <span className="block truncate font-semibold">{selectedPipeline.name}</span>
             </>
           ) : (
-            <span className="text-muted-foreground">파이프라인 선택</span>
+            <span className="text-muted-foreground">Select a pipeline</span>
           )}
           {showCurrentConnection && (
             <span className="mt-1 block truncate text-[10px] text-muted-foreground">
-              현재 적용: <span className="font-semibold text-accent">{currentPipelineName}</span>
+              Current: <span className="font-semibold text-accent">{currentPipelineName}</span>
             </span>
           )}
         </span>
@@ -438,7 +438,7 @@ function PipelineSearchSelect({
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-8 text-xs text-foreground outline-none focus:border-accent"
-                placeholder="이름, 위성, 모드 검색"
+                placeholder="Search by name, satellite, mode"
                 autoFocus
               />
               {query && (
@@ -446,7 +446,7 @@ function PipelineSearchSelect({
                   type="button"
                   onClick={() => setQuery('')}
                   className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
-                  aria-label="검색어 지우기"
+                  aria-label="Clear search"
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -460,12 +460,12 @@ function PipelineSearchSelect({
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/35 hover:text-foreground"
             >
               <span className="h-4 w-4 rounded-full border border-border" />
-              파이프라인 선택 해제
+              Clear pipeline selection
             </button>
 
             {filteredRecommended.length > 0 && (
               <div className="border-t border-border/70 pt-1">
-                <div className="px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-accent">추천</div>
+                <div className="px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-accent">Recommended</div>
                 {filteredRecommended.map((pipeline) => (
                   <PipelineSearchOption
                     key={pipeline.id}
@@ -479,7 +479,7 @@ function PipelineSearchSelect({
 
             {filteredPipelines.length > 0 && (
               <div className="border-t border-border/70 pt-1">
-                <div className="px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">전체</div>
+                <div className="px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">All</div>
                 {filteredPipelines.map((pipeline) => (
                   <PipelineSearchOption
                     key={pipeline.id}
@@ -492,7 +492,7 @@ function PipelineSearchSelect({
             )}
 
             {!hasResults && (
-              <div className="px-3 py-5 text-center text-xs text-muted-foreground">검색 결과가 없습니다</div>
+              <div className="px-3 py-5 text-center text-xs text-muted-foreground">No results</div>
             )}
           </div>
         </div>
@@ -514,14 +514,14 @@ function ConfirmClearDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55">
       <div className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-2xl">
-        <h3 className="text-sm font-semibold text-foreground">파이프라인 연결 해제</h3>
-        <p className="mt-2 text-sm text-muted-foreground">정말 해제하시겠습니까?</p>
+        <h3 className="text-sm font-semibold text-foreground">Unmap Pipeline</h3>
+        <p className="mt-2 text-sm text-muted-foreground">Are you sure you want to unmap this pipeline?</p>
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" onClick={onCancel} className="rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/30">
-            취소
+            Cancel
           </button>
           <button type="button" onClick={onConfirm} className="rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-white transition-colors hover:brightness-110">
-            해제
+            Unmap
           </button>
         </div>
       </div>
@@ -577,14 +577,14 @@ function MappingPanel({
 
       <div className="flex-1 overflow-y-auto p-4">
         <div className="grid grid-cols-2 gap-2">
-          <DetailStat label="위성" value={rawData.satelliteId} />
-          <DetailStat label="모드" value={rawData.mode} />
-          <DetailStat label="편파" value={rawData.polarization} />
-          <DetailStat label="상태" value={<RawDataStatusBadge status={rawData.status} />} />
-          <DetailStat label="촬영 시각" value={formatKST(rawData.capturedAt)} />
-          <DetailStat label="수신 시각" value={formatKST(rawData.receivedAt)} />
-          <DetailStat label="좌표" value={`${rawData.latitude.toFixed(4)}, ${rawData.longitude.toFixed(4)}`} />
-          <DetailStat label="원시 파일 크기" value={formatFileSize(rawData.fileSizeBytes)} />
+          <DetailStat label="Satellite" value={rawData.satelliteId} />
+          <DetailStat label="Mode" value={rawData.mode} />
+          <DetailStat label="Polarization" value={rawData.polarization} />
+          <DetailStat label="Status" value={<RawDataStatusBadge status={rawData.status} />} />
+          <DetailStat label="Captured At" value={formatKST(rawData.capturedAt)} />
+          <DetailStat label="Received At" value={formatKST(rawData.receivedAt)} />
+          <DetailStat label="Coordinates" value={`${rawData.latitude.toFixed(4)}, ${rawData.longitude.toFixed(4)}`} />
+          <DetailStat label="Raw File Size" value={formatFileSize(rawData.fileSizeBytes)} />
         </div>
 
         <section className="mt-5 rounded-xl border border-border bg-background/50 p-4">
@@ -635,7 +635,7 @@ function MappingPanel({
               : 'bg-accent text-background hover:bg-accent/90',
           )}
         >
-          {saving ? '저장 중...' : '파이프라인 연결 저장'}
+          {saving ? 'Saving...' : 'Save pipeline mapping'}
         </button>
         <button
           type="button"
@@ -650,7 +650,7 @@ function MappingPanel({
         >
           <span className="inline-flex items-center gap-1.5">
             <Play className="h-3.5 w-3.5" />
-            {executing ? '실행 중...' : '연결 후 실행'}
+            {executing ? 'Running...' : 'Map & Run'}
           </span>
         </button>
         <button
@@ -664,7 +664,7 @@ function MappingPanel({
               : 'border-border text-foreground hover:bg-muted/30',
           )}
         >
-          연결 해제
+          Unmap
         </button>
       </div>
     </div>
@@ -787,7 +787,7 @@ export default function RawDataPage() {
       setRawData((prev) => prev.map((item) => item.id === saveRes.data?.id ? saveRes.data : item));
       setSelectedRawData(saveRes.data);
       targetPipelineId = saveRes.data.mappedPipelineId ?? mappingPipelineId;
-      toast.success('파이프라인 연결을 저장했습니다');
+      toast.success('Pipeline mapping saved');
     }
 
     const execRes = await service.파이프라인을_실행한다(targetPipelineId);
@@ -805,7 +805,7 @@ export default function RawDataPage() {
             <CheckCircle2 className="h-4 w-4" />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="text-xs font-semibold text-foreground">{jobId} 실행이 시작되었습니다</div>
+            <div className="text-xs font-semibold text-foreground">{jobId} execution started</div>
             <div className="mt-2 border-t border-border pt-2">
               <button
                 type="button"
@@ -815,7 +815,7 @@ export default function RawDataPage() {
                 }}
                 className="inline-flex w-full items-center justify-center rounded-md bg-accent px-3 py-2 text-[11px] font-medium text-background transition-colors hover:bg-accent/90"
               >
-                현재 실행중인 파이프라인 보기
+                View running pipeline
               </button>
             </div>
           </div>
@@ -858,13 +858,13 @@ export default function RawDataPage() {
                   <RadioTower className="h-3.5 w-3.5" />
                   Reception Intake
                 </div>
-                <h1 className="text-xl font-bold text-foreground">Raw Data 목록</h1>
+                <h1 className="text-xl font-bold text-foreground">Raw Data</h1>
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <SummaryCard label="수신 원시 데이터" value={rawData.length} icon={Database} />
-                <SummaryCard label="매핑 완료" value={mappedCount} icon={Link2} />
-                <SummaryCard label="미매핑" value={unmappedCount} icon={Unlink2} />
-                <SummaryCard label="준비 완료" value={readyCount} icon={CheckCircle2} />
+                <SummaryCard label="Received Raw Data" value={rawData.length} icon={Database} />
+                <SummaryCard label="Mapped" value={mappedCount} icon={Link2} />
+                <SummaryCard label="Unmapped" value={unmappedCount} icon={Unlink2} />
+                <SummaryCard label="Ready" value={readyCount} icon={CheckCircle2} />
               </div>
             </div>
           </header>
@@ -879,7 +879,7 @@ export default function RawDataPage() {
                     setSearch(e.target.value);
                     setPage(1);
                   }}
-                  placeholder="Raw data title / path 검색"
+                  placeholder="Search by Raw data title / path"
                   className="w-72 rounded-lg border border-border bg-background pl-8 pr-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
                 />
               </div>
@@ -891,7 +891,7 @@ export default function RawDataPage() {
                 }}
                 className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
               >
-                <option value="">전체 위성</option>
+                <option value="">All satellites</option>
                 {SATELLITES.map((satellite) => (
                   <option key={satellite} value={satellite}>{satellite}</option>
                 ))}
@@ -904,7 +904,7 @@ export default function RawDataPage() {
                 }}
                 className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
               >
-                <option value="">전체 모드</option>
+                <option value="">All modes</option>
                 {MODES.map((mode) => (
                   <option key={mode} value={mode}>{mode}</option>
                 ))}
@@ -917,9 +917,9 @@ export default function RawDataPage() {
                 }}
                 className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
               >
-                <option value="all">전체 매핑 상태</option>
-                <option value="mapped">매핑됨</option>
-                <option value="unmapped">미매핑</option>
+                <option value="all">All mapping states</option>
+                <option value="mapped">Mapped</option>
+                <option value="unmapped">Unmapped</option>
               </select>
             </div>
           </div>
@@ -929,13 +929,13 @@ export default function RawDataPage() {
               <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   <th className="px-6 py-3 text-left whitespace-nowrap">Raw Data</th>
-                  <th className="px-3 py-3 text-left whitespace-nowrap">위성 / 모드</th>
-                  <th className="px-3 py-3 text-left whitespace-nowrap">촬영 시각</th>
-                  <th className="px-3 py-3 text-left whitespace-nowrap">위도</th>
-                  <th className="px-3 py-3 text-left whitespace-nowrap">경도</th>
-                  <th className="px-3 py-3 text-left whitespace-nowrap">원시 파일</th>
-                  <th className="px-3 py-3 text-left whitespace-nowrap">연결 파이프라인</th>
-                  <th className="px-3 py-3 text-center whitespace-nowrap">상태</th>
+                  <th className="px-3 py-3 text-left whitespace-nowrap">Satellite / Mode</th>
+                  <th className="px-3 py-3 text-left whitespace-nowrap">Captured At</th>
+                  <th className="px-3 py-3 text-left whitespace-nowrap">Latitude</th>
+                  <th className="px-3 py-3 text-left whitespace-nowrap">Longitude</th>
+                  <th className="px-3 py-3 text-left whitespace-nowrap">Raw File</th>
+                  <th className="px-3 py-3 text-left whitespace-nowrap">Mapped Pipeline</th>
+                  <th className="px-3 py-3 text-center whitespace-nowrap">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -950,7 +950,7 @@ export default function RawDataPage() {
                   >
                     <td className="px-6 py-3 whitespace-nowrap">
                       <div className="max-w-[340px] truncate font-mono text-xs font-semibold text-foreground">{item.title}</div>
-                      <div className="mt-1 text-[11px] text-muted-foreground">{formatRelativeTime(item.receivedAt)} 수신</div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">Received {formatRelativeTime(item.receivedAt)}</div>
                     </td>
                     <td className="px-3 py-3 text-xs text-foreground whitespace-nowrap">
                       <div>{item.satelliteId}</div>
@@ -967,7 +967,7 @@ export default function RawDataPage() {
                       {item.mappedPipelineName ? (
                         <div className="max-w-[240px] truncate font-semibold text-accent">{item.mappedPipelineName}</div>
                       ) : (
-                        <span className="font-semibold text-muted-foreground">미지정</span>
+                        <span className="font-semibold text-muted-foreground">Unassigned</span>
                       )}
                     </td>
                     <td className="px-3 py-3 text-center whitespace-nowrap">
@@ -978,7 +978,7 @@ export default function RawDataPage() {
                 {pageItems.length === 0 && (
                   <tr>
                     <td colSpan={8} className="px-6 py-16 text-center text-sm text-muted-foreground">
-                      조건에 맞는 raw data가 없습니다.
+                      No raw data matches the filters.
                     </td>
                   </tr>
                 )}
@@ -1000,7 +1000,7 @@ export default function RawDataPage() {
                 className="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 {PAGE_SIZE_OPTIONS.map((size) => (
-                  <option key={size} value={size}>{size}개씩</option>
+                  <option key={size} value={size}>{size} per page</option>
                 ))}
               </select>
               <button
@@ -1009,7 +1009,7 @@ export default function RawDataPage() {
                 onClick={() => setPage((value) => Math.max(1, value - 1))}
                 className="rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted/30 disabled:cursor-not-allowed disabled:opacity-30"
               >
-                이전
+                Prev
               </button>
               <span className="min-w-14 text-center text-[11px] font-mono text-foreground">{currentPage}/{totalPages}</span>
               <button
@@ -1018,7 +1018,7 @@ export default function RawDataPage() {
                 onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
                 className="rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted/30 disabled:cursor-not-allowed disabled:opacity-30"
               >
-                다음
+                Next
               </button>
             </div>
           </div>

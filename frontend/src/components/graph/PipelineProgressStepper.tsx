@@ -26,7 +26,7 @@ function buildGroups(steps: PipelineStep[]): StepperGroup[] {
   if (triggerStep) {
     groups.push({
       id: 'trigger',
-      label: '수신 트리거',
+      label: 'Receive trigger',
       cscLabel: 'EI-01',
       status: triggerStep.status,
       durationMs: triggerStep.durationMs,
@@ -39,7 +39,7 @@ function buildGroups(steps: PipelineStep[]): StepperGroup[] {
   if (initStep) {
     groups.push({
       id: 'jobInit',
-      label: '초기화',
+      label: 'Initialize',
       cscLabel: 'CSU-08.02',
       status: initStep.status,
       durationMs: initStep.durationMs,
@@ -67,7 +67,7 @@ function buildGroups(steps: PipelineStep[]): StepperGroup[] {
   if (catalogStep) {
     groups.push({
       id: 'catalog',
-      label: '카탈로그',
+      label: 'Catalog',
       cscLabel: 'CSC-07',
       status: catalogStep.status,
       durationMs: catalogStep.durationMs,
@@ -132,9 +132,9 @@ function StepperCell({ group }: { group: StepperGroup }) {
         {isCompleted && group.durationMs !== undefined && group.durationMs > 0
           ? <span className="text-success/70">{formatDuration(group.durationMs)}</span>
           : isRunning && vtMin !== undefined
-          ? <span className="text-accent/70">VT {vtMin}분</span>
+          ? <span className="text-accent/70">VT {vtMin}m</span>
           : vtMin !== undefined
-          ? <span>VT {vtMin}분</span>
+          ? <span>VT {vtMin}m</span>
           : <span>{group.cscLabel}</span>
         }
       </div>

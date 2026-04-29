@@ -50,7 +50,7 @@ const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
   ssr: false,
   loading: () => (
     <div className="flex h-56 items-center justify-center rounded-lg border border-border bg-background/50 text-sm text-muted-foreground">
-      파이프라인 UI 불러오는 중...
+      Loading pipeline UI...
     </div>
   ),
 });
@@ -87,7 +87,7 @@ function makeEmptyRuleForm(): RuleFormState {
     polarization: '',
     inputLevel: '',
     triggerSource: 'PIPELINE_AUTO',
-    description: 'pgmq 수신 이벤트와 조건을 매칭해 지정한 파이프라인을 자동 실행합니다.',
+    description: 'Automatically runs the selected pipeline when an incoming pgmq event matches the conditions.',
   };
 }
 
@@ -287,11 +287,11 @@ export default function DeployedPipelinesPage() {
 
   const handleSaveRule = useCallback(async (form: RuleFormState) => {
     if (!form.pipelineId) {
-      toast.error('자동화할 파이프라인을 선택하세요');
+      toast.error('Select a pipeline to automate');
       return null;
     }
     if (!form.satelliteId || !form.mode || !form.polarization || !form.inputLevel) {
-      toast.error('위성, 모드, 편파, 입력 레벨 조건을 모두 선택하세요');
+      toast.error('Select satellite, mode, polarization, and input level conditions');
       return null;
     }
 
@@ -333,7 +333,7 @@ export default function DeployedPipelinesPage() {
     setAutomating(false);
     if (!result) return;
     setMappingModalOpen(false);
-    toast.success('자동화 파이프라인이 추가되었습니다');
+    toast.success('Automation pipeline added');
   }, [handleSaveRule, ruleForm]);
 
   const handleToggleRuleActive = useCallback((rule: PipelineActivationRule) => {
@@ -370,7 +370,7 @@ export default function DeployedPipelinesPage() {
               className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[11px] font-semibold text-accent-foreground transition-colors hover:brightness-110"
             >
               <Plus className="h-3.5 w-3.5" />
-              자동 실행 매핑 규칙
+              Auto-Run Mapping Rule
             </button>
           )}
         </div>
@@ -380,8 +380,8 @@ export default function DeployedPipelinesPage() {
             {matchingRules.length === 0 ? (
               <div className="px-4 py-24 text-center">
                 <Activity className="w-10 h-10 mx-auto text-muted-foreground/30" />
-                <p className="mt-3 text-sm font-medium text-foreground">자동 파이프라인 매칭 규칙이 없습니다</p>
-                <p className="mt-1 text-xs text-muted-foreground">우상단 버튼에서 pgmq 이벤트 조건과 실행 파이프라인을 연결하세요.</p>
+                <p className="mt-3 text-sm font-medium text-foreground">No automation matching rules</p>
+                <p className="mt-1 text-xs text-muted-foreground">Use the button at the top right to link a pgmq event condition to an execution pipeline.</p>
               </div>
             ) : (
               <div className="max-w-none" style={{ width: `max(100%, ${DEPLOYMENT_TABLE_WIDTH}px)` }}>
@@ -389,12 +389,12 @@ export default function DeployedPipelinesPage() {
                   className="grid gap-3 px-4 py-2.5 border-b border-border text-[10px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap"
                   style={{ gridTemplateColumns: DEPLOYMENT_TABLE_GRID }}
                 >
-                  <span>상태</span>
-                  <span>pgmq 수신 이벤트</span>
-                  <span>매칭 조건</span>
-                  <span>처리 흐름</span>
-                  <span>실행 파이프라인</span>
-                  <span className="text-right">작업</span>
+                  <span>Status</span>
+                  <span>pgmq Incoming Event</span>
+                  <span>Match Conditions</span>
+                  <span>Processing Flow</span>
+                  <span>Execution Pipeline</span>
+                  <span className="text-right">Actions</span>
                 </div>
                 <div className="divide-y divide-border/70">
                   {matchingRules.map((rule) => {
@@ -418,10 +418,10 @@ export default function DeployedPipelinesPage() {
                               rule.active ? 'bg-success/10 text-success' : 'bg-muted/60 text-muted-foreground'
                             }`}>
                               <span className={`h-1.5 w-1.5 rounded-full ${rule.active ? 'bg-success' : 'bg-muted-foreground/50'}`} />
-                              {rule.active ? '활성' : '비활성'}
+                              {rule.active ? 'Active' : 'Inactive'}
                             </span>
                             <p className="mt-1 text-[10px] text-muted-foreground truncate">
-                              {rule.active ? '자동 실행 대상' : '매칭 대기'}
+                              {rule.active ? 'Auto-run target' : 'Awaiting match'}
                             </p>
                           </div>
 
@@ -432,7 +432,7 @@ export default function DeployedPipelinesPage() {
 
                           <div className="relative flex gap-1.5 overflow-hidden">
                             {conditions.length === 0 ? (
-                              <span className="rounded bg-muted/55 px-1.5 py-0.5 text-[10px] text-muted-foreground">전체 조건</span>
+                              <span className="rounded bg-muted/55 px-1.5 py-0.5 text-[10px] text-muted-foreground">All conditions</span>
                             ) : conditions.map((condition) => (
                               <span key={condition} className="rounded bg-muted/55 px-1.5 py-0.5 text-[10px] text-foreground truncate shrink-0 max-w-[88px]">
                                 {condition}
@@ -451,7 +451,7 @@ export default function DeployedPipelinesPage() {
                             </div>
                             <p className="mt-1 text-[11px] text-muted-foreground truncate">
                               {hasDuplicateRoute
-                                ? '중복 라우트 확인 필요'
+                                ? 'Duplicate route — please verify'
                                 : ruleConditions(rule).join(' · ') || `created ${formatDate(rule.deployedAt)}`}
                             </p>
                           </div>
@@ -466,7 +466,7 @@ export default function DeployedPipelinesPage() {
                               className="flex items-center gap-1 rounded-md border border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors cursor-pointer"
                             >
                               <ExternalLink className="w-3 h-3" />
-                              콘솔
+                              Console
                             </button>
                             {canManage && (
                               <button
@@ -482,8 +482,7 @@ export default function DeployedPipelinesPage() {
                                     : 'border-accent/25 bg-accent/10 text-accent hover:bg-accent/15'
                                 }`}
                               >
-                                <Power className="w-3 h-3" />
-                                {rule.active ? '비활성화' : '활성화'}
+                                {rule.active ? 'Deactivate' : 'Activate'}
                               </button>
                             )}
                           </div>
@@ -492,7 +491,7 @@ export default function DeployedPipelinesPage() {
                           <div className="border-t border-border bg-muted/15 px-4 py-4">
                             <div className="mb-3 flex items-center justify-between gap-3">
                               <div>
-                                <div className="text-sm font-semibold text-foreground">연결된 파이프라인 UI</div>
+                                <div className="text-sm font-semibold text-foreground">Linked Pipeline UI</div>
                                 <div className="mt-1 text-[11px] text-muted-foreground">{pipeline.name}</div>
                               </div>
                               <button
@@ -504,7 +503,7 @@ export default function DeployedPipelinesPage() {
                                 className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-foreground transition-colors hover:bg-muted/40"
                               >
                                 <ExternalLink className="h-3.5 w-3.5" />
-                                파이프라인 조회하기
+                                Open pipeline
                               </button>
                             </div>
                             <div className="deployed-preview-flow h-64 overflow-hidden rounded-lg border border-border bg-card">
@@ -545,14 +544,14 @@ export default function DeployedPipelinesPage() {
             <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
               <div className="flex items-center gap-2">
                 <ServerCog className="h-4 w-4 text-accent" />
-                <h2 className="text-sm font-semibold text-foreground">자동 실행 매핑 규칙</h2>
+                <h2 className="text-sm font-semibold text-foreground">Auto-Run Mapping Rule</h2>
               </div>
               <button
                 type="button"
                 disabled={automating}
                 onClick={() => setMappingModalOpen(false)}
                 className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground disabled:opacity-40"
-                aria-label="닫기"
+                aria-label="Close"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -566,7 +565,7 @@ export default function DeployedPipelinesPage() {
               <div className="min-h-0 overflow-y-auto border-r border-border px-5 py-4">
                 <div className="space-y-5">
                   <div>
-                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">pgmq 이벤트</p>
+                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">pgmq Event</p>
                     <div className="flex flex-wrap gap-2">
                       {EVENT_TYPE_OPTIONS.map((eventType) => (
                         <BadgeButton
@@ -582,7 +581,7 @@ export default function DeployedPipelinesPage() {
                   </div>
 
                   <div>
-                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">수신 큐</p>
+                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Source Queue</p>
                     <div className="flex flex-wrap gap-2">
                       {QUEUE_OPTIONS.map((queue) => (
                         <BadgeButton
@@ -598,7 +597,7 @@ export default function DeployedPipelinesPage() {
                   </div>
 
                   <div>
-                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">위성 조건</p>
+                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Satellite</p>
                     <div className="flex flex-wrap gap-2">
                       {satelliteOptions.map((satelliteId) => (
                         <BadgeButton
@@ -614,7 +613,7 @@ export default function DeployedPipelinesPage() {
                   </div>
 
                   <div>
-                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">모드 조건</p>
+                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Mode</p>
                     <div className="flex flex-wrap gap-2">
                       {modeOptions.map((mode) => (
                         <BadgeButton
@@ -630,7 +629,7 @@ export default function DeployedPipelinesPage() {
                   </div>
 
                   <div>
-                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">편파 조건</p>
+                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Polarization</p>
                     <div className="flex flex-wrap gap-2">
                       {POLARIZATION_OPTIONS.map((polarization) => (
                         <BadgeButton
@@ -646,7 +645,7 @@ export default function DeployedPipelinesPage() {
                   </div>
 
                   <div>
-                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">입력 레벨</p>
+                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Input Level</p>
                     <div className="flex flex-wrap gap-2">
                       {PRODUCT_LEVEL_OPTIONS.map((inputLevel) => (
                         <BadgeButton
@@ -665,13 +664,13 @@ export default function DeployedPipelinesPage() {
 
               <div className={`min-h-0 overflow-y-auto px-5 py-4 ${selectedFormPipeline ? 'border-r border-border' : ''}`}>
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <p className="text-[10px] font-semibold uppercase text-muted-foreground">활성 파이프라인</p>
+                  <p className="text-[10px] font-semibold uppercase text-muted-foreground">Active Pipelines</p>
                   <span className="rounded-full bg-muted/60 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">{automationTargetPipelines.length}</span>
                 </div>
                 {automationTargetPipelines.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-border px-4 py-12 text-center">
                     <GitBranch className="mx-auto h-8 w-8 text-muted-foreground/35" />
-                    <p className="mt-3 text-xs text-muted-foreground">파이프라인 관리에서 활성화된 파이프라인이 없습니다</p>
+                    <p className="mt-3 text-xs text-muted-foreground">No pipelines have been activated in pipeline management</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -707,7 +706,7 @@ export default function DeployedPipelinesPage() {
               {selectedFormPipeline && (
                 <div className="min-h-0 overflow-y-auto px-5 py-4">
                   <div className="mb-3">
-                    <p className="text-[10px] font-semibold uppercase text-muted-foreground">파이프라인 순서</p>
+                    <p className="text-[10px] font-semibold uppercase text-muted-foreground">Pipeline Steps</p>
                     <p className="mt-1 truncate text-xs font-semibold text-foreground">{selectedFormPipeline.name}</p>
                   </div>
                   <div className="deployed-preview-flow h-[420px] overflow-hidden rounded-lg border border-border bg-background">
@@ -724,7 +723,7 @@ export default function DeployedPipelinesPage() {
 
             <div className="border-t border-border bg-muted/10 px-5 py-4">
               <div className="mb-3 rounded-lg border border-border bg-background px-3 py-3">
-                <p className="mb-2 text-[10px] font-semibold text-muted-foreground">현재 선택한 최종 자동 파이프라인</p>
+                <p className="mb-2 text-[10px] font-semibold text-muted-foreground">Selected Final Auto Pipeline</p>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full border border-border bg-muted/45 px-2.5 py-1 font-mono text-[10px] text-foreground">
                     {ruleForm.sourceQueue}
@@ -746,7 +745,7 @@ export default function DeployedPipelinesPage() {
                     <ArrowRight className="h-3.5 w-3.5" />
                   </span>
                   <span className="rounded-full border border-accent/35 bg-accent/10 px-3 py-1 text-[10px] font-semibold text-accent">
-                    {selectedFormPipeline?.name ?? '파이프라인 미선택'}
+                    {selectedFormPipeline?.name ?? 'No pipeline selected'}
                   </span>
                 </div>
               </div>
@@ -757,7 +756,7 @@ export default function DeployedPipelinesPage() {
                   onClick={() => setMappingModalOpen(false)}
                   className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/45 hover:text-foreground disabled:opacity-45"
                 >
-                  취소
+                  Cancel
                 </button>
                 <button
                   type="button"
@@ -766,7 +765,7 @@ export default function DeployedPipelinesPage() {
                   className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-foreground transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   {automating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
-                  {automating ? '자동화 추가 중' : '자동화'}
+                  {automating ? 'Adding automation' : 'Automate'}
                 </button>
               </div>
             </div>

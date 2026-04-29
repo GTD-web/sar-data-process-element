@@ -31,7 +31,7 @@ export default function CreatePipelineDialog({ onNext, onCancel }: CreatePipelin
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <Plus className="w-4 h-4 text-accent" />
-            <h2 className="text-sm font-semibold text-foreground">새 파이프라인</h2>
+            <h2 className="text-sm font-semibold text-foreground">New Pipeline</h2>
             <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">1 / 2</span>
           </div>
           <button onClick={onCancel} className="p-1 rounded-md hover:bg-muted/50 transition-colors">
@@ -41,19 +41,19 @@ export default function CreatePipelineDialog({ onNext, onCancel }: CreatePipelin
 
         <div className="p-4 space-y-3">
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">이름</label>
+            <label className="text-xs font-medium text-foreground">Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleNext()}
-              placeholder="파이프라인 이름을 입력하세요"
+              placeholder="Enter pipeline name"
               autoFocus
               className="w-full bg-muted border border-border rounded-md px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent/50"
             />
           </div>
           <p className="text-[10px] text-muted-foreground">
-            매칭 위성/모드/편파 태그는 파이프라인의 JOB_INIT 노드에서 선택한 처리 프로파일을 따릅니다.
+            Matching satellite/mode/polarization tags follow the processing profile selected in the pipeline's JOB_INIT node.
           </p>
         </div>
 
@@ -62,14 +62,14 @@ export default function CreatePipelineDialog({ onNext, onCancel }: CreatePipelin
             onClick={onCancel}
             className="flex-1 py-1.5 rounded-md border border-border text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
           >
-            취소
+            Cancel
           </button>
           <button
             onClick={handleNext}
             disabled={!isValid}
             className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            다음
+            Next
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>

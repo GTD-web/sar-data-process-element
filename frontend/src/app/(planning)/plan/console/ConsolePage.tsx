@@ -20,7 +20,7 @@ import PipelineArchiveConfirmDialog from '@/components/panels/PipelineArchiveCon
 import PipelineDeleteConfirmDialog from '@/components/panels/PipelineDeleteConfirmDialog';
 import PipelineUndeployConfirmDialog from '@/components/panels/PipelineUndeployConfirmDialog';
 import { toast } from '@/components/ui/Toast';
-import { Plus, GitBranch, Pencil, Check, X, Radio, UploadCloud, Info, Archive } from 'lucide-react';
+import { Plus, GitBranch, Pencil, Check, X, Radio, Info, Archive } from 'lucide-react';
 import type {
   PipelineDefinition,
   PipelineStepDefinition,
@@ -223,7 +223,6 @@ function PipelineActivationPanel({
                 : 'bg-accent text-accent-foreground hover:brightness-110'
             }`}
           >
-            <UploadCloud className="h-3.5 w-3.5" />
             {deployed ? 'Deactivate' : 'Activate'}
           </button>
         )}
@@ -323,6 +322,9 @@ export default function ConsolePage() {
   const selectedActivationRules = selectedPipelineId
     ? activationRules.filter((rule) => rule.pipelineId === selectedPipelineId)
     : [];
+  const activePipelineIds = new Set(
+    activationRules.filter((rule) => rule.active).map((rule) => rule.pipelineId),
+  );
   const pipelineJobs = selectedPipelineId
     ? jobs
         .filter((job) => job.pipelineId === selectedPipelineId)
@@ -819,6 +821,7 @@ export default function ConsolePage() {
           if (target) setDeletePipelineTarget(target);
         }}
         canManagePipelines={canManage}
+        activePipelineIds={activePipelineIds}
         activePage="console"
       />
 

@@ -66,11 +66,11 @@ export default function UserFormModal({ open, mode, onClose, onSaved, currentUse
 
       if (mode.kind === 'create') {
         if (!/^[a-z0-9][a-z0-9-]{2,31}$/.test(username)) {
-          setError('사용자명은 3~32자, 소문자·숫자·하이픈만 사용 가능합니다.');
+          setError('Username must be 3-32 characters using only lowercase, digits, and hyphens.');
           return;
         }
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-          setError('올바른 이메일 형식이 아닙니다.');
+          setError('Invalid email format.');
           return;
         }
         const policyError = validatePasswordPolicy(password);
@@ -83,15 +83,15 @@ export default function UserFormModal({ open, mode, onClose, onSaved, currentUse
         const res = await service.사용자를_생성한다({ username, email, role, password });
         setSubmitting(false);
         if (!res.success) {
-          setError(res.message || '사용자 생성에 실패했습니다.');
+          setError(res.message || 'Failed to create user.');
           return;
         }
-        toast.success('사용자가 생성되었습니다');
+        toast.success('User created');
         onSaved();
         onClose();
       } else {
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-          setError('올바른 이메일 형식이 아닙니다.');
+          setError('Invalid email format.');
           return;
         }
         setSubmitting(true);
@@ -99,10 +99,10 @@ export default function UserFormModal({ open, mode, onClose, onSaved, currentUse
         const res = await service.사용자를_수정한다(mode.user.id, { email, role, active });
         setSubmitting(false);
         if (!res.success) {
-          setError(res.message || '사용자 수정에 실패했습니다.');
+          setError(res.message || 'Failed to update user.');
           return;
         }
-        toast.success('사용자 정보가 수정되었습니다');
+        toast.success('User updated');
         onSaved();
         onClose();
       }
@@ -121,7 +121,7 @@ export default function UserFormModal({ open, mode, onClose, onSaved, currentUse
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {isEdit ? <UserCog className="w-4 h-4 text-accent" /> : <UserPlus className="w-4 h-4 text-accent" />}
-            <h2 className="text-sm font-semibold text-foreground">{isEdit ? '사용자 수정' : '사용자 추가'}</h2>
+            <h2 className="text-sm font-semibold text-foreground">{isEdit ? 'Edit User' : 'Add User'}</h2>
           </div>
           <button
             type="button"
@@ -134,7 +134,7 @@ export default function UserFormModal({ open, mode, onClose, onSaved, currentUse
         </div>
 
         {/* Username */}
-        <Field label="사용자명">
+        <Field label="Username">
           <input
             type="text"
             value={username}
@@ -146,7 +146,7 @@ export default function UserFormModal({ open, mode, onClose, onSaved, currentUse
         </Field>
 
         {/* Email */}
-        <Field label="이메일">
+        <Field label="Email">
           <input
             type="email"
             value={email}
@@ -157,7 +157,7 @@ export default function UserFormModal({ open, mode, onClose, onSaved, currentUse
         </Field>
 
         {/* Role */}
-        <Field label="역할">
+        <Field label="Role">
           <div className="grid grid-cols-2 gap-1.5">
             {(['Administrator', 'Operator'] as const).map((r) => (
               <button
@@ -178,13 +178,13 @@ export default function UserFormModal({ open, mode, onClose, onSaved, currentUse
             ))}
           </div>
           {isSelf && isEdit && (
-            <div className="text-[10px] text-muted-foreground mt-1">본인 계정의 역할은 변경할 수 없습니다.</div>
+            <div className="text-[10px] text-muted-foreground mt-1">You cannot change the role of your own account.</div>
           )}
         </Field>
 
         {/* Initial password (create only) */}
         {!isEdit && (
-          <Field label="초기 비밀번호">
+          <Field label="Initial Password">
             <input
               type="text"
               value={password}
@@ -193,14 +193,14 @@ export default function UserFormModal({ open, mode, onClose, onSaved, currentUse
               className="w-full bg-background border border-border rounded-md px-3 py-2 text-xs text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-accent"
             />
             <div className="text-[10px] text-muted-foreground mt-1">
-              최소 12자. 대/소/숫자/특수문자 각 1개. 최초 로그인 시 사용자가 변경해야 합니다.
+              At least 12 characters. Must include uppercase, lowercase, digit, and special. The user must change it on first sign-in.
             </div>
           </Field>
         )}
 
         {/* Active (edit only) */}
         {isEdit && (
-          <Field label="활성 상태">
+          <Field label="Active Status">
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -219,9 +219,9 @@ export default function UserFormModal({ open, mode, onClose, onSaved, currentUse
                   )}
                 />
               </button>
-              <span className="text-[11px] text-foreground">{active ? '활성' : '비활성'}</span>
+              <span className="text-[11px] text-foreground">{active ? 'Active' : 'Inactive'}</span>
             </div>
-            {isSelf && <div className="text-[10px] text-muted-foreground mt-1">본인 계정은 비활성화할 수 없습니다.</div>}
+            {isSelf && <div className="text-[10px] text-muted-foreground mt-1">You cannot deactivate your own account.</div>}
           </Field>
         )}
 
@@ -236,7 +236,7 @@ export default function UserFormModal({ open, mode, onClose, onSaved, currentUse
             disabled={submitting}
             className="px-3 py-1.5 text-[11px] border border-border text-muted-foreground hover:text-foreground hover:bg-muted/30 rounded-md transition-colors disabled:opacity-50"
           >
-            취소
+            Cancel
           </button>
           <button
             type="submit"
@@ -247,7 +247,7 @@ export default function UserFormModal({ open, mode, onClose, onSaved, currentUse
             )}
           >
             {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
-            {isEdit ? '저장' : '생성'}
+            {isEdit ? 'Save' : 'Create'}
           </button>
         </div>
       </form>

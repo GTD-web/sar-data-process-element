@@ -30,37 +30,37 @@ export const SAR_STAGE_TASKS: Record<SarStage, string[]> = {
   L3:  ['Application-specific Products'],
 };
 
-/** SAR 스테이지별 한글 설명 */
+/** SAR stage descriptions */
 export const SAR_STAGE_DESCRIPTIONS: Record<SarStage, string> = {
-  L0:  '원시 데이터를 시간 순으로 정렬하고 기본 보정을 수행합니다',
-  L1A: 'SAR 신호의 초점을 맞추어 SLC(Single Look Complex) 영상을 생성합니다',
-  L1B: '멀티룩 처리로 스펙클 노이즈를 줄이고 GRD 영상을 생성합니다',
-  L1C: 'DEM 기반 지형 보정으로 정사 투영 영상(RTC)을 생성합니다',
-  L2A: '입사각·NESZ·룩수 맵 등 부가 정보 산출물을 생성합니다',
-  L2B: '객체 탐지 및 시계열 변화 탐지를 수행합니다',
-  L3:  '사용자 요구에 맞는 최종 응용 제품을 생성합니다',
+  L0:  'Sorts raw data in time order and applies basic calibration',
+  L1A: 'Focuses SAR signals to generate SLC (Single Look Complex) images',
+  L1B: 'Reduces speckle noise via multi-look processing and produces GRD images',
+  L1C: 'Generates orthorectified imagery (RTC) via DEM-based terrain correction',
+  L2A: 'Produces auxiliary maps such as incidence angle, NESZ, and number of looks',
+  L2B: 'Performs object detection and time-series change detection',
+  L3:  'Generates final application products tailored to user requirements',
 };
 
-/** 비-SAR 노드별 정보 (한글 설명 + 프로세스 목록) */
+/** Non-SAR node info (descriptions + process list) */
 export const NODE_KIND_INFO: Record<string, { description: string; processes: string[] }> = {
   TRIGGER: {
-    description: 'EI-01 원시 데이터 수신 트리거(RAW_DATA_RECEIVED)로 파이프라인이 시작됩니다',
+    description: 'Pipeline starts with the EI-01 raw data reception trigger (RAW_DATA_RECEIVED)',
     processes:   ['Reception Event Detection', 'Raw File Integrity Check', 'NAS Staging Verification'],
   },
   FILE_INPUT: {
-    description: '기존 처리 결과를 입력으로 부분 재처리를 시작합니다',
+    description: 'Starts partial reprocessing using existing processing results as input',
     processes:   ['Input File Validation', 'Processing Level Resolution', 'DAG Start Point Selection'],
   },
   JOB_INIT: {
-    description: '작업을 생성하고 데이터 특성에 맞는 처리 프로파일을 선택합니다',
+    description: 'Creates a job and selects a processing profile matching the data characteristics',
     processes:   ['Job Record Creation', 'Profile Matching', 'DAG Construction', 'Priority Assignment'],
   },
   CATALOG: {
-    description: '처리 완료된 산출물의 메타데이터를 추출하고 카탈로그에 등록합니다',
+    description: 'Extracts metadata from completed products and registers them in the catalog',
     processes:   ['Metadata Extraction', 'Quality Validation', 'STAC Registration', 'Version Management'],
   },
   THUMBNAIL: {
-    description: 'Quick-look 미리보기 이미지를 조기 생성하여 후속 처리와 병행 제공합니다 (SAD CSU-07.06)',
+    description: 'Generates quick-look preview images early, in parallel with downstream processing (SAD CSU-07.06)',
     processes:   ['Quick-look Rendering', 'KMZ Generation', 'NAS Storage', 'Preview URL Refresh'],
   },
 };
@@ -101,13 +101,13 @@ export const JOB_STATUS_DISPLAY: Record<JobStatus, string> = {
 
 /** 백엔드 호환용. 직접 노드 레이블로 사용하지 않습니다. */
 export const CSC_LABELS: Record<TargetCsc, string> = {
-  'CSC-02': '데이터 수집',
+  'CSC-02': 'Data Collection',
   'CSC-03': 'L0 Processing',
   'CSC-04': 'L1 SAR Processing',
   'CSC-05': 'L2 Post Processing',
   'CSC-06': 'L3 Geocoding',
-  'CSC-07': '카탈로그 등록',
-  'CSC-08': '작업 초기화',
+  'CSC-07': 'Catalog Registration',
+  'CSC-08': 'Job Initialization',
 };
 
 export const PRODUCT_LEVEL_LABELS: Record<ProductLevel, string> = {
@@ -118,20 +118,20 @@ export const PRODUCT_LEVEL_LABELS: Record<ProductLevel, string> = {
 };
 
 export const RETRY_INTERVAL_LABELS: Record<RetryInterval, string> = {
-  IMMEDIATE:           '즉시 재시도',
-  EXPONENTIAL_BACKOFF: '지수 백오프',
+  IMMEDIATE:           'Immediate retry',
+  EXPONENTIAL_BACKOFF: 'Exponential backoff',
 };
 
 export const TRIGGER_SOURCE_LABELS: Record<TriggerSource, string> = {
-  PIPELINE_AUTO:    '원시 수신 처리',
-  MANUAL_REQUEST:   '수동 처리 요청',
-  PARTIAL_REPROCESS: '부분 재처리',
+  PIPELINE_AUTO:    'Auto on raw reception',
+  MANUAL_REQUEST:   'Manual request',
+  PARTIAL_REPROCESS: 'Partial reprocess',
 };
 
 export const PIPELINE_EVENT_TYPE_LABELS: Record<PipelineEventType, string> = {
-  RAW_DATA_RECEIVED: '원시 데이터 수신',
-  PARTIAL_REPROCESS_REQUESTED: '부분 재처리 요청',
-  PRODUCT_REPROCESS_REQUESTED: '제품 재처리 요청',
+  RAW_DATA_RECEIVED: 'Raw data received',
+  PARTIAL_REPROCESS_REQUESTED: 'Partial reprocess requested',
+  PRODUCT_REPROCESS_REQUESTED: 'Product reprocess requested',
 };
 
 // --- ICD Operational Constants ---
@@ -154,10 +154,10 @@ export const CSC_VT_SECONDS: Partial<Record<TargetCsc, number>> = {
  * 세분화된 SAR 스테이지(L1A/L1B/L1C)를 CSC 단위로 묶어서 표시.
  */
 export const CSC_PROCESSING_LEVELS = [
-  { csc: 'CSC-03' as TargetCsc, label: 'L0 처리',  vtSeconds: 3_600, stages: ['L0']           as SarStage[] },
-  { csc: 'CSC-04' as TargetCsc, label: 'L1 처리',  vtSeconds: 9_000, stages: ['L1A', 'L1B', 'L1C'] as SarStage[] },
-  { csc: 'CSC-05' as TargetCsc, label: 'L2 처리',  vtSeconds: 2_700, stages: ['L2A', 'L2B']   as SarStage[] },
-  { csc: 'CSC-06' as TargetCsc, label: 'L3 처리',  vtSeconds: 1_800, stages: ['L3']           as SarStage[] },
+  { csc: 'CSC-03' as TargetCsc, label: 'L0 Processing',  vtSeconds: 3_600, stages: ['L0']           as SarStage[] },
+  { csc: 'CSC-04' as TargetCsc, label: 'L1 Processing',  vtSeconds: 9_000, stages: ['L1A', 'L1B', 'L1C'] as SarStage[] },
+  { csc: 'CSC-05' as TargetCsc, label: 'L2 Processing',  vtSeconds: 2_700, stages: ['L2A', 'L2B']   as SarStage[] },
+  { csc: 'CSC-06' as TargetCsc, label: 'L3 Processing',  vtSeconds: 1_800, stages: ['L3']           as SarStage[] },
 ] as const;
 
 /**
@@ -196,6 +196,6 @@ export const MAX_RETRY_COUNT = 3;
 /** SI-04 TBC: 처리 기한 옵션 (시간 단위). SLA 정책 확정 후 조정. */
 export const DEADLINE_HOUR_OPTIONS = [2, 4, 6, 8, 12, 24] as const;
 
-/** JOB_INIT에 처리 프로파일이 없을 때 캔버스 노드·콘솔·토스트 등에 공통 표시 */
+/** Shared message shown on canvas nodes, console, and toasts when JOB_INIT has no processing profile */
 export const JOB_INIT_PROFILE_MISSING_MESSAGE =
-  '처리 프로파일이 선택되지 않았습니다. CSU-08.02에 따라 이 노드에서 위성·모드에 맞는 프로파일을 지정해야 하며, 미지정 상태로 실행하면 JOB_INIT 검증 또는 이후 CSC 단계에서 오류가 발생할 수 있습니다.';
+  'No processing profile is selected. Per CSU-08.02, this node must specify a profile matching the satellite and mode; running without one may cause errors in JOB_INIT validation or in later CSC stages.';

@@ -99,13 +99,13 @@ export default function SettingsPage() {
 
   const save = () => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    toast.success('설정을 저장했습니다');
+    toast.success('Settings saved');
   };
 
   const reset = () => {
     setSettings(DEFAULT_SETTINGS);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_SETTINGS));
-    toast.success('기본 설정으로 되돌렸습니다');
+    toast.success('Reverted to default settings');
   };
 
   return (
@@ -123,7 +123,7 @@ export default function SettingsPage() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <Settings className="w-4 h-4 text-accent" />
-                <h1 className="text-lg font-bold text-foreground">설정</h1>
+                <h1 className="text-lg font-bold text-foreground">Settings</h1>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -133,7 +133,7 @@ export default function SettingsPage() {
                 className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/30 hover:text-foreground transition-colors"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                기본값
+                Defaults
               </button>
               <button
                 type="button"
@@ -141,7 +141,7 @@ export default function SettingsPage() {
                 className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground hover:brightness-110 transition-all"
               >
                 <Save className="w-3.5 h-3.5" />
-                저장
+                Save
               </button>
             </div>
           </header>
@@ -150,63 +150,63 @@ export default function SettingsPage() {
             <div className="space-y-5 min-w-0">
               <SettingsSection
                 icon={User}
-                title="계정 설정"
-                description="현재 세션과 기본 역할을 확인하고 비밀번호 변경을 시작합니다."
+                title="Account Settings"
+                description="View the current session and default role, and start a password change."
               >
-                <SettingRow label="계정" description="현재 콘솔 사용자">
+                <SettingRow label="Account" description="Current console user">
                   <div className="text-right">
                     <div className="text-xs font-mono text-foreground">{sessionInfo.username}</div>
                     <div className="text-[10px] text-muted-foreground">{sessionInfo.auth}</div>
                   </div>
                 </SettingRow>
-                <SettingRow label="기본 역할" description="Mock 권한 미리보기 기본값">
+                <SettingRow label="Default Role" description="Default mock permission preview">
                   <SelectValue
                     value={role}
                     options={[
-                      { value: 'Administrator', label: 'Administrator', description: '관리자 권한' },
-                      { value: 'Operator', label: 'Operator', description: '운영자 권한' },
+                      { value: 'Administrator', label: 'Administrator', description: 'Administrator privileges' },
+                      { value: 'Operator', label: 'Operator', description: 'Operator privileges' },
                     ]}
                     onChange={(next) => setRole(next as MockRole)}
                   />
                 </SettingRow>
-                <SettingRow label="비밀번호" description="계정 보안 설정">
+                <SettingRow label="Password" description="Account security settings">
                   <button
                     type="button"
                     onClick={() => setPwModalOpen(true)}
                     className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[11px] text-foreground hover:bg-muted/30 transition-colors"
                   >
                     <KeyRound className="w-3.5 h-3.5 text-muted-foreground" />
-                    비밀번호 변경
+                    Change Password
                   </button>
                 </SettingRow>
               </SettingsSection>
 
               <SettingsSection
                 icon={MonitorCog}
-                title="화면 설정"
-                description="콘솔 레이아웃과 테이블 표시 기본값을 조정합니다."
+                title="Display Settings"
+                description="Adjust the console layout and table display defaults."
               >
-                <SettingRow label="사이드바 기본 상태" description="새 화면 진입 시 왼쪽 메뉴 표시 방식">
+                <SettingRow label="Default Sidebar State" description="How the left menu appears when entering a new screen">
                   <Segmented
                     value={settings.sidebarDefault}
                     options={[
-                      { value: 'expanded', label: '펼침' },
-                      { value: 'collapsed', label: '접힘' },
+                      { value: 'expanded', label: 'Expanded' },
+                      { value: 'collapsed', label: 'Collapsed' },
                     ]}
                     onChange={(value) => update('sidebarDefault', value as SidebarDefault)}
                   />
                 </SettingRow>
-                <SettingRow label="오른쪽 패널 기본 상태" description="작업/콘솔 상세 패널 표시 방식">
+                <SettingRow label="Default Right Panel State" description="How the job/console detail panel is displayed">
                   <Segmented
                     value={settings.rightPanelDefault}
                     options={[
-                      { value: 'open', label: '열림' },
-                      { value: 'closed', label: '닫힘' },
+                      { value: 'open', label: 'Open' },
+                      { value: 'closed', label: 'Closed' },
                     ]}
                     onChange={(value) => update('rightPanelDefault', value as PanelDefault)}
                   />
                 </SettingRow>
-                <SettingRow label="테이블 페이지 크기" description="목록 화면 기본 페이지 크기">
+                <SettingRow label="Table Page Size" description="Default page size for list screens">
                   <SelectValue
                     value={String(settings.tablePageSize)}
                     options={[
@@ -221,10 +221,10 @@ export default function SettingsPage() {
 
               <SettingsSection
                 icon={Clock3}
-                title="운영 콘솔 환경"
-                description="시간 표시, 로그 로딩 범위, 새로고침 주기를 설정합니다."
+                title="Operations Console Environment"
+                description="Configure time display, log loading scope, and refresh interval."
               >
-                <SettingRow label="시간대 표시" description="운영 화면의 시간 포맷 기준">
+                <SettingRow label="Time Zone Display" description="Time format basis for operations screens">
                   <Segmented
                     value={settings.timeZone}
                     options={[
@@ -234,7 +234,7 @@ export default function SettingsPage() {
                     onChange={(value) => update('timeZone', value as TimeZoneMode)}
                   />
                 </SettingRow>
-                <SettingRow label="로그 표시 개수" description="실행 로그 패널 기본 로딩 수">
+                <SettingRow label="Log Display Count" description="Default loading count for the run log panel">
                   <SelectValue
                     value={String(settings.logLimit)}
                     options={[
@@ -245,7 +245,7 @@ export default function SettingsPage() {
                     onChange={(value) => update('logLimit', Number(value))}
                   />
                 </SettingRow>
-                <SettingRow label="자동 새로고침 간격" description="대시보드/큐 상태 갱신 주기">
+                <SettingRow label="Auto Refresh Interval" description="Dashboard / queue status refresh interval">
                   <SelectValue
                     value={String(settings.refreshIntervalSec)}
                     options={[
@@ -261,10 +261,10 @@ export default function SettingsPage() {
 
               <SettingsSection
                 icon={Bell}
-                title="알림 표시 설정"
-                description="Toast와 사이드바 배지 표시 범위를 선택합니다."
+                title="Notification Display Settings"
+                description="Choose the display scope for toasts and sidebar badges."
               >
-                <SettingRow label="Toast 표시" description="화면 우상단 알림 메시지 표시 범위">
+                <SettingRow label="Toast Display" description="Display scope for top-right notification messages">
                   <SelectValue
                     value={settings.toastMode}
                     options={[
@@ -275,7 +275,7 @@ export default function SettingsPage() {
                     onChange={(value) => update('toastMode', value as ToastMode)}
                   />
                 </SettingRow>
-                <SettingRow label="배지 표시" description="사이드바 알림 카운터 표시 방식">
+                <SettingRow label="Badge Display" description="How the sidebar notification counter is displayed">
                   <SelectValue
                     value={settings.badgeMode}
                     options={[
@@ -294,14 +294,14 @@ export default function SettingsPage() {
                 <div className="border-b border-border px-4 py-3">
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 text-accent" />
-                    <div className="text-sm font-semibold text-foreground">세션 정보</div>
+                    <div className="text-sm font-semibold text-foreground">Session Info</div>
                   </div>
                 </div>
                 <div className="p-4 space-y-3 text-xs">
-                  <SummaryRow label="사용자" value={sessionInfo.username} mono />
-                  <SummaryRow label="역할" value={sessionInfo.role} />
-                  <SummaryRow label="세션" value={sessionInfo.session} />
-                  <SummaryRow label="최근 확인" value={sessionInfo.lastSeen} />
+                  <SummaryRow label="User" value={sessionInfo.username} mono />
+                  <SummaryRow label="Role" value={sessionInfo.role} />
+                  <SummaryRow label="Session" value={sessionInfo.session} />
+                  <SummaryRow label="Last Seen" value={sessionInfo.lastSeen} />
                 </div>
               </div>
 
@@ -309,7 +309,7 @@ export default function SettingsPage() {
                 <div className="border-b border-border px-4 py-3">
                   <div className="flex items-center gap-2">
                     <Eye className="w-4 h-4 text-accent" />
-                    <div className="text-sm font-semibold text-foreground">현재 적용 예정</div>
+                    <div className="text-sm font-semibold text-foreground">Pending Application</div>
                   </div>
                 </div>
                 <div className="p-4 space-y-2">

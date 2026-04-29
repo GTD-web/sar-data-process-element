@@ -15,7 +15,7 @@ const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
   ssr: false,
   loading: () => (
     <div className="flex-1 flex items-center justify-center bg-background text-muted-foreground text-sm">
-      그래프 로딩 중...
+      Loading graph...
     </div>
   ),
 });
@@ -49,7 +49,7 @@ function RestorePipelineConfirmDialog({
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <ArchiveRestore className="w-4 h-4 text-accent" />
-            <h2 className="text-sm font-semibold text-foreground">파이프라인 복원</h2>
+            <h2 className="text-sm font-semibold text-foreground">Restore Pipeline</h2>
           </div>
           <button type="button" onClick={onCancel} className="p-1 rounded-md hover:bg-muted/50 transition-colors">
             <X className="w-4 h-4 text-muted-foreground" />
@@ -58,22 +58,22 @@ function RestorePipelineConfirmDialog({
 
         <div className="p-4 space-y-3">
           <p className="text-xs text-muted-foreground">
-            아카이브에서 운영 파이프라인 목록으로 되돌립니다. 복원 후에는 콘솔에서 별도로 활성화해야 운영 이벤트에 연결됩니다.
+            Restore from the archive back to the active pipeline list. After restoring, you must reactivate it in the console for it to receive operational events.
           </p>
           <div className="bg-muted/30 rounded-lg px-3 py-2.5 space-y-1">
             <div className="flex justify-between gap-3 text-[11px]">
-              <span className="text-muted-foreground">이름</span>
+              <span className="text-muted-foreground">Name</span>
               <span className="font-semibold text-foreground text-right">{pipeline.name}</span>
             </div>
             <div className="flex justify-between gap-3 text-[11px]">
-              <span className="text-muted-foreground">폐기일</span>
+              <span className="text-muted-foreground">Archived On</span>
               <span className="font-mono text-foreground text-right">{formatArchiveDate(pipeline.archivedAt)}</span>
             </div>
           </div>
           <div className="rounded-lg border border-warning/25 bg-warning/10 px-3 py-2.5">
-            <div className="text-[10px] font-semibold text-warning mb-1">폐기 사유</div>
+            <div className="text-[10px] font-semibold text-warning mb-1">Archive Reason</div>
             <p className="text-[11px] leading-relaxed text-foreground">
-              {pipeline.archiveReason ?? '폐기 사유가 기록되지 않았습니다.'}
+              {pipeline.archiveReason ?? 'No archive reason recorded.'}
             </p>
           </div>
         </div>
@@ -84,14 +84,14 @@ function RestorePipelineConfirmDialog({
             onClick={onCancel}
             className="flex-1 py-1.5 rounded-md border border-border text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
           >
-            취소
+            Cancel
           </button>
           <button
             type="button"
             onClick={onConfirm}
             className="flex-1 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:brightness-110 transition-colors"
           >
-            복원 확인
+            Confirm Restore
           </button>
         </div>
       </div>
@@ -150,7 +150,7 @@ export default function ArchivePage() {
         return next;
       });
       setRestoreTarget(null);
-      toast.success('파이프라인이 복원되었습니다');
+      toast.success('Pipeline restored');
     } else {
       toast.error(res.message);
     }
@@ -185,7 +185,7 @@ export default function ArchivePage() {
             {/* Pipeline name badge */}
             <div className="absolute top-3 left-3 z-10">
               <div className="px-3 py-1.5 rounded-md bg-card/80 backdrop-blur-sm border border-border shadow-sm text-xs">
-                <span className="text-muted-foreground">아카이브: </span>
+                <span className="text-muted-foreground">Archive: </span>
                 <span className="font-semibold text-foreground">{selectedPipeline.name}</span>
               </div>
             </div>
@@ -193,11 +193,11 @@ export default function ArchivePage() {
             <div className="absolute top-3 right-3 z-10 w-[min(360px,calc(100%-1.5rem))]">
               <div className="rounded-lg bg-card/90 backdrop-blur-sm border border-border shadow-lg overflow-hidden">
                 <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border">
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase">폐기 사유</span>
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase">Archive Reason</span>
                   <span className="font-mono text-[10px] text-muted-foreground">{formatArchiveDate(selectedPipeline.archivedAt)}</span>
                 </div>
                 <p className="px-3 py-2.5 text-[11px] leading-relaxed text-foreground">
-                  {selectedPipeline.archiveReason ?? '폐기 사유가 기록되지 않았습니다.'}
+                  {selectedPipeline.archiveReason ?? 'No archive reason recorded.'}
                 </p>
               </div>
             </div>
@@ -213,7 +213,7 @@ export default function ArchivePage() {
                              hover:brightness-110 active:brightness-95 transition-all"
                 >
                   <ArchiveRestore className="w-3.5 h-3.5" />
-                  파이프라인 복원
+                  Restore Pipeline
                 </button>
               </div>
             )}
@@ -222,7 +222,7 @@ export default function ArchivePage() {
           <div className="flex-1 relative flex items-center justify-center bg-background">
             <div className="text-center text-muted-foreground">
               <Archive className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
-              <p className="text-sm">아카이브된 파이프라인이 없습니다</p>
+              <p className="text-sm">No archived pipelines</p>
             </div>
           </div>
         )}

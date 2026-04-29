@@ -24,7 +24,7 @@ export default function PasswordResetRequiredPage() {
     async (e: FormEvent) => {
       e.preventDefault();
       if (!currentPassword || !newPassword || !confirmPassword) {
-        setError('모든 항목을 입력하세요.');
+        setError('Please fill in all fields.');
         return;
       }
       if (policyError) {
@@ -32,7 +32,7 @@ export default function PasswordResetRequiredPage() {
         return;
       }
       if (mismatch) {
-        setError('새 비밀번호가 일치하지 않습니다.');
+        setError('The new passwords do not match.');
         return;
       }
       setSubmitting(true);
@@ -40,7 +40,7 @@ export default function PasswordResetRequiredPage() {
       const res = await service.본인_비밀번호를_변경한다({ currentPassword, newPassword });
       setSubmitting(false);
       if (!res.success) {
-        setError(res.message || '비밀번호 변경에 실패했습니다.');
+        setError(res.message || 'Failed to change password.');
         return;
       }
       router.push('/plan');
@@ -60,17 +60,17 @@ export default function PasswordResetRequiredPage() {
           <div className="flex items-start gap-2 bg-accent/10 border border-accent/30 rounded-md px-3 py-2">
             <KeyRound className="w-3.5 h-3.5 mt-0.5 text-accent shrink-0" />
             <div className="text-[11px] text-foreground leading-relaxed">
-              <div className="font-semibold mb-0.5">비밀번호 변경이 필요합니다</div>
-              <div className="text-muted-foreground">임시 비밀번호로 로그인하셨습니다. 계속하려면 새 비밀번호를 설정하세요.</div>
+              <div className="font-semibold mb-0.5">Password change required</div>
+              <div className="text-muted-foreground">You signed in with a temporary password. Please set a new password to continue.</div>
             </div>
           </div>
 
-          <PasswordField label="임시 비밀번호" value={currentPassword} onChange={setCurrentPassword} autoComplete="current-password" disabled={submitting} />
-          <PasswordField label="새 비밀번호" value={newPassword} onChange={setNewPassword} autoComplete="new-password" disabled={submitting} />
-          <PasswordField label="새 비밀번호 확인" value={confirmPassword} onChange={setConfirmPassword} autoComplete="new-password" disabled={submitting} />
+          <PasswordField label="Temporary Password" value={currentPassword} onChange={setCurrentPassword} autoComplete="current-password" disabled={submitting} />
+          <PasswordField label="New Password" value={newPassword} onChange={setNewPassword} autoComplete="new-password" disabled={submitting} />
+          <PasswordField label="Confirm New Password" value={confirmPassword} onChange={setConfirmPassword} autoComplete="new-password" disabled={submitting} />
 
           <div className="text-[10px] text-muted-foreground leading-relaxed">
-            최소 12자. 대문자·소문자·숫자·특수문자를 각 1개 이상 포함해야 합니다.
+            At least 12 characters. Must include at least one uppercase, lowercase, digit, and special character.
           </div>
 
           {error && (
@@ -89,7 +89,7 @@ export default function PasswordResetRequiredPage() {
             )}
           >
             {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            비밀번호 변경
+            Change Password
           </button>
         </form>
       </div>

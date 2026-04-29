@@ -26,7 +26,7 @@ export default function ReprocessConfirmDialog({ jobId, sceneId, onConfirm, onCa
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-warning" />
-            <h2 className="text-sm font-semibold text-foreground">Job 재처리 요청</h2>
+            <h2 className="text-sm font-semibold text-foreground">Reprocess Job</h2>
           </div>
           <button onClick={onCancel} className="p-1 rounded-md hover:bg-muted/50 transition-colors">
             <X className="w-4 h-4 text-muted-foreground" />
@@ -36,7 +36,7 @@ export default function ReprocessConfirmDialog({ jobId, sceneId, onConfirm, onCa
         {/* Body */}
         <div className="p-4 space-y-4">
           <p className="text-xs text-muted-foreground">
-            아래 Job을 처음부터 재처리합니다. 진행 중인 모든 단계가 초기화됩니다.
+            The Job below will be reprocessed from the beginning. All in-progress stages will be reset.
           </p>
 
           <div className="bg-muted/30 rounded-lg px-3 py-2.5 space-y-1">
@@ -52,13 +52,13 @@ export default function ReprocessConfirmDialog({ jobId, sceneId, onConfirm, onCa
 
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-foreground">
-              확인을 위해 Job ID를 입력하세요
+              Type the Job ID to confirm
             </label>
             <input
               type="text"
               value={inputJobId}
               onChange={(e) => setInputJobId(e.target.value)}
-              placeholder={`Job ID를 입력하세요 (예: ${jobId})`}
+              placeholder={`Enter Job ID (e.g. ${jobId})`}
               autoFocus
               className={cn(
                 'w-full bg-muted border rounded-md px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1',
@@ -76,7 +76,7 @@ export default function ReprocessConfirmDialog({ jobId, sceneId, onConfirm, onCa
             onClick={onCancel}
             className="flex-1 py-1.5 rounded-md border border-border text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
           >
-            취소
+            Cancel
           </button>
           <button
             onClick={onConfirm}
@@ -88,7 +88,7 @@ export default function ReprocessConfirmDialog({ jobId, sceneId, onConfirm, onCa
                 : 'bg-muted text-muted-foreground cursor-not-allowed',
             )}
           >
-            재처리 요청
+            Request Reprocess
           </button>
         </div>
       </div>

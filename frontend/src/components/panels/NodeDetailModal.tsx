@@ -36,7 +36,7 @@ const SAR_STAGE_OUTPUT_TYPE: Record<SarStage, string> = {
 
 function formatVt(seconds: number): string {
   if (seconds >= 3600) return `${seconds.toLocaleString()} s (${seconds / 3600}h)`;
-  return `${seconds.toLocaleString()} s (${seconds / 60}분)`;
+  return `${seconds.toLocaleString()} s (${seconds / 60} min)`;
 }
 
 /** TBC 상태 배지 */
@@ -52,7 +52,7 @@ function TbcBadge({ note }: { note?: string }) {
 function ConfirmedBadge({ note }: { note?: string }) {
   return (
     <span className="inline-flex items-center text-[10px] bg-accent/10 text-accent rounded px-1.5 py-0.5 shrink-0">
-      확정{note ? ` · ${note}` : ''}
+      Confirmed{note ? ` · ${note}` : ''}
     </span>
   );
 }
@@ -181,13 +181,13 @@ function NodeIcon({ step, size = 18 }: { step: PipelineStepDefinition; size?: nu
 }
 
 function nodeLabel(step: PipelineStepDefinition): string {
-  if (step.kind === 'TRIGGER')    return '원시 데이터 수신 트리거';
-  if (step.kind === 'FILE_INPUT') return '결과 파일 입력';
-  if (step.kind === 'JOB_INIT')   return '작업 초기화';
-  if (step.kind === 'CATALOG')    return '카탈로그 등록';
-  if (step.kind === 'THUMBNAIL')  return 'Quick-look 생성';
+  if (step.kind === 'TRIGGER')    return 'Raw Data Reception Trigger';
+  if (step.kind === 'FILE_INPUT') return 'Result File Input';
+  if (step.kind === 'JOB_INIT')   return 'Job Initialization';
+  if (step.kind === 'CATALOG')    return 'Catalog Registration';
+  if (step.kind === 'THUMBNAIL')  return 'Quick-look Generation';
   if (step.kind === 'SAR' && step.sarStage) return SAR_STAGE_LABELS[step.sarStage];
-  return '노드';
+  return 'Node';
 }
 
 function nodeCsc(step: PipelineStepDefinition): string {
@@ -217,7 +217,7 @@ function ProcessInfoSection({ kind }: { kind: string }) {
   return (
     <>
       <div className="h-px bg-border" />
-      <div className="text-[11px] font-medium text-muted-foreground">처리 프로세스</div>
+      <div className="text-[11px] font-medium text-muted-foreground">Processes</div>
       <ul className="space-y-1.5">
         {info.processes.map((p) => (
           <li key={p} className="flex items-start gap-2 text-[11px] text-foreground/80">
@@ -331,7 +331,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
       className="relative flex flex-col bg-background rounded-xl shadow-2xl border border-border overflow-hidden w-full h-full"
       role="dialog"
       aria-modal="true"
-      aria-label={`${nodeLabel(step)} 노드 상세`}
+      aria-label={`${nodeLabel(step)} node details`}
       onClick={(e) => e.stopPropagation()}
     >
       {/* ── Header ── */}
@@ -356,9 +356,9 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
           )}
         >
           {isRunning
-            ? <><Loader className="w-3.5 h-3.5 animate-spin" /> 실행 중…</>
+            ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Running…</>
             : isDone
-              ? <><CheckCircle className="w-3.5 h-3.5" /> 재실행</>
+              ? <><CheckCircle className="w-3.5 h-3.5" /> Re-run</>
               : <><Play className="w-3.5 h-3.5" fill="currentColor" strokeWidth={0} /> Execute step</>
           }
         </button>
@@ -367,7 +367,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
           type="button"
           onClick={onClose}
           className="p-1.5 rounded-md hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
-          title="닫기 (Esc)"
+          title="Close (Esc)"
         >
           <X className="w-4 h-4" />
         </button>
@@ -403,14 +403,14 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                   );
                 })}
                 <div className="pt-2 text-[10px] text-muted-foreground/50 leading-relaxed">
-                  이전 노드의 출력이 이 노드의 입력으로 전달됩니다
+                  The output of the previous node is passed as input to this node
                 </div>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground/60 px-6 text-center">
                 <ChevronRight className="w-6 h-6 opacity-30" />
-                <span className="text-[12px]">입력 없음</span>
-                <span className="text-[11px] text-muted-foreground/40">이 노드는 외부 이벤트로 시작됩니다</span>
+                <span className="text-[12px]">No input</span>
+                <span className="text-[11px] text-muted-foreground/40">This node is triggered by an external event</span>
               </div>
             )}
           </div>
@@ -443,7 +443,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
             <div className={cn('px-5 py-4 space-y-4', activeTab !== 'info' && 'hidden')}>
               {/* Description */}
               <div>
-                <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">설명</div>
+                <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Description</div>
                 <p className="text-[12px] text-foreground/80 leading-relaxed">{description}</p>
               </div>
 
@@ -452,9 +452,9 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                 <>
                   <div className="h-px bg-border" />
                   <div className="space-y-1.5 text-[11px]">
-                    <InfoRow label="이벤트 유형" value="RAW_DATA_RECEIVED" />
-                    <InfoRow label="제공자" value="위성 수신국 (EI-01)" />
-                    <InfoRow label="큐" value={QUEUE_NAME.RECEPTION_EVENTS} />
+                    <InfoRow label="Event Type" value="RAW_DATA_RECEIVED" />
+                    <InfoRow label="Provider" value="Ground Station (EI-01)" />
+                    <InfoRow label="Queue" value={QUEUE_NAME.RECEPTION_EVENTS} />
                   </div>
                 </>
               )}
@@ -464,12 +464,12 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                 <>
                   <div className="h-px bg-border" />
                   <div className="space-y-1.5 text-[11px]">
-                    <InfoRow label="트리거 소스" value="PARTIAL_REPROCESS" />
-                    <InfoRow label="입력 레벨" value={step.inputLevel ? PRODUCT_LEVEL_LABELS[step.inputLevel] : '—'} />
-                    <InfoRow label="인터페이스" value="SI-07" />
+                    <InfoRow label="Trigger Source" value="PARTIAL_REPROCESS" />
+                    <InfoRow label="Input Level" value={step.inputLevel ? PRODUCT_LEVEL_LABELS[step.inputLevel] : '—'} />
+                    <InfoRow label="Interface" value="SI-07" />
                   </div>
                   <div className="rounded-lg border border-border bg-muted/20 p-3 text-[10px] text-muted-foreground leading-relaxed">
-                    OPS-06 부분 재처리 흐름. 운영자 또는 LIID가 CSC-09를 통해 재처리를 요청하면 CSC-08이 target_level 기반으로 DAG를 생성하고 해당 레벨부터 파이프라인을 재기동합니다.
+                    OPS-06 partial reprocessing flow. When an operator or LIID requests reprocessing via CSC-09, CSC-08 generates a DAG based on target_level and restarts the pipeline from that level.
                   </div>
                 </>
               )}
@@ -478,12 +478,12 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
               {step.kind === 'JOB_INIT' && (
                 <>
                   <div className="h-px bg-border" />
-                  <div className="text-[11px] font-medium text-muted-foreground">처리 프로파일 설정</div>
+                  <div className="text-[11px] font-medium text-muted-foreground">Processing Profile Settings</div>
                   <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-1.5 text-[11px]">
-                    <InfoRow label="프로파일" value={step.jobInitConfig?.profileId ?? '미선택'} />
-                    <InfoRow label="편파" value={step.jobInitConfig?.polarization || '—'} />
-                    <InfoRow label="우선순위" value={`${step.jobInitConfig?.priority ?? 5}`} />
-                    <InfoRow label="재시도 전략" value={step.jobInitConfig?.retryInterval ? RETRY_INTERVAL_LABELS[step.jobInitConfig.retryInterval] : '—'} />
+                    <InfoRow label="Profile" value={step.jobInitConfig?.profileId ?? 'Unassigned'} />
+                    <InfoRow label="Polarization" value={step.jobInitConfig?.polarization || '—'} />
+                    <InfoRow label="Priority" value={`${step.jobInitConfig?.priority ?? 5}`} />
+                    <InfoRow label="Retry Strategy" value={step.jobInitConfig?.retryInterval ? RETRY_INTERVAL_LABELS[step.jobInitConfig.retryInterval] : '—'} />
                   </div>
                 </>
               )}
@@ -493,9 +493,9 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                 <>
                   <div className="h-px bg-border" />
                   <div className="space-y-1.5 text-[11px]">
-                    <InfoRow label="SAR 스테이지" value={step.sarStage} />
-                    <InfoRow label="산출물 유형" value={SAR_STAGE_OUTPUT_TYPE[step.sarStage]} />
-                    <InfoRow label="활성 태스크" value={`${(step.enabledTasks ?? allTasks).length}/${allTasks.length}`} />
+                    <InfoRow label="SAR Stage" value={step.sarStage} />
+                    <InfoRow label="Output Type" value={SAR_STAGE_OUTPUT_TYPE[step.sarStage]} />
+                    <InfoRow label="Active Tasks" value={`${(step.enabledTasks ?? allTasks).length}/${allTasks.length}`} />
                   </div>
                 </>
               )}
@@ -505,8 +505,8 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                 <>
                   <div className="h-px bg-border" />
                   <div className="space-y-1.5 text-[11px]">
-                    <InfoRow label="등록 대상" value="Level-1 / 2 / 3" />
-                    <InfoRow label="큐" value={QUEUE_NAME.CATALOG_REGISTRATION} />
+                    <InfoRow label="Target Levels" value="Level-1 / 2 / 3" />
+                    <InfoRow label="Queue" value={QUEUE_NAME.CATALOG_REGISTRATION} />
                   </div>
                 </>
               )}
@@ -531,7 +531,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                         className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent text-accent-foreground text-[10px] font-semibold hover:bg-accent/80 transition-colors"
                       >
                         <Save className="w-3 h-3" />
-                        적용
+                        Apply
                       </button>
                     )}
                   </div>
@@ -550,7 +550,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                             isEnabled ? 'bg-accent/10 text-foreground' : 'bg-transparent text-muted-foreground/50 line-through',
                             isLast || !onSaveNode ? 'cursor-default' : 'hover:bg-muted/50 cursor-pointer',
                           )}
-                          title={isLast ? '최소 1개 이상 선택해야 합니다' : undefined}
+                          title={isLast ? 'At least one task must be selected' : undefined}
                         >
                           <span className={cn(
                             'w-3.5 h-3.5 rounded shrink-0 border flex items-center justify-center transition-colors',
@@ -577,23 +577,23 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                 />
               ) : step.kind === 'JOB_INIT' && (
                 <div className="px-5 py-4 space-y-2 text-[12px]">
-                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">작업 초기화 설정</div>
+                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Job Initialization Settings</div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">처리 프로파일</span>
+                    <span className="text-muted-foreground">Processing Profile</span>
                     <span className={step.jobInitConfig?.profileId ? 'text-foreground' : 'text-amber-500'}>
-                      {step.jobInitConfig?.profileId ?? '미선택'}
+                      {step.jobInitConfig?.profileId ?? 'Unassigned'}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">편파</span>
+                    <span className="text-muted-foreground">Polarization</span>
                     <span className="text-foreground">{step.jobInitConfig?.polarization || '—'}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">우선순위</span>
+                    <span className="text-muted-foreground">Priority</span>
                     <span className="text-foreground">{step.jobInitConfig?.priority ?? 5}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">재시도 전략</span>
+                    <span className="text-muted-foreground">Retry Strategy</span>
                     <span className="text-foreground">{step.jobInitConfig?.retryInterval ? RETRY_INTERVAL_LABELS[step.jobInitConfig.retryInterval] : '—'}</span>
                   </div>
                 </div>
@@ -602,7 +602,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
               {/* Non-SAR, Non-JOB_INIT: process list */}
               {step.kind !== 'SAR' && step.kind !== 'JOB_INIT' && NODE_KIND_INFO[step.kind]?.processes && (
                 <div className="px-5 py-4">
-                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">프로세스</div>
+                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Processes</div>
                   <div className="space-y-1.5">
                     {NODE_KIND_INFO[step.kind].processes.map((p) => (
                       <div key={p} className="flex items-center gap-2 text-[12px] text-foreground/80">
@@ -617,7 +617,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
               {/* 파라미터가 없는 노드 */}
               {step.kind !== 'SAR' && step.kind !== 'JOB_INIT' && !NODE_KIND_INFO[step.kind]?.processes && (
                 <div className="flex flex-col items-center justify-center py-10 text-muted-foreground/60">
-                  <span className="text-[12px]">이 노드에 추가 파라미터가 없습니다</span>
+                  <span className="text-[12px]">This node has no additional parameters</span>
                 </div>
               )}
             </div>
@@ -625,50 +625,50 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
             {/* ── Settings 탭 ── */}
             <div className={cn('px-5 py-4 space-y-5', activeTab !== 'settings' && 'hidden')}>
               {/* ── 노드 정보 ── */}
-              <SettingSection title="노드 정보">
-                <SettingRow label="종류" value={step.kind} />
-                {step.sarStage && <SettingRow label="SAR 스테이지" value={step.sarStage} />}
+              <SettingSection title="Node Info">
+                <SettingRow label="Kind" value={step.kind} />
+                {step.sarStage && <SettingRow label="SAR Stage" value={step.sarStage} />}
                 <SettingRow label="CSC" value={nodeCsc(step)} />
-                <SettingRow label="순서" value={`#${step.order}`} />
+                <SettingRow label="Order" value={`#${step.order}`} />
               </SettingSection>
 
               {/* ── TRIGGER ── */}
               {step.kind === 'TRIGGER' && (
-                <SettingSection title="이벤트 소스">
-                  <SettingRow label="이벤트 유형" value="RAW_DATA_RECEIVED" status="confirmed" />
-                  <SettingRow label="제공자" value="위성 수신국 (EI-01)" status="confirmed" />
-                  <SettingRow label="큐" value={QUEUE_NAME.RECEPTION_EVENTS} status="confirmed" />
-                  <SettingRow label="체크섬" value="SHA-256" status="confirmed" />
-                  <SettingRow label="스키마 버전" value="1.0" status="confirmed" />
+                <SettingSection title="Event Source">
+                  <SettingRow label="Event Type" value="RAW_DATA_RECEIVED" status="confirmed" />
+                  <SettingRow label="Provider" value="Ground Station (EI-01)" status="confirmed" />
+                  <SettingRow label="Queue" value={QUEUE_NAME.RECEPTION_EVENTS} status="confirmed" />
+                  <SettingRow label="Checksum" value="SHA-256" status="confirmed" />
+                  <SettingRow label="Schema Version" value="1.0" status="confirmed" />
                 </SettingSection>
               )}
 
               {/* ── FILE_INPUT ── */}
               {step.kind === 'FILE_INPUT' && (
-                <SettingSection title="부분 재처리 설정">
-                  <SettingRow label="트리거 소스" value="PARTIAL_REPROCESS" status="confirmed" />
+                <SettingSection title="Partial Reprocessing Settings">
+                  <SettingRow label="Trigger Source" value="PARTIAL_REPROCESS" status="confirmed" />
                   <SettingRow
-                    label="입력 레벨"
+                    label="Input Level"
                     value={step.inputLevel ? PRODUCT_LEVEL_LABELS[step.inputLevel] : '—'}
                     status={step.inputLevel ? 'confirmed' : undefined}
                   />
-                  <SettingRow label="인터페이스" value="SI-07" status="tbc" note="ICD 5.4" />
+                  <SettingRow label="Interface" value="SI-07" status="tbc" note="ICD 5.4" />
                 </SettingSection>
               )}
 
               {/* ── JOB_INIT ── */}
               {step.kind === 'JOB_INIT' && (
-                <SettingSection title="작업 제한">
-                  <SettingRow label="최대 재시도" value={`${MAX_RETRY_COUNT}회`} status="confirmed" note="ICD 3.5" />
+                <SettingSection title="Job Limits">
+                  <SettingRow label="Max Retries" value={`${MAX_RETRY_COUNT}`} status="confirmed" note="ICD 3.5" />
                   <SettingRow
-                    label="재시도 전략"
+                    label="Retry Strategy"
                     value={step.jobInitConfig?.retryInterval
                       ? RETRY_INTERVAL_LABELS[step.jobInitConfig.retryInterval]
                       : '—'}
                     status={step.jobInitConfig?.retryInterval ? 'confirmed' : 'tbc'}
                   />
                   <SettingRow
-                    label="처리 기한"
+                    label="Deadline"
                     value={step.jobInitConfig?.deadlineHours ? `${step.jobInitConfig.deadlineHours}h` : '—'}
                     status="tbc"
                     note="ICD 6.6"
@@ -681,7 +681,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                 const csc = nodeCsc(step);
                 const vt = CSC_VT_SECONDS[csc as TargetCsc];
                 return (
-                  <SettingSection title={`실행 제한 (${csc})`}>
+                  <SettingSection title={`Execution Limits (${csc})`}>
                     {vt !== undefined && (
                       <SettingRow
                         label="Visibility Timeout"
@@ -691,24 +691,24 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                       />
                     )}
                     <SettingRow
-                      label="산출물 유형"
+                      label="Output Type"
                       value={SAR_STAGE_OUTPUT_TYPE[step.sarStage]}
                       status="confirmed"
                     />
-                    <SettingRow label="우선순위" value="—" status="tbc" note="ICD 6.6" />
-                    <SettingRow label="처리 기한" value="—" status="tbc" note="ICD 6.6" />
-                    <SettingRow label="재시도 전략" value="—" status="tbc" note="ICD 3.5" />
+                    <SettingRow label="Priority" value="—" status="tbc" note="ICD 6.6" />
+                    <SettingRow label="Deadline" value="—" status="tbc" note="ICD 6.6" />
+                    <SettingRow label="Retry Strategy" value="—" status="tbc" note="ICD 3.5" />
                   </SettingSection>
                 );
               })()}
 
               {/* ── CATALOG ── */}
               {step.kind === 'CATALOG' && (
-                <SettingSection title="카탈로그 설정">
-                  <SettingRow label="등록 대상 레벨" value="Level-1 / 2 / 3" status="confirmed" note="Level-0 제외" />
-                  <SettingRow label="품질 검증 실행" value="—" status="tbc" note="SI-05" />
-                  <SettingRow label="SI-05 인터페이스" value="TBC" status="tbc" note="ICD 2.3" />
-                  <SettingRow label="큐" value={QUEUE_NAME.CATALOG_REGISTRATION} status="confirmed" />
+                <SettingSection title="Catalog Settings">
+                  <SettingRow label="Target Levels" value="Level-1 / 2 / 3" status="confirmed" note="Level-0 excluded" />
+                  <SettingRow label="Quality Validation" value="—" status="tbc" note="SI-05" />
+                  <SettingRow label="SI-05 Interface" value="TBC" status="tbc" note="ICD 2.3" />
+                  <SettingRow label="Queue" value={QUEUE_NAME.CATALOG_REGISTRATION} status="confirmed" />
                 </SettingSection>
               )}
             </div>
@@ -724,14 +724,14 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
             {isRunning && (
               <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
                 <Loader className="w-6 h-6 animate-spin text-accent" />
-                <span className="text-[12px]">실행 중…</span>
+                <span className="text-[12px]">Running…</span>
               </div>
             )}
             {isDone && outputData && (
               <div>
                 <div className="flex items-center gap-1.5 px-3 pt-3 pb-1 text-[11px] text-success font-medium">
                   <CheckCircle className="w-3.5 h-3.5" />
-                  실행 완료
+                  Execution complete
                 </div>
                 <DataView data={outputData} />
               </div>
@@ -739,7 +739,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
             {!isRunning && !isDone && (
               <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground/60 px-6 text-center">
                 <ChevronRight className="w-6 h-6 opacity-30 -scale-x-100" />
-                <span className="text-[12px]">출력 데이터 없음</span>
+                <span className="text-[12px]">No output data</span>
                 <button
                   type="button"
                   onClick={handleExecute}
@@ -748,7 +748,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                   <Play className="w-3 h-3" fill="currentColor" strokeWidth={0} />
                   Execute step
                 </button>
-                <span className="text-[10px] text-muted-foreground/40">또는 mock 데이터를 설정하세요</span>
+                <span className="text-[10px] text-muted-foreground/40">or configure mock data</span>
               </div>
             )}
           </div>

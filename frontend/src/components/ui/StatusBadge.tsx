@@ -29,7 +29,7 @@ export function JobStatusBadge({ status, retryCount }: { status: JobStatus; retr
     status === 'FAILED' && retryCount !== undefined && retryCount > 0
       ? `RETRY ${retryCount}/3`
       : status === 'ASSIGNED' && retryCount !== undefined && retryCount > 0
-        ? `재시도 ${retryCount}/3`
+        ? `RETRY ${retryCount}/3`
         : JOB_STATUS_DISPLAY[status];
 
   return (

@@ -35,11 +35,11 @@ function formatLogTime(iso: string): string {
 
 function getStepLabel(step: PipelineStep): string {
   if (step.kind === 'SAR' && step.sarStage) return `${step.sarStage} · ${SAR_STAGE_LABELS[step.sarStage]}`;
-  if (step.kind === 'TRIGGER') return '원시 데이터 수신 트리거';
-  if (step.kind === 'FILE_INPUT') return `${PRODUCT_LEVEL_LABELS[step.productLevel] ?? 'L?'} 결과 입력`;
-  if (step.kind === 'JOB_INIT') return '작업 초기화';
-  if (step.kind === 'CATALOG') return '카탈로그 등록';
-  if (step.kind === 'THUMBNAIL') return 'Quick-look 생성';
+  if (step.kind === 'TRIGGER') return 'Raw Data Reception Trigger';
+  if (step.kind === 'FILE_INPUT') return `${PRODUCT_LEVEL_LABELS[step.productLevel] ?? 'L?'} Result Input`;
+  if (step.kind === 'JOB_INIT') return 'Job Initialization';
+  if (step.kind === 'CATALOG') return 'Catalog Registration';
+  if (step.kind === 'THUMBNAIL') return 'Quick-look Generation';
   return step.targetCsc;
 }
 
@@ -117,13 +117,13 @@ export default function StepDetailPopover({ step, job, logs, onClose, topOffset 
 
           {/* Meta */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-            <MetaRow label="레벨" value={levelLabel} />
+            <MetaRow label="Level" value={levelLabel} />
             <MetaRow label="CSC" value={step.targetCsc} />
             {step.durationMs !== undefined && (
-              <MetaRow label="소요 시간" value={formatDuration(step.durationMs)} />
+              <MetaRow label="Duration" value={formatDuration(step.durationMs)} />
             )}
-            {step.startedAt && <MetaRow label="시작" value={formatKST(step.startedAt)} />}
-            {step.finishedAt && <MetaRow label="종료" value={formatKST(step.finishedAt)} />}
+            {step.startedAt && <MetaRow label="Started" value={formatKST(step.startedAt)} />}
+            {step.finishedAt && <MetaRow label="Finished" value={formatKST(step.finishedAt)} />}
           </div>
 
           {/* Tasks / Processes */}

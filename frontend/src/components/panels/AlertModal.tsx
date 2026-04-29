@@ -24,7 +24,7 @@ export default function AlertModal({ open, onClose, alerts, onAck, onSelectJob }
       <div className="w-full max-w-md max-h-[80vh] bg-card border border-border rounded-xl shadow-2xl flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
-          <h2 className="text-sm font-semibold text-foreground">알림</h2>
+          <h2 className="text-sm font-semibold text-foreground">Alerts</h2>
           <button onClick={onClose} className="p-1 rounded-md hover:bg-muted/50 transition-colors">
             <X className="w-4 h-4 text-muted-foreground" />
           </button>
@@ -35,14 +35,14 @@ export default function AlertModal({ open, onClose, alerts, onAck, onSelectJob }
           {unacked.length === 0 && acked.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <CheckCircle className="w-8 h-8 mb-2 text-success" />
-              <span className="text-xs">알림이 없습니다</span>
+              <span className="text-xs">No alerts</span>
             </div>
           )}
 
           {unacked.length > 0 && (
             <div>
               <div className="px-4 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20">
-                미확인 ({unacked.length})
+                Unacknowledged ({unacked.length})
               </div>
               {unacked.map((alert) => (
                 <div key={alert.id} className="px-4 py-3 border-b border-border/50 hover:bg-muted/10 transition-colors">
@@ -62,7 +62,7 @@ export default function AlertModal({ open, onClose, alerts, onAck, onSelectJob }
                       onClick={() => onAck(alert.id)}
                       className="px-2.5 py-1 rounded-md bg-accent/20 text-accent text-[10px] font-medium hover:bg-accent/30 transition-colors"
                     >
-                      확인
+                      Acknowledge
                     </button>
                   </div>
                 </div>
@@ -73,7 +73,7 @@ export default function AlertModal({ open, onClose, alerts, onAck, onSelectJob }
           {acked.length > 0 && (
             <div>
               <div className="px-4 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider bg-muted/20">
-                확인됨 ({acked.length})
+                Acknowledged ({acked.length})
               </div>
               {acked.slice(0, 10).map((alert) => (
                 <div key={alert.id} className="px-4 py-2.5 border-b border-border/50 opacity-50">

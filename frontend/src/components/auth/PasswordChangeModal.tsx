@@ -33,7 +33,7 @@ export default function PasswordChangeModal({ open, onClose }: { open: boolean; 
     async (e: FormEvent) => {
       e.preventDefault();
       if (!currentPassword || !newPassword || !confirmPassword) {
-        setError('모든 항목을 입력하세요.');
+        setError('Please fill in all fields.');
         return;
       }
       const policyError = validatePasswordPolicy(newPassword);
@@ -42,7 +42,7 @@ export default function PasswordChangeModal({ open, onClose }: { open: boolean; 
         return;
       }
       if (newPassword !== confirmPassword) {
-        setError('새 비밀번호가 일치하지 않습니다.');
+        setError('New passwords do not match.');
         return;
       }
       setSubmitting(true);
@@ -50,10 +50,10 @@ export default function PasswordChangeModal({ open, onClose }: { open: boolean; 
       const res = await service.본인_비밀번호를_변경한다({ currentPassword, newPassword });
       setSubmitting(false);
       if (!res.success) {
-        setError(res.message || '비밀번호 변경에 실패했습니다.');
+        setError(res.message || 'Failed to change password.');
         return;
       }
-      toast.success('비밀번호가 변경되었습니다');
+      toast.success('Password changed');
       reset();
       onClose();
     },
@@ -71,7 +71,7 @@ export default function PasswordChangeModal({ open, onClose }: { open: boolean; 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <KeyRound className="w-4 h-4 text-accent" />
-            <h2 className="text-sm font-semibold text-foreground">비밀번호 변경</h2>
+            <h2 className="text-sm font-semibold text-foreground">Change Password</h2>
           </div>
           <button
             type="button"
@@ -83,12 +83,12 @@ export default function PasswordChangeModal({ open, onClose }: { open: boolean; 
           </button>
         </div>
 
-        <PasswordRow label="현재 비밀번호" value={currentPassword} onChange={setCurrentPassword} autoComplete="current-password" />
-        <PasswordRow label="새 비밀번호" value={newPassword} onChange={setNewPassword} autoComplete="new-password" />
-        <PasswordRow label="새 비밀번호 확인" value={confirmPassword} onChange={setConfirmPassword} autoComplete="new-password" />
+        <PasswordRow label="Current Password" value={currentPassword} onChange={setCurrentPassword} autoComplete="current-password" />
+        <PasswordRow label="New Password" value={newPassword} onChange={setNewPassword} autoComplete="new-password" />
+        <PasswordRow label="Confirm New Password" value={confirmPassword} onChange={setConfirmPassword} autoComplete="new-password" />
 
         <div className="text-[10px] text-muted-foreground leading-relaxed">
-          최소 12자. 대문자·소문자·숫자·특수문자를 각 1개 이상 포함해야 합니다.
+          At least 12 characters. Must include at least one uppercase, lowercase, digit, and special character.
         </div>
 
         {error && (
@@ -102,7 +102,7 @@ export default function PasswordChangeModal({ open, onClose }: { open: boolean; 
             disabled={submitting}
             className="px-3 py-1.5 text-[11px] border border-border text-muted-foreground hover:text-foreground hover:bg-muted/30 rounded-md transition-colors disabled:opacity-50"
           >
-            취소
+            Cancel
           </button>
           <button
             type="submit"
@@ -113,7 +113,7 @@ export default function PasswordChangeModal({ open, onClose }: { open: boolean; 
             )}
           >
             {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
-            변경
+            Change
           </button>
         </div>
       </form>

@@ -23,7 +23,7 @@ export default function LoginPage() {
     async (e: FormEvent) => {
       e.preventDefault();
       if (!username.trim() || !password) {
-        setError('사용자명과 비밀번호를 입력하세요.');
+        setError('Please enter your username and password.');
         return;
       }
       setSubmitting(true);
@@ -31,7 +31,7 @@ export default function LoginPage() {
       try {
         const res = await service.로그인한다({ username: username.trim(), password });
         if (!res.success || !res.data) {
-          setError(res.message || '로그인에 실패했습니다.');
+          setError(res.message || 'Login failed.');
           return;
         }
         if (res.data.user.requiresPasswordReset) {
@@ -41,7 +41,7 @@ export default function LoginPage() {
         router.push(redirect);
       } catch {
         setOffline(true);
-        setError('서버에 연결할 수 없습니다.');
+        setError('Could not connect to the server.');
       } finally {
         setSubmitting(false);
       }
@@ -64,7 +64,7 @@ export default function LoginPage() {
         >
           <div className="space-y-1.5">
             <label htmlFor="username" className="block text-[11px] font-medium text-muted-foreground">
-              사용자명
+              Username
             </label>
             <input
               id="username"
@@ -80,7 +80,7 @@ export default function LoginPage() {
 
           <div className="space-y-1.5">
             <label htmlFor="password" className="block text-[11px] font-medium text-muted-foreground">
-              비밀번호
+              Password
             </label>
             <div className="relative">
               <input
@@ -98,7 +98,7 @@ export default function LoginPage() {
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors"
                 tabIndex={-1}
-                aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 표시'}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
@@ -121,21 +121,21 @@ export default function LoginPage() {
             )}
           >
             {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            로그인
+            Sign in
           </button>
 
           {offline && (
             <div className="pt-3 border-t border-border">
               <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-2">
                 <WifiOff className="w-3.5 h-3.5" />
-                <span>서버에 연결할 수 없습니다.</span>
+                <span>Could not connect to the server.</span>
               </div>
               <button
                 type="button"
                 onClick={() => router.push(`${redirect}?mode=offline`)}
                 className="w-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted/30 rounded-md py-1.5 text-[11px] transition-colors"
               >
-                캐시 모드로 진입 (읽기 전용)
+                Enter cache mode (read-only)
               </button>
             </div>
           )}
@@ -144,7 +144,7 @@ export default function LoginPage() {
         <div className="mt-4 text-center text-[9px] text-muted-foreground font-mono">v0.1.0 · Mock</div>
 
         <div className="mt-6 text-[10px] text-muted-foreground/70 leading-relaxed text-center">
-          <p className="font-semibold text-muted-foreground mb-1">목업 테스트 계정</p>
+          <p className="font-semibold text-muted-foreground mb-1">Mock Test Accounts</p>
           <p><code className="font-mono">admin / admin-password</code> · Administrator</p>
           <p><code className="font-mono">operator-01 / op-password</code> · Operator</p>
         </div>

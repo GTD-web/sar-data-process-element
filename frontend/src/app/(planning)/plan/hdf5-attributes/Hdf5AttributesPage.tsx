@@ -116,7 +116,7 @@ export default function Hdf5AttributesPage() {
       const res = await service.HDF5_애트리뷰트_목록을_조회한다();
       if (!active) return;
       if (!res.success || !res.data) {
-        toast.error(res.message || 'HDF5 애트리뷰트 목록을 불러오지 못했습니다');
+        toast.error(res.message || 'Failed to load HDF5 attributes list');
         setLoading(false);
         return;
       }
@@ -209,7 +209,7 @@ export default function Hdf5AttributesPage() {
       fileName: file.name,
       fileSizeBytes: file.size,
       status: 'uploading' as const,
-      message: '브라우저가 HDF5 파일을 서버로 전송하고 있습니다. 저장 완료 여부와 별개로 업로드 요청은 진행 중입니다.',
+      message: 'The browser is sending the HDF5 file to the server. The upload request is in progress regardless of save completion.',
     }));
     setUploadQueue(queuedUploads);
 
@@ -222,19 +222,19 @@ export default function Hdf5AttributesPage() {
         ]);
 
         if (!result.success || !result.data) {
-          const message = result.message || '저장 확인에 실패했습니다.';
+          const message = result.message || 'Failed to confirm save.';
           setUploadQueue((current) =>
             current.map((item) =>
               item.id === queuedUpload.id
                 ? {
                     ...item,
                     status: 'failed',
-                    message: `${message} 업로드 요청은 전송됐지만 파일 저장/파싱 결과를 확인하지 못했습니다.`,
+                    message: `${message} The upload request was sent, but the file save/parse result could not be confirmed.`,
                   }
                 : item,
             ),
           );
-          toast.error(result.message || `"${file.name}" 업로드에 실패했습니다.`);
+          toast.error(result.message || `Failed to upload "${file.name}".`);
           continue;
         }
 
@@ -245,7 +245,7 @@ export default function Hdf5AttributesPage() {
               ? {
                   ...item,
                   status: 'uploaded',
-                  message: '업로드 요청이 완료되어 HDF5 목록에 반영되었습니다.',
+                  message: 'Upload request completed and reflected in the HDF5 list.',
                 }
               : item,
           ),
@@ -262,8 +262,8 @@ export default function Hdf5AttributesPage() {
         });
         toast.success(
           uploadedFiles.length === 1
-            ? `"${uploadedFiles[0].fileName}" 파일이 추가되었습니다.`
-            : `${uploadedFiles.length}개의 HDF5 파일이 추가되었습니다.`,
+            ? `"${uploadedFiles[0].fileName}" has been added.`
+            : `${uploadedFiles.length} HDF5 files have been added.`,
         );
       }
     } finally {
@@ -331,10 +331,10 @@ export default function Hdf5AttributesPage() {
                     ) : (
                       <Upload className="h-3.5 w-3.5 text-accent" />
                     )}
-                    {uploading ? 'HDF5 업로드 중...' : 'HDF5 파일 업로드'}
+                    {uploading ? 'Uploading HDF5...' : 'Upload HDF5 File'}
                   </button>
                   <div className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">
-                    `.h5`, `.hdf5` 파일을 추가하면 왼쪽 트리에서 바로 선택할 수 있습니다.
+                    Add `.h5` or `.hdf5` files and select them directly from the left tree.
                   </div>
                   {uploadQueue.length > 0 && (
                     <div className="mt-2 space-y-1.5" aria-live="polite">

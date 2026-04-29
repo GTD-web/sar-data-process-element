@@ -149,7 +149,7 @@ export default function ExecutionLogPanel({ logs, selectedJobId, open, onToggle 
           aria-valuenow={panelHeight}
           aria-valuemin={MIN_PANEL_HEIGHT}
           aria-valuemax={MAX_PANEL_HEIGHT}
-          aria-label="실행 로그 패널 높이 조절"
+          aria-label="Resize execution log panel"
           onPointerDown={handleResizePointerDown}
           className={cn(
             'h-2 shrink-0 cursor-ns-resize flex flex-col items-center justify-center border-b border-border/80',
@@ -171,7 +171,7 @@ export default function ExecutionLogPanel({ logs, selectedJobId, open, onToggle 
           {open ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />}
         </span>
 
-        <span className="text-[11px] font-semibold text-foreground mr-3 select-none shrink-0 pointer-events-none">실행 로그</span>
+        <span className="text-[11px] font-semibold text-foreground mr-3 select-none shrink-0 pointer-events-none">Execution Log</span>
 
         {(['ALL', 'ERROR', 'WARN', 'INFO'] as const).map((level) => (
           <button
@@ -187,7 +187,7 @@ export default function ExecutionLogPanel({ logs, selectedJobId, open, onToggle 
               levelFilter === level ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
             )}
           >
-            {level === 'ALL' ? '전체' : level}
+            {level === 'ALL' ? 'All' : level}
             {level === 'ERROR' && errorCount > 0 && (
               <span className="ml-1 text-destructive">{errorCount}</span>
             )}
@@ -200,7 +200,7 @@ export default function ExecutionLogPanel({ logs, selectedJobId, open, onToggle 
         {selectedJobId && (
           <span
             className="px-2 py-0.5 text-[10px] font-medium rounded bg-accent/15 text-accent ml-1"
-            title={`${selectedJobId} 로그만 표시`}
+            title={`Show only ${selectedJobId} logs`}
           >
             {selectedJobId}
           </span>
@@ -219,7 +219,7 @@ export default function ExecutionLogPanel({ logs, selectedJobId, open, onToggle 
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="검색..."
+              placeholder="Search..."
               className="w-28 bg-transparent text-[10px] text-foreground placeholder:text-muted-foreground/50 outline-none border-b border-transparent focus:border-accent/40"
             />
           </div>
@@ -236,7 +236,7 @@ export default function ExecutionLogPanel({ logs, selectedJobId, open, onToggle 
             'p-1 rounded hover:bg-muted/50 transition-colors shrink-0 cursor-pointer',
             autoScroll && 'text-accent',
           )}
-          title="자동 스크롤"
+          title="Auto-scroll"
         >
           <ArrowDownToLine className="w-3 h-3" />
         </button>
@@ -248,7 +248,7 @@ export default function ExecutionLogPanel({ logs, selectedJobId, open, onToggle 
             if (!open) onToggle();
           }}
           className="p-1 rounded hover:bg-muted/50 transition-colors shrink-0 cursor-pointer"
-          title="필터 초기화"
+          title="Clear filters"
         >
           <Trash2 className="w-3 h-3 text-muted-foreground" />
         </button>
@@ -262,7 +262,7 @@ export default function ExecutionLogPanel({ logs, selectedJobId, open, onToggle 
         >
           {filteredLogs.length === 0 ? (
             <div className="flex items-center justify-center h-full min-h-[80px] text-muted-foreground/50 text-xs">
-              {logs.length === 0 ? '실행 로그가 없습니다' : '필터 조건에 맞는 로그가 없습니다'}
+              {logs.length === 0 ? 'No execution logs' : 'No logs match the filter criteria'}
             </div>
           ) : (
             filteredLogs.map((log) => {

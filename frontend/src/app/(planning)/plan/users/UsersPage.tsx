@@ -68,7 +68,7 @@ function Pagination({
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-border bg-card shrink-0">
       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-        <span>페이지 당</span>
+        <span>Per page</span>
         <select
           value={pageSize}
           onChange={(e) => onPageSizeChange(Number(e.target.value))}
@@ -92,7 +92,7 @@ function Pagination({
           onClick={() => onPageChange(page - 1)}
           className="px-2 py-1 text-[11px] rounded-md border border-border text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          이전
+          Prev
         </button>
         {range.map((p, i) =>
           p === 'ellipsis' ? (
@@ -121,7 +121,7 @@ function Pagination({
           onClick={() => onPageChange(page + 1)}
           className="px-2 py-1 text-[11px] rounded-md border border-border text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          다음
+          Next
         </button>
       </div>
     </div>
@@ -183,7 +183,7 @@ function ActiveBadge({ active }: { active: boolean }) {
       )}
     >
       {active ? <UserCheck className="w-3 h-3" /> : <UserX className="w-3 h-3" />}
-      {active ? '활성' : '비활성'}
+      {active ? 'Active' : 'Inactive'}
     </span>
   );
 }
@@ -217,7 +217,7 @@ function DetailPanel({
           <RoleBadge role={user.role} />
           <ActiveBadge active={user.active} />
           {isSelf && (
-            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-accent text-background">본인</span>
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-accent text-background">You</span>
           )}
         </div>
         <div className="font-mono text-sm text-foreground break-all">{user.username}</div>
@@ -225,41 +225,41 @@ function DetailPanel({
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <DetailField label="사용자 ID" value={user.id} mono />
-        <DetailField label="생성일" value={formatKST(user.createdAt)} />
+        <DetailField label="User ID" value={user.id} mono />
+        <DetailField label="Created" value={formatKST(user.createdAt)} />
         <DetailField
-          label="최근 로그인"
+          label="Last Login"
           value={user.lastLoginAt ? `${formatKST(user.lastLoginAt)} (${formatRelativeTime(user.lastLoginAt)})` : '—'}
         />
-        <DetailField label="최근 IP" value={user.lastLoginIp ?? '—'} mono />
-        <DetailField label="비밀번호 재설정 필요" value={user.requiresPasswordReset ? '예' : '아니오'} />
+        <DetailField label="Last IP" value={user.lastLoginIp ?? '—'} mono />
+        <DetailField label="Password Reset Required" value={user.requiresPasswordReset ? 'Yes' : 'No'} />
       </div>
 
       <div className="pt-1 border-t border-border space-y-2">
-        <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">액션</div>
+        <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Actions</div>
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => onEdit(user)}
             className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-md border border-border text-[11px] text-foreground hover:bg-muted/30 transition-colors"
           >
             <Pencil className="w-3 h-3" />
-            편집
+            Edit
           </button>
           <button
             onClick={() => onReset(user)}
             className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-md border border-border text-[11px] text-foreground hover:bg-muted/30 transition-colors"
           >
             <KeyRound className="w-3 h-3" />
-            비밀번호 초기화
+            Reset Password
           </button>
           <button
             onClick={() => onToggleActive(user)}
             disabled={disableDeactivate && user.active}
             title={
               isSelf
-                ? '본인 계정은 비활성화할 수 없습니다'
+                ? 'You cannot deactivate your own account'
                 : lastAdminBlocked && user.active
-                  ? '최소 1명의 Administrator 가 활성 상태여야 합니다'
+                  ? 'At least one Administrator must remain active'
                   : undefined
             }
             className={cn(
@@ -271,7 +271,7 @@ function DetailPanel({
             )}
           >
             {user.active ? <UserX className="w-3 h-3" /> : <UserCheck className="w-3 h-3" />}
-            {user.active ? '비활성화' : '활성화'}
+            {user.active ? 'Deactivate' : 'Activate'}
           </button>
         </div>
       </div>
@@ -295,12 +295,12 @@ function DetailField({ label, value, mono }: { label: string; value: React.React
 type StatFilter = '' | 'active' | 'inactive' | 'Administrator' | 'Operator';
 
 const SORT_COLUMNS: { id: keyof User; label: string }[] = [
-  { id: 'username', label: '사용자명' },
-  { id: 'email', label: '이메일' },
-  { id: 'role', label: '역할' },
-  { id: 'active', label: '상태' },
-  { id: 'lastLoginAt', label: '최근 로그인' },
-  { id: 'createdAt', label: '생성일' },
+  { id: 'username', label: 'Username' },
+  { id: 'email', label: 'Email' },
+  { id: 'role', label: 'Role' },
+  { id: 'active', label: 'Status' },
+  { id: 'lastLoginAt', label: 'Last Login' },
+  { id: 'createdAt', label: 'Created' },
 ];
 
 export default function UsersPage() {
@@ -449,8 +449,8 @@ export default function UsersPage() {
         <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2">
             <UsersIcon className="w-4 h-4 text-accent" />
-            <h1 className="text-sm font-semibold text-foreground">사용자 관리</h1>
-            <span className="text-[10px] text-muted-foreground font-mono">{total}건</span>
+            <h1 className="text-sm font-semibold text-foreground">User Management</h1>
+            <span className="text-[10px] text-muted-foreground font-mono">{total} items</span>
           </div>
           <div className="flex items-center gap-2">
             {hasFilters && canManage && (
@@ -459,7 +459,7 @@ export default function UsersPage() {
                 className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
               >
                 <X className="w-3 h-3" />
-                필터 초기화
+                Clear Filters
               </button>
             )}
             {canManage && (
@@ -468,7 +468,7 @@ export default function UsersPage() {
                 className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-accent text-accent-foreground hover:opacity-90 transition-opacity"
               >
                 <Plus className="w-3 h-3" />
-                사용자 추가
+                Add User
               </button>
             )}
           </div>
@@ -478,9 +478,9 @@ export default function UsersPage() {
           <div className="flex-1 flex items-center justify-center bg-background">
             <div className="max-w-sm text-center">
               <UsersIcon className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
-              <h2 className="text-sm font-semibold text-foreground">사용자 관리는 Administrator 전용입니다</h2>
+              <h2 className="text-sm font-semibold text-foreground">User Management is Administrator-only</h2>
               <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-                Operator 역할은 본인 비밀번호 변경은 가능하지만, 다른 사용자 계정 관리 권한은 없습니다.
+                The Operator role can change its own password, but does not have permission to manage other user accounts.
               </p>
             </div>
           </div>
@@ -490,7 +490,7 @@ export default function UsersPage() {
             <div className="px-5 py-2 border-b border-border shrink-0">
               <div className="flex flex-wrap gap-1.5">
                 <StatCard
-                  label="전체"
+                  label="All"
                   count={globalCounts.total}
                   icon={UsersIcon}
                   color="text-accent"
@@ -498,7 +498,7 @@ export default function UsersPage() {
                   onClick={() => setStatFilter('')}
                 />
                 <StatCard
-                  label="활성"
+                  label="Active"
                   count={globalCounts.active}
                   icon={UserCheck}
                   color="text-success"
@@ -506,7 +506,7 @@ export default function UsersPage() {
                   onClick={() => handleSelectStat('active')}
                 />
                 <StatCard
-                  label="비활성"
+                  label="Inactive"
                   count={globalCounts.inactive}
                   icon={UserX}
                   color="text-muted-foreground"
@@ -536,7 +536,7 @@ export default function UsersPage() {
             <div className="flex items-center gap-3 px-5 py-2.5 border-b border-border shrink-0">
               <input
                 type="text"
-                placeholder="사용자명·이메일 검색..."
+                placeholder="Search username or email..."
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -554,7 +554,7 @@ export default function UsersPage() {
                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
                       <UsersIcon className="w-8 h-8 opacity-30" />
                       <span className="text-sm">
-                        {hasFilters ? '조건에 맞는 사용자가 없습니다' : '사용자가 없습니다'}
+                        {hasFilters ? 'No users match the criteria' : 'No users'}
                       </span>
                     </div>
                   ) : (
@@ -593,7 +593,7 @@ export default function UsersPage() {
                                   <span className="font-mono text-accent">{u.username}</span>
                                   {isSelf && (
                                     <span className="px-1 py-0 rounded text-[9px] font-bold bg-accent/15 text-accent">
-                                      본인
+                                      You
                                     </span>
                                   )}
                                 </div>
@@ -643,7 +643,7 @@ export default function UsersPage() {
                     <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
                       <div className="flex items-center gap-2 min-w-0">
                         <UserCog className="w-4 h-4 text-accent shrink-0" />
-                        <span className="text-xs font-semibold text-foreground truncate">사용자 상세</span>
+                        <span className="text-xs font-semibold text-foreground truncate">User Details</span>
                       </div>
                       <button
                         onClick={() => setSelectedUser(null)}

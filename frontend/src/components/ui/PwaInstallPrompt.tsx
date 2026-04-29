@@ -93,12 +93,12 @@ export default function PwaInstallPrompt() {
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-foreground">
-            {isOnline ? 'SDPE DAG를 데스크톱 앱처럼 설치할 수 있습니다' : '오프라인 상태입니다'}
+            {isOnline ? 'Install SDPE DAG as a desktop app' : 'You are offline'}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             {isOnline
-              ? (isIos ? 'Safari 공유 메뉴에서 "홈 화면에 추가"를 선택하면 독립 창으로 실행됩니다.' : '브라우저 설치를 사용하면 독립 창, 아이콘 실행, 서비스 워커 캐시를 사용할 수 있습니다.')
-              : '최근 방문한 화면과 정적 리소스는 서비스 워커 캐시로 유지됩니다.'}
+              ? (isIos ? 'In Safari, choose "Add to Home Screen" from the share menu to launch in a standalone window.' : 'Browser installation enables a standalone window, icon launch, and service worker cache.')
+              : 'Recently visited screens and static resources remain available via the service worker cache.'}
           </div>
         </div>
         {isOnline && installEvent ? (
@@ -108,14 +108,14 @@ export default function PwaInstallPrompt() {
             className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3 py-2 text-sm font-medium text-background transition-colors hover:bg-accent/90"
           >
             <Download className="h-4 w-4" />
-            설치
+            Install
           </button>
         ) : null}
         <button
           type="button"
           onClick={handleDismiss}
           className="shrink-0 rounded-xl border border-border px-2 py-2 text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
-          aria-label="닫기"
+          aria-label="Close"
         >
           <X className="h-4 w-4" />
         </button>

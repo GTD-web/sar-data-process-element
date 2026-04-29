@@ -448,10 +448,10 @@ function generateAlerts(jobs: JobDetail[]): Alert[] {
   const failedJobs = jobs.filter((j) => j.status === 'FAILED');
   const kinds: AlertKind[] = ['MAX_RETRY', 'PIPELINE_DELAY', 'QUALITY_FAIL', 'RESOURCE_THRESHOLD'];
   const messages: Record<AlertKind, string> = {
-    MAX_RETRY: '최대 재시도 횟수 초과',
-    PIPELINE_DELAY: '파이프라인 처리 지연 (> 2시간)',
-    QUALITY_FAIL: '산출물 품질 검증 실패',
-    RESOURCE_THRESHOLD: 'NAS 디스크 사용률 90% 초과',
+    MAX_RETRY: 'Max retry attempts exceeded',
+    PIPELINE_DELAY: 'Pipeline processing delayed (> 2h)',
+    QUALITY_FAIL: 'Output quality validation failed',
+    RESOURCE_THRESHOLD: 'NAS disk usage exceeded 90%',
   };
 
   return failedJobs.map((job, i) => {
@@ -792,8 +792,8 @@ function generateHdf5AttributeFiles(rawData: RawDataSummary[]): Hdf5FileSummary[
     {
       rootGroup: 'ST0',
       notes: [
-        'Object Info 탭처럼 파일 루트 그룹과 첫 번째 관측 그룹의 메타데이터를 함께 노출합니다.',
-        '데이터셋을 선택하면 상위 그룹 애트리뷰트를 우선 표시해 데스크탑 앱의 탐색 흐름을 유지합니다.',
+        'Like the Object Info tab, exposes metadata from the file root group and first observation group together.',
+        'When a dataset is selected, parent group attributes are displayed first to preserve the desktop app navigation flow.',
       ],
       nodes: [
         { pathSuffix: '', name: 'file', type: 'file', dtype: undefined, shape: undefined },
@@ -844,8 +844,8 @@ function generateHdf5AttributeFiles(rawData: RawDataSummary[]): Hdf5FileSummary[
     {
       rootGroup: 'ST1',
       notes: [
-        'Spotlight 관측은 메타데이터 항목 수가 많아 상단 필터와 검색이 중요합니다.',
-        '데이터셋 shape와 dtype은 데스크탑 앱의 General Object Info와 동일하게 우측 패널에서 보여줍니다.',
+        'Spotlight observations have many metadata entries, so the top filter and search are important.',
+        'Dataset shape and dtype are shown in the right panel, matching the desktop app General Object Info.',
       ],
       nodes: [
         { pathSuffix: '', name: 'file', type: 'file', dtype: undefined, shape: undefined },
@@ -1026,8 +1026,8 @@ function buildUploadedHdf5FileSummary(file: Pick<File, 'name' | 'size' | 'lastMo
     nodes,
     attributes,
     notes: [
-      '업로드된 HDF5 파일은 현재 프런트엔드 mock preview로 즉시 탐색할 수 있습니다.',
-      '실제 파서 API가 연결되면 이 영역은 서버에서 추출한 노드/애트리뷰트로 대체됩니다.',
+      'Uploaded HDF5 files can be explored immediately via the frontend mock preview.',
+      'Once the real parser API is connected, this section will be replaced by nodes/attributes extracted on the server.',
     ],
   };
 }
@@ -1253,22 +1253,22 @@ function generatePipelines(): PipelineDefinition[] {
 
   const archived: PipelineDefinition[] = [
     {
-      ...buildPipelineFromSteps('PL-ARCHIVE-FULL-V1', 'Full SAR Processing (v1 — 폐기)', PIPELINE_STEPS, '2025-06-01T09:00:00Z'),
+      ...buildPipelineFromSteps('PL-ARCHIVE-FULL-V1', 'Full SAR Processing (v1 — deprecated)', PIPELINE_STEPS, '2025-06-01T09:00:00Z'),
       archived: true,
       archivedAt: '2026-01-12T02:40:00Z',
-      archiveReason: '초기 DAG 기준으로 작성되어 현재 운영 라우팅 조건과 맞지 않습니다.',
+      archiveReason: 'Built against the initial DAG and no longer matches current operational routing conditions.',
     },
     {
       ...buildPipelineFromSteps('PL-ARCHIVE-SCANSAR-LEGACY', 'Legacy ScanSAR Pipeline', MODE_STEP_VARIANTS['ScanSAR'] ?? PIPELINE_STEPS, '2025-08-15T09:00:00Z'),
       archived: true,
       archivedAt: '2026-02-18T05:15:00Z',
-      archiveReason: '성능 검증용 테스트 파이프라인으로 운영 자동 실행 대상에서 제외했습니다.',
+      archiveReason: 'A test pipeline for performance verification, excluded from operational auto-execution.',
     },
     {
       ...buildPipelineFromSteps('PL-ARCHIVE-SPOTLIGHT-LEGACY', 'Legacy Spotlight Pipeline', MODE_STEP_VARIANTS['Spotlight'] ?? PIPELINE_STEPS, '2025-10-20T09:00:00Z'),
       archived: true,
       archivedAt: '2026-03-07T08:30:00Z',
-      archiveReason: 'Spotlight 처리 프로파일이 신규 프로파일로 대체되어 기존 실험 구성을 폐기했습니다.',
+      archiveReason: 'The Spotlight processing profile was replaced by a new profile, so the previous experimental configuration was retired.',
     },
   ];
 
@@ -1331,8 +1331,8 @@ function buildActivationRuleForPipeline(
     triggerSource: isPartial ? 'PARTIAL_REPROCESS' : 'PIPELINE_AUTO',
     deployedAt: active ? pipeline.updatedAt : undefined,
     description: isPartial
-      ? '제품/운영 재처리 요청이 들어오면 입력 레벨과 모드에 맞는 부분 재처리 DAG를 기동합니다.'
-      : '데이터 수집 백엔드가 원시 데이터 수신 이벤트를 pgmq에 기록하면 처리 프로파일의 태그 조건으로 매칭됩니다.',
+      ? 'When a product/operational reprocess request arrives, launches the partial reprocessing DAG matching the input level and mode.'
+      : 'When the data collection backend writes raw data received events to pgmq, matches them by processing profile tag conditions.',
   };
 }
 
@@ -1475,7 +1475,7 @@ class MockPipelineUIService implements IPipelineUIService {
       triggerSource: data.triggerSource,
       deployedAt: data.active ? new Date().toISOString() : undefined,
       description: data.description?.trim()
-        || 'pgmq 수신 이벤트와 조건을 매칭해 지정한 파이프라인을 자동 실행합니다.',
+        || 'Matches pgmq incoming events against conditions to automatically run the designated pipeline.',
     };
 
     this.activationRules = this.activationRules.filter((item) => item.id !== id);
@@ -1531,17 +1531,17 @@ class MockPipelineUIService implements IPipelineUIService {
 
   async 원시데이터_파이프라인을_매핑한다(rawDataId: string, pipelineId: string | null): Promise<ServiceResponseWithData<RawDataSummary>> {
     const rawData = this.rawData.find((item) => item.id === rawDataId);
-    if (!rawData) return { success: false, message: '원시 데이터를 찾을 수 없습니다' };
+    if (!rawData) return { success: false, message: 'Raw data not found' };
 
     if (pipelineId === null) {
       rawData.mappedPipelineId = null;
       rawData.mappedPipelineName = null;
       rawData.status = 'RECEIVED';
-      return { success: true, message: '파이프라인 매핑을 해제했습니다', data: { ...rawData } };
+      return { success: true, message: 'Pipeline mapping cleared', data: { ...rawData } };
     }
 
     const pipeline = this.pipelines.find((item) => item.id === pipelineId && !item.archived);
-    if (!pipeline) return { success: false, message: '매핑할 파이프라인을 찾을 수 없습니다' };
+    if (!pipeline) return { success: false, message: 'Pipeline to map not found' };
 
     rawData.mappedPipelineId = pipeline.id;
     rawData.mappedPipelineName = pipeline.name;
@@ -1549,7 +1549,7 @@ class MockPipelineUIService implements IPipelineUIService {
 
     return {
       success: true,
-      message: `원시 데이터를 "${pipeline.name}"에 연결했습니다`,
+      message: `Raw data linked to "${pipeline.name}"`,
       data: { ...rawData },
     };
   }
@@ -1569,7 +1569,7 @@ class MockPipelineUIService implements IPipelineUIService {
 
   async HDF5_파일을_업로드한다(file: File, rawDataId?: string): Promise<ServiceResponseWithData<Hdf5FileSummary>> {
     if (!/\.(h5|hdf5)$/i.test(file.name)) {
-      return { success: false, message: 'HDF5 파일(.h5, .hdf5)만 업로드할 수 있습니다.' };
+      return { success: false, message: 'Only HDF5 files (.h5, .hdf5) can be uploaded.' };
     }
 
     const uploaded = buildUploadedHdf5FileSummary(file, rawDataId);
@@ -1577,7 +1577,7 @@ class MockPipelineUIService implements IPipelineUIService {
 
     return {
       success: true,
-      message: `"${uploaded.fileName}" 파일이 추가되었습니다.`,
+      message: `"${uploaded.fileName}" has been added.`,
       data: cloneHdf5FileSummary(uploaded),
     };
   }
@@ -1625,14 +1625,14 @@ class MockPipelineUIService implements IPipelineUIService {
   async Job_상세를_조회한다(jobId: string): Promise<ServiceResponseWithData<JobDetail>> {
     const job = this.jobs.find((j) => j.jobId === jobId);
     if (!job) {
-      return { success: false, message: `Job ${jobId}을(를) 찾을 수 없습니다` };
+      return { success: false, message: `Job ${jobId} not found` };
     }
     return { success: true, message: 'OK', data: job };
   }
 
   async Job을_재처리한다(jobId: string): Promise<ServiceResponse> {
     const job = this.jobs.find((j) => j.jobId === jobId);
-    if (!job) return { success: false, message: 'Job을 찾을 수 없습니다' };
+    if (!job) return { success: false, message: 'Job not found' };
     job.status = 'CREATED';
     job.retryCount = 0;
     job.updatedAt = new Date().toISOString();
@@ -1641,12 +1641,12 @@ class MockPipelineUIService implements IPipelineUIService {
       if (s.status === 'PENDING') resetStepRuntimeFields(s);
     });
     simulateJobExecution(job);
-    return { success: true, message: `Job ${jobId} 재처리가 요청되었습니다` };
+    return { success: true, message: `Reprocessing requested for Job ${jobId}` };
   }
 
   async 부분_재처리를_요청한다(jobId: string, params: { sarStage: SarStage }): Promise<ServiceResponse> {
     const job = this.jobs.find((j) => j.jobId === jobId);
-    if (!job) return { success: false, message: 'Job을 찾을 수 없습니다' };
+    if (!job) return { success: false, message: 'Job not found' };
     // 해당 sarStage 이후 스텝을 PENDING으로 리셋 (TRIGGER는 항상 COMPLETED 유지)
     let resetActive = false;
     job.steps.forEach((s) => {
@@ -1660,18 +1660,18 @@ class MockPipelineUIService implements IPipelineUIService {
     job.status = 'CREATED';
     job.updatedAt = new Date().toISOString();
     simulateJobExecution(job);
-    return { success: true, message: `Job ${jobId} 부분 재처리(${params.sarStage}부터)가 요청되었습니다` };
+    return { success: true, message: `Partial reprocessing requested for Job ${jobId} (from ${params.sarStage})` };
   }
 
   async Job을_취소한다(jobId: string): Promise<ServiceResponse> {
     const job = this.jobs.find((j) => j.jobId === jobId);
-    if (!job) return { success: false, message: 'Job을 찾을 수 없습니다' };
+    if (!job) return { success: false, message: 'Job not found' };
     job.status = 'CANCELED';
     job.updatedAt = new Date().toISOString();
     job.steps.forEach((s) => {
       if (s.status === 'PENDING' || s.status === 'RUNNING') s.status = 'CANCELED';
     });
-    return { success: true, message: `Job ${jobId}이(가) 취소되었습니다` };
+    return { success: true, message: `Job ${jobId} has been canceled` };
   }
 
   async Alert_목록을_조회한다(params?: {
@@ -1687,16 +1687,16 @@ class MockPipelineUIService implements IPipelineUIService {
 
   async Alert을_확인한다(alertId: string, options?: { ifMatchVersion?: number }): Promise<ServiceResponse> {
     const alert = this.alerts.find((a) => a.id === alertId);
-    if (!alert) return { success: false, message: 'Alert을 찾을 수 없습니다' };
+    if (!alert) return { success: false, message: 'Alert not found' };
     // S-03: 이미 ack된 Alert에 version 포함 요청 → 409 시뮬레이션
     if (alert.acknowledged && options?.ifMatchVersion !== undefined) {
-      return { success: false, message: '이미 다른 운영자가 확인했습니다', code: 409 };
+      return { success: false, message: 'Already acknowledged by another operator', code: 409 };
     }
     alert.acknowledged = true;
     alert.acknowledgedAt = new Date().toISOString();
     alert.acknowledgedBy = 'operator-01';
     alert.version += 1;
-    return { success: true, message: `Alert ${alertId}이(가) 확인되었습니다` };
+    return { success: true, message: `Alert ${alertId} has been acknowledged` };
   }
 
   async 감사로그를_조회한다(params?: {
@@ -1768,7 +1768,7 @@ class MockPipelineUIService implements IPipelineUIService {
 
   async 파이프라인을_조회한다(id: string): Promise<ServiceResponseWithData<PipelineDefinition>> {
     const pl = this.pipelines.find((p) => p.id === id);
-    if (!pl) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
+    if (!pl) return { success: false, message: 'Pipeline not found' };
     return { success: true, message: 'OK', data: { ...pl, steps: [...pl.steps] } };
   }
 
@@ -1787,12 +1787,12 @@ class MockPipelineUIService implements IPipelineUIService {
     this.pipelines.push(pl);
     const rule = buildActivationRuleForPipeline(pl, this.profiles, false);
     if (rule) this.activationRules.push(rule);
-    return { success: true, message: '파이프라인이 생성되었습니다', data: { ...pl, steps: [...pl.steps] } };
+    return { success: true, message: 'Pipeline created', data: { ...pl, steps: [...pl.steps] } };
   }
 
   async 파이프라인을_수정한다(id: string, data: UpdatePipelineData): Promise<ServiceResponseWithData<PipelineDefinition>> {
     const pl = this.pipelines.find((p) => p.id === id);
-    if (!pl) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
+    if (!pl) return { success: false, message: 'Pipeline not found' };
     if (data.name !== undefined) pl.name = data.name;
     if (data.steps !== undefined) {
       pl.steps = data.steps.map((s, i) => ({
@@ -1811,26 +1811,26 @@ class MockPipelineUIService implements IPipelineUIService {
     }
     pl.updatedAt = new Date().toISOString();
     this.upsertActivationRule(pl);
-    return { success: true, message: '파이프라인이 수정되었습니다', data: { ...pl, steps: [...pl.steps] } };
+    return { success: true, message: 'Pipeline updated', data: { ...pl, steps: [...pl.steps] } };
   }
 
   async 파이프라인을_삭제한다(id: string): Promise<ServiceResponse> {
     const idx = this.pipelines.findIndex((p) => p.id === id);
-    if (idx === -1) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
+    if (idx === -1) return { success: false, message: 'Pipeline not found' };
     this.pipelines.splice(idx, 1);
     this.activationRules = this.activationRules.filter((rule) => rule.pipelineId !== id);
-    return { success: true, message: '파이프라인이 삭제되었습니다' };
+    return { success: true, message: 'Pipeline deleted' };
   }
 
   async 파이프라인을_복제한다(id: string): Promise<ServiceResponseWithData<PipelineDefinition>> {
     const src = this.pipelines.find((p) => p.id === id);
-    if (!src) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
+    if (!src) return { success: false, message: 'Pipeline not found' };
     const now = new Date().toISOString();
     const newId = `PL-${++nextPipelineSeq}`;
     const dup: PipelineDefinition = {
       ...src,
       id: newId,
-      name: `${src.name} (복사)`,
+      name: `${src.name} (copy)`,
       steps: src.steps.map((s) => ({ ...s })),
       edges: src.edges.map((e) => ({ ...e })),
       createdAt: now,
@@ -1840,28 +1840,28 @@ class MockPipelineUIService implements IPipelineUIService {
     this.pipelines.push(dup);
     const rule = buildActivationRuleForPipeline(dup, this.profiles, false);
     if (rule) this.activationRules.push(rule);
-    return { success: true, message: '파이프라인이 복제되었습니다', data: { ...dup, steps: [...dup.steps] } };
+    return { success: true, message: 'Pipeline cloned', data: { ...dup, steps: [...dup.steps] } };
   }
 
   async 파이프라인을_아카이브한다(id: string, archived: boolean, archiveReason?: string): Promise<ServiceResponse> {
     const pl = this.pipelines.find((p) => p.id === id);
-    if (!pl) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
+    if (!pl) return { success: false, message: 'Pipeline not found' };
     pl.archived = archived;
     if (archived) {
       pl.archivedAt = new Date().toISOString();
-      pl.archiveReason = archiveReason?.trim() || '폐기 사유가 입력되지 않았습니다.';
+      pl.archiveReason = archiveReason?.trim() || 'No archive reason provided.';
     } else {
       pl.archivedAt = undefined;
       pl.archiveReason = undefined;
     }
     pl.updatedAt = new Date().toISOString();
     this.upsertActivationRule(pl, false);
-    return { success: true, message: archived ? '파이프라인이 아카이브되었습니다' : '파이프라인이 복원되었습니다' };
+    return { success: true, message: archived ? 'Pipeline archived' : 'Pipeline restored' };
   }
 
   async 파이프라인을_실행한다(pipelineId: string): Promise<ServiceResponseWithData<JobSummary>> {
     const pl = this.pipelines.find((p) => p.id === pipelineId);
-    if (!pl) return { success: false, message: '파이프라인을 찾을 수 없습니다', data: null as unknown as JobSummary };
+    if (!pl) return { success: false, message: 'Pipeline not found', data: null as unknown as JobSummary };
     const jobId = `job-${Date.now().toString(36)}`;
     const now = new Date().toISOString();
     const summary: JobSummary = {
@@ -1910,7 +1910,7 @@ class MockPipelineUIService implements IPipelineUIService {
     // 순차 실행 시뮬레이션 시작
     simulateJobExecution(detail);
 
-    return { success: true, message: `파이프라인 "${pl.name}" 실행이 요청되었습니다`, data: summary };
+    return { success: true, message: `Pipeline "${pl.name}" execution requested`, data: summary };
   }
 
   async 파이프라인_자동실행규칙을_조회한다(pipelineId?: string): Promise<ServiceResponseWithData<PipelineActivationRule[]>> {
@@ -1928,10 +1928,10 @@ class MockPipelineUIService implements IPipelineUIService {
     data: SavePipelineActivationRuleData,
   ): Promise<ServiceResponseWithData<PipelineActivationRule>> {
     const rule = this.saveActivationRule(data);
-    if (!rule) return { success: false, message: '자동 실행 규칙을 저장할 수 없습니다' };
+    if (!rule) return { success: false, message: 'Failed to save activation rule' };
     return {
       success: true,
-      message: '자동 실행 규칙이 저장되었습니다',
+      message: 'Activation rule saved',
       data: { ...rule, match: { ...rule.match } },
     };
   }
@@ -1941,14 +1941,14 @@ class MockPipelineUIService implements IPipelineUIService {
     active: boolean,
   ): Promise<ServiceResponseWithData<PipelineActivationRule>> {
     const pipeline = this.pipelines.find((p) => p.id === pipelineId);
-    if (!pipeline) return { success: false, message: '파이프라인을 찾을 수 없습니다' };
-    if (pipeline.archived) return { success: false, message: '아카이브된 파이프라인은 활성화할 수 없습니다' };
+    if (!pipeline) return { success: false, message: 'Pipeline not found' };
+    if (pipeline.archived) return { success: false, message: 'Archived pipelines cannot be activated' };
 
     const rule = this.upsertActivationRule(pipeline, active);
-    if (!rule) return { success: false, message: '자동 실행 규칙을 생성할 수 없습니다' };
+    if (!rule) return { success: false, message: 'Failed to create activation rule' };
     return {
       success: true,
-      message: active ? '자동 실행 연결이 활성화되었습니다' : '자동 실행 연결이 비활성화되었습니다',
+      message: active ? 'Auto-execution connection enabled' : 'Auto-execution connection disabled',
       data: { ...rule, match: { ...rule.match } },
     };
   }
@@ -1977,30 +1977,30 @@ class MockPipelineUIService implements IPipelineUIService {
       updatedAt: now,
     };
     this.profiles.push(profile);
-    return { success: true, message: '처리 프로파일이 생성되었습니다', data: profile };
+    return { success: true, message: 'Processing profile created', data: profile };
   }
 
   async 처리_프로파일을_수정한다(id: string, data: Partial<Omit<ProcessingProfile, 'id' | 'createdAt' | 'updatedAt' | 'referencedPipelineCount'>>): Promise<ServiceResponseWithData<ProcessingProfile>> {
     const profile = this.profiles.find((p) => p.id === id);
-    if (!profile) return { success: false, message: '프로파일을 찾을 수 없습니다' };
+    if (!profile) return { success: false, message: 'Profile not found' };
     Object.assign(profile, data, { updatedAt: new Date().toISOString() });
     // 프로파일 태그 변경은 이를 참조하는 파이프라인의 활성화 규칙에 즉시 반영되어야 한다.
     for (const pipeline of this.pipelines) {
       const usesProfile = pipeline.steps.some((s) => s.jobInitConfig?.profileId === id);
       if (usesProfile) this.upsertActivationRule(pipeline);
     }
-    return { success: true, message: '처리 프로파일이 수정되었습니다', data: { ...profile } };
+    return { success: true, message: 'Processing profile updated', data: { ...profile } };
   }
 
   async 처리_프로파일을_삭제한다(id: string): Promise<ServiceResponse> {
     const idx = this.profiles.findIndex((p) => p.id === id);
-    if (idx === -1) return { success: false, message: '프로파일을 찾을 수 없습니다' };
+    if (idx === -1) return { success: false, message: 'Profile not found' };
     const profile = this.profiles[idx];
     if (profile.referencedPipelineCount && profile.referencedPipelineCount > 0) {
-      return { success: false, message: `이 프로파일을 참조하는 파이프라인이 ${profile.referencedPipelineCount}개 있습니다. 먼저 해제하세요.` };
+      return { success: false, message: `${profile.referencedPipelineCount} pipeline(s) reference this profile. Please detach them first.` };
     }
     this.profiles.splice(idx, 1);
-    return { success: true, message: '처리 프로파일이 삭제되었습니다' };
+    return { success: true, message: 'Processing profile deleted' };
   }
 
   async 제품_목록을_조회한다(params?: {
@@ -2034,13 +2034,13 @@ class MockPipelineUIService implements IPipelineUIService {
 
   async 제품_상세를_조회한다(productId: string): Promise<ServiceResponseWithData<Product>> {
     const product = this.products.find((p) => p.id === productId);
-    if (!product) return { success: false, message: '제품을 찾을 수 없습니다' };
+    if (!product) return { success: false, message: 'Product not found' };
     return { success: true, message: 'OK', data: { ...product } };
   }
 
   async 제품_다운로드_URL을_발급한다(productId: string): Promise<ServiceResponseWithData<{ url: string; expiresIn: number }>> {
     const product = this.products.find((p) => p.id === productId);
-    if (!product) return { success: false, message: '제품을 찾을 수 없습니다' };
+    if (!product) return { success: false, message: 'Product not found' };
     return {
       success: true,
       message: 'OK',
@@ -2053,11 +2053,11 @@ class MockPipelineUIService implements IPipelineUIService {
 
   async 제품_재처리를_요청한다(productId: string, params: { targetLevel: string }): Promise<ServiceResponseWithData<{ jobId: string }>> {
     const product = this.products.find((p) => p.id === productId);
-    if (!product) return { success: false, message: '제품을 찾을 수 없습니다' };
+    if (!product) return { success: false, message: 'Product not found' };
     const newJobId = `JOB-RP-${Date.now().toString(36)}`;
     return {
       success: true,
-      message: `재처리가 요청되었습니다 (${params.targetLevel}부터)`,
+      message: `Reprocessing requested (from ${params.targetLevel})`,
       data: { jobId: newJobId },
     };
   }
@@ -2083,10 +2083,10 @@ class MockPipelineUIService implements IPipelineUIService {
   async 로그인한다(req: { username: string; password: string }): Promise<ServiceResponseWithData<Session>> {
     await new Promise((r) => setTimeout(r, 400));
     const user = mockUsers.find((u) => u.username === req.username);
-    if (!user) return { success: false, message: '사용자명 또는 비밀번호가 올바르지 않습니다', code: 401 };
-    if (!user.active) return { success: false, message: '비활성화된 계정입니다. 관리자에게 문의하세요.', code: 403 };
+    if (!user) return { success: false, message: 'Incorrect username or password', code: 401 };
+    if (!user.active) return { success: false, message: 'Account is deactivated. Please contact your administrator.', code: 403 };
     if (req.password.length < 4) {
-      return { success: false, message: '사용자명 또는 비밀번호가 올바르지 않습니다', code: 401 };
+      return { success: false, message: 'Incorrect username or password', code: 401 };
     }
     const session: Session = {
       accessToken: `mock-access-${Date.now().toString(36)}`,
@@ -2106,7 +2106,7 @@ class MockPipelineUIService implements IPipelineUIService {
   }
 
   async 토큰을_갱신한다(): Promise<ServiceResponseWithData<Session>> {
-    if (!this.mockSession) return { success: false, message: '세션이 만료되었습니다', code: 401 };
+    if (!this.mockSession) return { success: false, message: 'Session expired', code: 401 };
     const next: Session = {
       ...this.mockSession,
       accessToken: `mock-access-${Date.now().toString(36)}`,
@@ -2120,16 +2120,16 @@ class MockPipelineUIService implements IPipelineUIService {
     currentPassword: string;
     newPassword: string;
   }): Promise<ServiceResponse> {
-    if (!this.mockSession) return { success: false, message: '로그인이 필요합니다', code: 401 };
-    if (req.currentPassword.length < 4) return { success: false, message: '현재 비밀번호가 올바르지 않습니다', code: 400 };
-    if (req.newPassword.length < 12) return { success: false, message: '새 비밀번호는 최소 12자 이상이어야 합니다', code: 400 };
+    if (!this.mockSession) return { success: false, message: 'Login required', code: 401 };
+    if (req.currentPassword.length < 4) return { success: false, message: 'Current password is incorrect', code: 400 };
+    if (req.newPassword.length < 12) return { success: false, message: 'New password must be at least 12 characters', code: 400 };
     const u = mockUsers.find((x) => x.id === this.mockSession?.user.id);
     if (u) u.requiresPasswordReset = false;
-    return { success: true, message: '비밀번호가 변경되었습니다' };
+    return { success: true, message: 'Password has been changed' };
   }
 
   async 현재_사용자를_조회한다(): Promise<ServiceResponseWithData<User>> {
-    if (!this.mockSession) return { success: false, message: '로그인이 필요합니다', code: 401 };
+    if (!this.mockSession) return { success: false, message: 'Login required', code: 401 };
     return { success: true, message: 'OK', data: this.mockSession.user };
   }
 
@@ -2171,10 +2171,10 @@ class MockPipelineUIService implements IPipelineUIService {
 
   async 사용자를_생성한다(req: CreateUserRequest): Promise<ServiceResponseWithData<User>> {
     if (mockUsers.some((u) => u.username === req.username)) {
-      return { success: false, message: '이미 존재하는 사용자명입니다', code: 409 };
+      return { success: false, message: 'Username already exists', code: 409 };
     }
     if (mockUsers.some((u) => u.email === req.email)) {
-      return { success: false, message: '이미 등록된 이메일입니다', code: 409 };
+      return { success: false, message: 'Email is already registered', code: 409 };
     }
     const user: User = {
       id: `user-${Date.now().toString(36)}`,
@@ -2188,32 +2188,32 @@ class MockPipelineUIService implements IPipelineUIService {
       requiresPasswordReset: true,
     };
     mockUsers.push(user);
-    return { success: true, message: '사용자가 생성되었습니다', data: user };
+    return { success: true, message: 'User created', data: user };
   }
 
   async 사용자를_수정한다(id: string, req: UpdateUserRequest): Promise<ServiceResponseWithData<User>> {
     const user = mockUsers.find((u) => u.id === id);
-    if (!user) return { success: false, message: '사용자를 찾을 수 없습니다', code: 404 };
+    if (!user) return { success: false, message: 'User not found', code: 404 };
 
     if (req.active === false && user.role === 'Administrator') {
       const activeAdmins = mockUsers.filter((u) => u.role === 'Administrator' && u.active && u.id !== id).length;
       if (activeAdmins === 0) {
-        return { success: false, message: '최소 1명의 Administrator가 활성 상태여야 합니다', code: 409 };
+        return { success: false, message: 'At least one active Administrator is required', code: 409 };
       }
     }
 
     if (req.email != null) user.email = req.email;
     if (req.role != null) user.role = req.role;
     if (req.active != null) user.active = req.active;
-    return { success: true, message: '사용자 정보가 수정되었습니다', data: user };
+    return { success: true, message: 'User information updated', data: user };
   }
 
   async 사용자_비밀번호를_초기화한다(id: string): Promise<ServiceResponseWithData<{ temporaryPassword: string }>> {
     const user = mockUsers.find((u) => u.id === id);
-    if (!user) return { success: false, message: '사용자를 찾을 수 없습니다', code: 404 };
+    if (!user) return { success: false, message: 'User not found', code: 404 };
     const temp = generateTempPassword();
     user.requiresPasswordReset = true;
-    return { success: true, message: '비밀번호가 초기화되었습니다', data: { temporaryPassword: temp } };
+    return { success: true, message: 'Password has been reset', data: { temporaryPassword: temp } };
   }
 }
 

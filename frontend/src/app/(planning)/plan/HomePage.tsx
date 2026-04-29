@@ -180,8 +180,8 @@ export default function HomePage() {
   );
   const selectedPipelineSet = useMemo(() => new Set(selectedPipelineIds), [selectedPipelineIds]);
   const filterSummary = filterMode === 'all'
-    ? `전체 ${pipelines.length}개`
-    : `선택 ${visiblePipelines.length}/${pipelines.length}개`;
+    ? `All ${pipelines.length}`
+    : `Selected ${visiblePipelines.length}/${pipelines.length}`;
 
   const handleFilterModeChange = useCallback((mode: 'all' | 'custom') => {
     setFilterMode(mode);
@@ -233,22 +233,22 @@ export default function HomePage() {
                   </div>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h1 className="text-base font-bold text-foreground">대시보드</h1>
+                      <h1 className="text-base font-bold text-foreground">Dashboard</h1>
                       <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
                         {currentUsername}
                       </span>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-                      <span className="rounded-full bg-muted/70 px-2 py-0.5">실행 파이프라인 {executedPipelines.length}</span>
-                      <span className="rounded-full bg-muted/70 px-2 py-0.5">활성 필터 {filterSummary}</span>
+                      <span className="rounded-full bg-muted/70 px-2 py-0.5">Active pipelines {executedPipelines.length}</span>
+                      <span className="rounded-full bg-muted/70 px-2 py-0.5">Filter {filterSummary}</span>
                     </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:w-fit xl:justify-self-end">
-                  <KpiCard className="xl:w-[174px]" label="실행 파이프라인" value={executedPipelines.length} icon={GitBranch} tone="accent" />
-                  <KpiCard className="xl:w-[174px]" label="실행 중 Job" value={totalRunning} icon={Activity} tone="accent" />
-                  <KpiCard className="xl:w-[174px]" label="실패 Job" value={totalFailed} icon={XCircle} tone={totalFailed > 0 ? 'danger' : 'muted'} />
-                  <KpiCard className="xl:w-[174px]" label="노드 실패" value={failedNodes} icon={AlertTriangle} tone={failedNodes > 0 ? 'danger' : 'muted'} />
+                  <KpiCard className="xl:w-[174px]" label="Active pipelines" value={executedPipelines.length} icon={GitBranch} tone="accent" />
+                  <KpiCard className="xl:w-[174px]" label="Running jobs" value={totalRunning} icon={Activity} tone="accent" />
+                  <KpiCard className="xl:w-[174px]" label="Failed jobs" value={totalFailed} icon={XCircle} tone={totalFailed > 0 ? 'danger' : 'muted'} />
+                  <KpiCard className="xl:w-[174px]" label="Failed nodes" value={failedNodes} icon={AlertTriangle} tone={failedNodes > 0 ? 'danger' : 'muted'} />
                 </div>
               </div>
             </div>
@@ -262,7 +262,7 @@ export default function HomePage() {
                     <Layers className="h-4 w-4" />
                   </div>
                   <div className="min-w-0">
-                    <h2 className="text-sm font-semibold text-foreground">품질 현황 매트릭스</h2>
+                    <h2 className="text-sm font-semibold text-foreground">Quality status matrix</h2>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                       <span className="rounded-full bg-muted px-2 py-1 font-mono">{dashboard.length} visible</span>
                       <span className="rounded-full bg-muted px-2 py-1 font-mono">{pipelines.length} total</span>
@@ -287,7 +287,7 @@ export default function HomePage() {
 
             {dashboard.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border py-12 text-center text-xs text-muted-foreground">
-                선택된 파이프라인이 없습니다
+                No pipeline selected
               </div>
             ) : (
               <div className="space-y-4">
@@ -494,7 +494,7 @@ function buildMatrixDepthGroups(nodeMetrics: NodeMetric[], depthMetrics: DepthMe
 
       return {
         depth,
-        title: columns.length > 1 ? `단계 ${depth + 1} (${columns.length}개 분기)` : `단계 ${depth + 1}`,
+        title: columns.length > 1 ? `Stage ${depth + 1} (${columns.length} branches)` : `Stage ${depth + 1}`,
         subtitle: '',
         columns,
         aggregate: depthMetricMap.get(depth) ?? {
@@ -511,20 +511,20 @@ function buildMatrixDepthGroups(nodeMetrics: NodeMetric[], depthMetrics: DepthMe
 
 function getStepPresentation(step: PipelineStepDefinition): { label: string; subLabel: string } {
   if (step.kind === 'TRIGGER') {
-    return { label: '원시 데이터 수신 트리거', subLabel: 'EI-01 · RAW_DATA_RECEIVED' };
+    return { label: 'Raw data received trigger', subLabel: 'EI-01 · RAW_DATA_RECEIVED' };
   }
   if (step.kind === 'FILE_INPUT') {
     const levelStr = step.inputLevel === 'LEVEL_0' ? 'L0' : step.inputLevel === 'LEVEL_1' ? 'L1' : step.inputLevel === 'LEVEL_2' ? 'L2' : 'L?';
-    return { label: `${levelStr} 결과 입력`, subLabel: 'SI-07 · 부분 재처리' };
+    return { label: `${levelStr} input`, subLabel: 'SI-07 · Partial reprocess' };
   }
   if (step.kind === 'JOB_INIT') {
-    return { label: '작업 초기화', subLabel: 'CSU-08.02 · 프로파일 선택' };
+    return { label: 'Job initialization', subLabel: 'CSU-08.02 · Profile selection' };
   }
   if (step.kind === 'CATALOG') {
-    return { label: '카탈로그 등록', subLabel: 'CSC-07 · 등록' };
+    return { label: 'Catalog registration', subLabel: 'CSC-07 · Register' };
   }
   if (step.kind === 'THUMBNAIL') {
-    return { label: 'Quick-look 생성', subLabel: 'CSU-07.06 · 조기 미리보기' };
+    return { label: 'Quick-look generation', subLabel: 'CSU-07.06 · Early preview' };
   }
   if (step.kind === 'SAR' && step.sarStage) {
     return {
@@ -795,7 +795,7 @@ function PipelineFilterPanel({
                 : 'border-border text-muted-foreground hover:bg-muted/30 hover:text-foreground',
             )}
           >
-            전체 보기
+            All
           </button>
           <button
             type="button"
@@ -807,7 +807,7 @@ function PipelineFilterPanel({
                 : 'border-border text-muted-foreground hover:bg-muted/30 hover:text-foreground',
             )}
           >
-            선택 보기
+            Custom
           </button>
         </div>
       </div>
@@ -827,14 +827,14 @@ function PipelineFilterPanel({
                 onClick={onSelectAll}
                 className="rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
               >
-                모두 선택
+                Select all
               </button>
               <button
                 type="button"
                 onClick={onClear}
                 className="rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
               >
-                선택 해제
+                Clear
               </button>
             </div>
           </div>
@@ -857,7 +857,7 @@ function PipelineFilterPanel({
                     checked={checked}
                     onChange={() => onTogglePipeline(pipeline.id)}
                     className="peer sr-only"
-                    aria-label={`${pipeline.name} 표시 여부`}
+                    aria-label={`Show ${pipeline.name}`}
                   />
                   <span
                     aria-hidden="true"
@@ -885,8 +885,8 @@ function PipelineFilterPanel({
 
 function PipelineQualityCard({ item, basePath }: { item: PipelineMetric; basePath: string }) {
   const hasFailure = item.failedJobs > 0 || item.nodeMetrics.some((node) => node.failed > 0);
-  const runningLabel = `${item.runningJobs} 실행 중`;
-  const failureLabel = `${item.failedJobs} 실패`;
+  const runningLabel = `${item.runningJobs} running`;
+  const failureLabel = `${item.failedJobs} failed`;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [availableWidth, setAvailableWidth] = useState(0);
   const matrixGroups = useMemo(
@@ -937,14 +937,14 @@ function PipelineQualityCard({ item, basePath }: { item: PipelineMetric; basePat
               'rounded-full px-2 py-0.5 text-[10px] font-medium',
               hasFailure ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success',
             )}>
-              {hasFailure ? '주의' : '정상'}
+              {hasFailure ? 'Warning' : 'Healthy'}
             </span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
-            <span>{item.jobs.length}회 실행</span>
+            <span>{item.jobs.length} runs</span>
             <span>{runningLabel}</span>
             <span>{failureLabel}</span>
-            {item.latestJob && <span>최근 {formatRelativeTime(item.latestJob.updatedAt)}</span>}
+            {item.latestJob && <span>Last {formatRelativeTime(item.latestJob.updatedAt)}</span>}
           </div>
         </div>
       </div>
@@ -1127,10 +1127,10 @@ function PipelineFlowDiagram({
         type="button"
         onClick={handleResetViewport}
         className="absolute right-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-md border border-border bg-card/92 px-2.5 py-1.5 text-[10px] font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted/70 hover:text-foreground"
-        aria-label="처음 파이프라인 보기로 돌아가기"
+        aria-label="Reset pipeline view"
       >
         <RotateCcw className="h-3.5 w-3.5" />
-        처음 보기
+        Reset view
       </button>
       <div style={{ height: DASHBOARD_FLOW_HEIGHT }}>
         <ReactFlow

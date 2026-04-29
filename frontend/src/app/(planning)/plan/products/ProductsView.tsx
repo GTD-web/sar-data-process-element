@@ -34,12 +34,12 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 const PRODUCT_TABLE_COLUMNS = [
   { id: 'id', label: 'Product ID', align: 'left' },
   { id: 'sceneId', label: 'Raw Data', align: 'left' },
-  { id: 'level', label: '레벨', align: 'center' },
-  { id: 'pipeline', label: '파이프라인', align: 'left' },
-  { id: 'satelliteId', label: '위성', align: 'left' },
-  { id: 'mode', label: '모드', align: 'left' },
-  { id: 'status', label: '상태', align: 'center' },
-  { id: 'createdAt', label: '생성일', align: 'left' },
+  { id: 'level', label: 'Level', align: 'center' },
+  { id: 'pipeline', label: 'Pipeline', align: 'left' },
+  { id: 'satelliteId', label: 'Satellite', align: 'left' },
+  { id: 'mode', label: 'Mode', align: 'left' },
+  { id: 'status', label: 'Status', align: 'center' },
+  { id: 'createdAt', label: 'Created', align: 'left' },
 ] as const;
 
 type ProductSortKey = (typeof PRODUCT_TABLE_COLUMNS)[number]['id'];
@@ -87,7 +87,7 @@ function Pagination({
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-border bg-card shrink-0">
       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-        <span>페이지 당</span>
+        <span>Per page</span>
         <select
           value={pageSize}
           onChange={(e) => onPageSizeChange(Number(e.target.value))}
@@ -111,7 +111,7 @@ function Pagination({
           onClick={() => onPageChange(page - 1)}
           className="px-2 py-1 text-[11px] rounded-md border border-border text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          이전
+          Prev
         </button>
         {range.map((p, i) =>
           p === 'ellipsis' ? (
@@ -140,7 +140,7 @@ function Pagination({
           onClick={() => onPageChange(page + 1)}
           className="px-2 py-1 text-[11px] rounded-md border border-border text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          다음
+          Next
         </button>
       </div>
     </div>
@@ -199,7 +199,7 @@ function ReprocessDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5">
-        <h3 className="text-sm font-semibold text-foreground mb-3">제품 재처리</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-3">Reprocess Product</h3>
 
         <div className="space-y-3">
           <div>
@@ -208,7 +208,7 @@ function ReprocessDialog({
           </div>
 
           <label className="block">
-            <span className="text-[11px] font-medium text-muted-foreground">시작 레벨</span>
+            <span className="text-[11px] font-medium text-muted-foreground">Start Level</span>
             <select
               value={targetLevel}
               onChange={(e) => setTargetLevel(e.target.value)}
@@ -229,7 +229,7 @@ function ReprocessDialog({
               onChange={(e) => setConfirmed(e.target.checked)}
               className="rounded border-border"
             />
-            <span className="text-[11px] text-muted-foreground">새 Job이 생성됩니다</span>
+            <span className="text-[11px] text-muted-foreground">A new Job will be created</span>
           </label>
         </div>
 
@@ -238,7 +238,7 @@ function ReprocessDialog({
             onClick={onCancel}
             className="px-3 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-muted/30 transition-colors"
           >
-            취소
+            Cancel
           </button>
           <button
             onClick={() => onConfirm(targetLevel)}
@@ -250,7 +250,7 @@ function ReprocessDialog({
                 : 'bg-muted text-muted-foreground cursor-not-allowed',
             )}
           >
-            재처리 요청
+            Request Reprocess
           </button>
         </div>
       </div>
@@ -306,17 +306,17 @@ function ProductDetailPanel({
               <span className="text-xs">Quick-look Thumbnail</span>
             </div>
           ) : (
-            <span className="text-xs text-muted-foreground/50">미리보기 없음</span>
+            <span className="text-xs text-muted-foreground/50">No preview</span>
           )}
         </div>
 
         <div className="space-y-2">
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">메타데이터</h4>
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Metadata</h4>
           <div className="grid grid-cols-2 gap-2">
-            <MetaItem label="위성" value={product.satelliteId} />
-            <MetaItem label="모드" value={product.mode} />
-            <MetaItem label="편파" value={product.polarization} />
-            <MetaItem label="파이프라인" value={pipelineName ?? '—'} />
+            <MetaItem label="Satellite" value={product.satelliteId} />
+            <MetaItem label="Mode" value={product.mode} />
+            <MetaItem label="Polarization" value={product.polarization} />
+            <MetaItem label="Pipeline" value={pipelineName ?? '—'} />
             <MetaItem label="Job ID" value={product.jobId} href={`${base}/jobs?jobId=${product.jobId}`} />
           </div>
         </div>
@@ -324,7 +324,7 @@ function ProductDetailPanel({
         <div className="space-y-2">
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
             <MapPin className="w-3 h-3" />
-            공간 범위
+            Spatial Extent
           </h4>
           <div className="text-xs font-mono text-foreground bg-background rounded-md px-3 py-2 border border-border">
             W: {product.spatialExtent.west.toFixed(4)}° &nbsp; S: {product.spatialExtent.south.toFixed(4)}°<br />
@@ -336,7 +336,7 @@ function ProductDetailPanel({
           <div className="space-y-1">
             <h4 className="text-xs font-semibold text-muted-foreground uppercase flex items-center gap-1">
               <Clock className="w-3 h-3" />
-              촬영 시간
+              Acquisition Time
             </h4>
             <div className="text-xs text-foreground">{formatKST(product.acquisitionStart)}</div>
             <div className="text-xs text-muted-foreground">~ {formatKST(product.acquisitionEnd)}</div>
@@ -344,7 +344,7 @@ function ProductDetailPanel({
           <div className="space-y-1">
             <h4 className="text-xs font-semibold text-muted-foreground uppercase flex items-center gap-1">
               <Ruler className="w-3 h-3" />
-              해상도
+              Resolution
             </h4>
             <div className="text-xs text-foreground">
               Range: {product.resolutionRange.toFixed(1)}m<br />
@@ -353,21 +353,21 @@ function ProductDetailPanel({
           </div>
         </div>
 
-        <MetaItem label="처리 소요 시간" value={formatDuration(product.processingTimeMs)} />
+        <MetaItem label="Processing Time" value={formatDuration(product.processingTimeMs)} />
 
         {product.quality && (
           <div className="space-y-2">
             <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
               <Eye className="w-3 h-3" />
-              품질 검증 (REQ-FUNC-023)
+              Quality Check (REQ-FUNC-023)
             </h4>
             <div className="border border-border rounded-lg overflow-hidden">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-background text-muted-foreground">
-                    <th className="text-left px-3 py-1.5 font-medium">지표</th>
-                    <th className="text-right px-3 py-1.5 font-medium">값</th>
-                    <th className="text-center px-3 py-1.5 font-medium">판정</th>
+                    <th className="text-left px-3 py-1.5 font-medium">Metric</th>
+                    <th className="text-right px-3 py-1.5 font-medium">Value</th>
+                    <th className="text-center px-3 py-1.5 font-medium">Result</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -390,7 +390,7 @@ function ProductDetailPanel({
                     </td>
                   </tr>
                   <tr className="border-t border-border/50">
-                    <td className="px-3 py-1.5 text-foreground">기하 정확도</td>
+                    <td className="px-3 py-1.5 text-foreground">Geometric Accuracy</td>
                     <td className="px-3 py-1.5 text-right font-mono text-foreground">
                       {product.quality.geometricAccuracy.value.toFixed(1)} {product.quality.geometricAccuracy.unit}
                     </td>
@@ -399,7 +399,7 @@ function ProductDetailPanel({
                     </td>
                   </tr>
                   <tr className="border-t border-border/50">
-                    <td className="px-3 py-1.5 text-foreground">방사 보정</td>
+                    <td className="px-3 py-1.5 text-foreground">Radiometric Calibration</td>
                     <td className="px-3 py-1.5 text-right font-mono text-foreground">—</td>
                     <td className="px-3 py-1.5 text-center">
                       <QualityBadge pass={product.quality.radiometricCalibration.pass} />
@@ -424,14 +424,14 @@ function ProductDetailPanel({
           )}
         >
           <Download className="w-3.5 h-3.5" />
-          다운로드
+          Download
         </button>
         <button
           onClick={onReprocess}
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium border border-border text-foreground hover:bg-muted/30 transition-colors"
         >
           <RefreshCw className="w-3.5 h-3.5" />
-          재처리
+          Reprocess
         </button>
       </div>
     </div>
@@ -600,7 +600,7 @@ export default function ProductsView() {
   async function handleDownload(product: Product) {
     const res = await service.제품_다운로드_URL을_발급한다(product.id);
     if (res.success && res.data) {
-      toast.success(`다운로드 링크 생성 완료 (${Math.floor(res.data.expiresIn / 60)}분 후 만료)`);
+      toast.success(`Download link created (expires in ${Math.floor(res.data.expiresIn / 60)} min)`);
       window.open(res.data.url, '_blank');
     } else {
       toast.error(res.message);
@@ -611,7 +611,7 @@ export default function ProductsView() {
     if (!reprocessTarget) return;
     const res = await service.제품_재처리를_요청한다(reprocessTarget.id, { targetLevel });
     if (res.success && res.data) {
-      toast.success(`재처리 요청 완료 — Job: ${res.data.jobId}`);
+      toast.success(`Reprocess requested — Job: ${res.data.jobId}`);
     } else {
       toast.error(res.message);
     }
@@ -625,7 +625,7 @@ export default function ProductsView() {
           <div className="flex items-center gap-2">
             <Package className="w-4 h-4 text-accent" />
             <h1 className="text-sm font-semibold text-foreground">Productions</h1>
-            <span className="text-[10px] text-muted-foreground font-mono">{totalCount}건</span>
+            <span className="text-[10px] text-muted-foreground font-mono">{totalCount} items</span>
           </div>
         </div>
 
@@ -638,7 +638,7 @@ export default function ProductsView() {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              placeholder="ID / Raw Data / 파이프라인 검색..."
+              placeholder="Search ID / Raw Data / Pipeline..."
               className="pl-8 pr-3 py-1.5 bg-background border border-border rounded-md text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent w-56"
             />
           </div>
@@ -650,7 +650,7 @@ export default function ProductsView() {
             }}
             className="bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
           >
-            <option value="">전체 레벨</option>
+            <option value="">All Levels</option>
             {LEVELS.map((l) => (
               <option key={l} value={l}>
                 {PRODUCT_LEVEL_LABELS[l]}
@@ -665,7 +665,7 @@ export default function ProductsView() {
             }}
             className="bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
           >
-            <option value="">전체 파이프라인</option>
+            <option value="">All Pipelines</option>
             {pipelines.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -680,7 +680,7 @@ export default function ProductsView() {
             }}
             className="bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
           >
-            <option value="">전체 위성</option>
+            <option value="">All Satellites</option>
             {SATELLITES.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -695,7 +695,7 @@ export default function ProductsView() {
             }}
             className="bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
           >
-            <option value="">전체 모드</option>
+            <option value="">All Modes</option>
             {MODES.map((m) => (
               <option key={m} value={m}>
                 {m}
@@ -710,7 +710,7 @@ export default function ProductsView() {
             }}
             className="bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
           >
-            <option value="">전체 상태</option>
+            <option value="">All Statuses</option>
             {STATUSES.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -745,7 +745,7 @@ export default function ProductsView() {
                     </button>
                   </th>
                 ))}
-                <th className="px-5 py-2 text-right">작업</th>
+                <th className="px-5 py-2 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -804,7 +804,7 @@ export default function ProductsView() {
                               ? 'hover:bg-muted/50 text-muted-foreground hover:text-accent'
                               : 'text-muted-foreground/30 cursor-not-allowed',
                           )}
-                          title="다운로드"
+                          title="Download"
                         >
                           <Download className="w-3.5 h-3.5" />
                         </button>
@@ -814,7 +814,7 @@ export default function ProductsView() {
                             setReprocessTarget(p);
                           }}
                           className="p-1 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
-                          title="재처리"
+                          title="Reprocess"
                         >
                           <RefreshCw className="w-3.5 h-3.5" />
                         </button>
@@ -826,7 +826,7 @@ export default function ProductsView() {
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={PRODUCT_TABLE_COLUMNS.length + 1} className="text-center py-12 text-sm text-muted-foreground">
-                    조건에 맞는 제품이 없습니다
+                    No products match the criteria
                   </td>
                 </tr>
               )}

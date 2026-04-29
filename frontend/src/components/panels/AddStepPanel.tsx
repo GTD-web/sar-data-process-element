@@ -20,7 +20,7 @@ interface FixedKindOption {
 type StepOption = SarStageOption | FixedKindOption;
 
 const STEP_OPTIONS: StepOption[] = [
-  { kind: 'JOB_INIT', icon: SlidersHorizontal, label: '작업 초기화', csc: 'CSU-08.02' },
+  { kind: 'JOB_INIT', icon: SlidersHorizontal, label: 'Job Initialization', csc: 'CSU-08.02' },
   { kind: 'SAR', sarStage: 'L0', icon: HardDrive },
   { kind: 'SAR', sarStage: 'L1A', icon: Cpu },
   { kind: 'SAR', sarStage: 'L1B', icon: Layers },
@@ -28,7 +28,7 @@ const STEP_OPTIONS: StepOption[] = [
   { kind: 'SAR', sarStage: 'L2A', icon: Map },
   { kind: 'SAR', sarStage: 'L2B', icon: Crosshair },
   { kind: 'SAR', sarStage: 'L3', icon: Package },
-  { kind: 'CATALOG', icon: Database, label: '카탈로그 등록', csc: 'CSC-07' },
+  { kind: 'CATALOG', icon: Database, label: 'Catalog Registration', csc: 'CSC-07' },
 ];
 
 interface AddStepPanelProps {
@@ -40,12 +40,12 @@ interface AddStepPanelProps {
 
 export default function AddStepPanel({ insertAfterOrder, insertBeforeOrder, asSeparateStart, onSelect }: AddStepPanelProps) {
   const description = asSeparateStart
-    ? '기존 DAG와 연결되지 않는 새로운 시작 노드를 선택하세요.'
+    ? 'Select a new start node that is not connected to the existing DAG.'
     : insertBeforeOrder !== undefined
-    ? `단계 #${insertAfterOrder}과 #${insertBeforeOrder} 사이에 추가할 단계를 선택하세요.`
+    ? `Select a step to insert between #${insertAfterOrder} and #${insertBeforeOrder}.`
     : insertAfterOrder === 0
-      ? '파이프라인 맨 앞에 추가할 단계를 선택하세요.'
-      : `단계 #${insertAfterOrder} 뒤에 추가할 단계를 선택하세요.`;
+      ? 'Select a step to add at the start of the pipeline.'
+      : `Select a step to add after #${insertAfterOrder}.`;
 
   return (
     <div className="p-4 space-y-3">

@@ -17,10 +17,10 @@ import {
 // ---------------------------------------------------------------------------
 
 const ALERT_KIND_CONFIG: Record<AlertKind, { icon: React.ElementType; label: string; severity: 'critical' | 'warning' }> = {
-  MAX_RETRY: { icon: AlertCircle, label: '최대 재시도 초과', severity: 'critical' },
-  PIPELINE_DELAY: { icon: AlertTriangle, label: '파이프라인 지연', severity: 'warning' },
-  QUALITY_FAIL: { icon: ShieldAlert, label: '품질 검증 실패', severity: 'warning' },
-  RESOURCE_THRESHOLD: { icon: Server, label: '리소스 임계치 초과', severity: 'critical' },
+  MAX_RETRY: { icon: AlertCircle, label: 'Max retries exceeded', severity: 'critical' },
+  PIPELINE_DELAY: { icon: AlertTriangle, label: 'Pipeline delay', severity: 'warning' },
+  QUALITY_FAIL: { icon: ShieldAlert, label: 'Quality validation failed', severity: 'warning' },
+  RESOURCE_THRESHOLD: { icon: Server, label: 'Resource threshold exceeded', severity: 'critical' },
 };
 
 // ---------------------------------------------------------------------------
@@ -108,14 +108,14 @@ function AlertRow({
         <div className="w-20 shrink-0 text-right">
           {alert.acknowledged ? (
             <span className="inline-flex items-center gap-0.5 text-[10px] text-success">
-              <CheckCircle className="w-3 h-3" />확인됨
+              <CheckCircle className="w-3 h-3" />Acknowledged
             </span>
           ) : (
             <button
               onClick={(e) => { e.stopPropagation(); onAcknowledge(); }}
               className="inline-flex items-center gap-0.5 px-2 py-1 rounded text-[10px] font-medium bg-accent text-background hover:bg-accent/90 transition-colors"
             >
-              <Check className="w-3 h-3" />확인
+              <Check className="w-3 h-3" />Ack
             </button>
           )}
         </div>
@@ -131,7 +131,7 @@ function AlertRow({
         <div className="px-5 pb-3 pl-10">
           <div className="bg-background rounded-lg border border-border p-3 space-y-2 text-[11px]">
             <div>
-              <span className="text-muted-foreground">전체 메시지: </span>
+              <span className="text-muted-foreground">Full message: </span>
               <span className="text-foreground">{alert.message}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -144,21 +144,21 @@ function AlertRow({
                 <a href={`${base}/jobs?jobId=${alert.jobId}`} className="font-mono text-accent hover:underline">{alert.jobId}</a>
               </div>
               <div>
-                <span className="text-muted-foreground">발생 시각: </span>
+                <span className="text-muted-foreground">Occurred at: </span>
                 <span className="text-foreground">{formatKST(alert.createdAt)}</span>
               </div>
               <div>
-                <span className="text-muted-foreground">버전: </span>
+                <span className="text-muted-foreground">Version: </span>
                 <span className="font-mono text-foreground">{alert.version}</span>
               </div>
               {alert.acknowledged && (
                 <>
                   <div>
-                    <span className="text-muted-foreground">확인 시각: </span>
+                    <span className="text-muted-foreground">Acknowledged at: </span>
                     <span className="text-foreground">{alert.acknowledgedAt ? formatKST(alert.acknowledgedAt) : '—'}</span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">확인자: </span>
+                    <span className="text-muted-foreground">Acknowledged by: </span>
                     <span className="text-foreground">{alert.acknowledgedBy ?? '—'}</span>
                   </div>
                 </>
@@ -218,10 +218,10 @@ export default function AlertsPage() {
   async function handleAcknowledge(alert: Alert) {
     const res = await service.Alert을_확인한다(alert.id, { ifMatchVersion: alert.version });
     if (res.success) {
-      toast.success(`Alert ${alert.id} 확인 완료`);
+      toast.success(`Alert ${alert.id} acknowledged`);
       await loadData();
     } else if (res.code === 409) {
-      toast.warning('이미 다른 운영자가 확인했습니다. 새로고침합니다.');
+      toast.warning('Another operator has already acknowledged. Refreshing.');
       await loadData();
     } else {
       toast.error(res.message);
@@ -238,7 +238,7 @@ export default function AlertsPage() {
       if (res.success) successCount++;
     }
 
-    const msg = `${successCount}/${unacked.length}건 확인 완료`;
+    const msg = `${successCount}/${unacked.length} acknowledged`;
     if (successCount === unacked.length) toast.success(msg);
     else toast.warning(msg);
     await loadData();
@@ -258,7 +258,7 @@ export default function AlertsPage() {
         <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2">
             <Bell className="w-4 h-4 text-accent" />
-            <h1 className="text-sm font-semibold text-foreground">알림</h1>
+            <h1 className="text-sm font-semibold text-foreground">Alerts</h1>
             {unackedCount > 0 && (
               <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-destructive text-white">
                 {unackedCount}
@@ -272,7 +272,7 @@ export default function AlertsPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-accent text-background hover:bg-accent/90 transition-colors"
               >
                 <CheckCheck className="w-3.5 h-3.5" />
-                전체 확인 ({unackedCount})
+                Acknowledge all ({unackedCount})
               </button>
             )}
           </div>
@@ -281,7 +281,7 @@ export default function AlertsPage() {
         {/* Filters */}
         <div className="flex items-center gap-3 px-5 py-2.5 border-b border-border shrink-0">
           <div className="flex rounded-md border border-border overflow-hidden">
-            {([['unacked', '미확인'], ['acked', '확인됨'], ['all', '전체']] as const).map(([value, label]) => (
+            {([['unacked', 'Unacknowledged'], ['acked', 'Acknowledged'], ['all', 'All']] as const).map(([value, label]) => (
               <button
                 key={value}
                 onClick={() => setFilterStatus(value)}
@@ -302,13 +302,13 @@ export default function AlertsPage() {
             onChange={(e) => setFilterKind(e.target.value)}
             className="bg-background border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
           >
-            <option value="">전체 유형</option>
+            <option value="">All types</option>
             {(Object.keys(ALERT_KIND_CONFIG) as AlertKind[]).map((k) => (
               <option key={k} value={k}>{ALERT_KIND_CONFIG[k].label}</option>
             ))}
           </select>
 
-          <span className="text-[10px] text-muted-foreground font-mono ml-auto">{sorted.length}건</span>
+          <span className="text-[10px] text-muted-foreground font-mono ml-auto">{sorted.length}</span>
         </div>
 
         {/* Alert List */}
@@ -317,7 +317,7 @@ export default function AlertsPage() {
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
               <CheckCircle className="w-8 h-8 text-success/50" />
               <span className="text-sm">
-                {filterStatus === 'unacked' ? '미확인 알림이 없습니다' : '조건에 맞는 알림이 없습니다'}
+                {filterStatus === 'unacked' ? 'No unacknowledged alerts' : 'No matching alerts'}
               </span>
             </div>
           ) : (
