@@ -55,8 +55,8 @@ const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
   ),
 });
 
-const DEPLOYMENT_TABLE_WIDTH = 1180;
-const DEPLOYMENT_TABLE_GRID = '92px 240px 250px 150px minmax(260px,1fr) 168px';
+const DEPLOYMENT_TABLE_WIDTH = 1380;
+const DEPLOYMENT_TABLE_GRID = '92px 220px 220px 250px 150px minmax(220px,1fr) 116px';
 const EVENT_TYPE_OPTIONS: PipelineEventType[] = ['RAW_DATA_RECEIVED', 'PARTIAL_REPROCESS_REQUESTED', 'PRODUCT_REPROCESS_REQUESTED'];
 const PRODUCT_LEVEL_OPTIONS: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
 const QUEUE_OPTIONS = Object.values(QUEUE_NAME);
@@ -116,25 +116,16 @@ function ruleConditions(rule: PipelineActivationRule): string[] {
   ].filter((condition): condition is string => typeof condition === 'string' && condition.length > 0);
 }
 
-function routeKey(rule: PipelineActivationRule): string {
-  return [
-    rule.sourceQueue,
-    rule.eventType,
-    rule.match.satelliteIds?.join(',') ?? '*',
-    rule.match.modes?.join(',') ?? '*',
-    rule.match.polarizations?.join(',') ?? '*',
-    rule.match.inputLevel ?? '*',
-  ].join('|');
+function eventQueueKey(sourceQueue: string, eventType: PipelineEventType): string {
+  return `${sourceQueue}|${eventType}`;
 }
 
-function formatDate(value?: string): string {
-  if (!value) return '-';
-  return new Intl.DateTimeFormat('ko-KR', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
+function ruleEventQueueKey(rule: PipelineActivationRule): string {
+  return eventQueueKey(rule.sourceQueue, rule.eventType);
+}
+
+function formEventQueueKey(form: RuleFormState): string {
+  return eventQueueKey(form.sourceQueue, form.eventType);
 }
 
 function toPreviewSteps(pipeline: PipelineDefinition): PipelineStep[] {
@@ -204,6 +195,7 @@ export default function DeployedPipelinesPage() {
   const [ruleForm, setRuleForm] = useState<RuleFormState>(() => makeEmptyRuleForm());
   const [savingPipelineId, setSavingPipelineId] = useState<string | null>(null);
   const [mappingModalOpen, setMappingModalOpen] = useState(false);
+  const [toggleConfirmRule, setToggleConfirmRule] = useState<PipelineActivationRule | null>(null);
   const [automating, setAutomating] = useState(false);
   const [logPanelOpen, setLogPanelOpen] = useState(false);
 
@@ -246,15 +238,6 @@ export default function DeployedPipelinesPage() {
     () => pipelines.filter((pipeline) => activePipelineIds.has(pipeline.id)),
     [activePipelineIds, pipelines],
   );
-  const duplicateRouteKeys = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const rule of deployedRules) {
-      const key = routeKey(rule);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-    return new Set(Array.from(counts.entries()).filter(([, count]) => count > 1).map(([key]) => key));
-  }, [deployedRules]);
-
   const pipelineById = useMemo(() => {
     const map = new Map<string, PipelineDefinition>();
     for (const pipeline of pipelines) map.set(pipeline.id, pipeline);
@@ -271,6 +254,13 @@ export default function DeployedPipelinesPage() {
   const selectedRule = selectedRuleId ? rules.find((rule) => rule.id === selectedRuleId) ?? null : null;
   const selectedFormPipeline = ruleForm.pipelineId ? pipelineById.get(ruleForm.pipelineId) ?? null : null;
   const selectedFormPreviewSteps = selectedFormPipeline ? toPreviewSteps(selectedFormPipeline) : [];
+  const duplicateFormRule = useMemo(() => (
+    rules.find((rule) => rule.active && rule.id !== ruleForm.id && ruleEventQueueKey(rule) === formEventQueueKey(ruleForm)) ?? null
+  ), [ruleForm, rules]);
+  const missingAutomationSelections = useMemo(() => [
+    !ruleForm.inputLevel ? 'Input Level' : null,
+    !ruleForm.pipelineId ? 'Active Pipeline' : null,
+  ].filter((selection): selection is string => selection !== null), [ruleForm.inputLevel, ruleForm.pipelineId]);
   const selectedPipelineJobIds = useMemo(() => {
     if (!selectedRule) return new Set<string>();
     return new Set(jobs.filter((job) => job.pipelineId === selectedRule.pipelineId).map((job) => job.jobId));
@@ -285,13 +275,13 @@ export default function DeployedPipelinesPage() {
     router.push(`${base}/console?pipelineId=${encodeURIComponent(pipelineId)}`);
   }, [router, base]);
 
-  const handleSaveRule = useCallback(async (form: RuleFormState) => {
+  const handleSaveRule = useCallback(async (form: RuleFormState, options?: { requireInputLevel?: boolean }) => {
     if (!form.pipelineId) {
       toast.error('Select a pipeline to automate');
       return null;
     }
-    if (!form.satelliteId || !form.mode || !form.polarization || !form.inputLevel) {
-      toast.error('Select satellite, mode, polarization, and input level conditions');
+    if (options?.requireInputLevel && !form.inputLevel) {
+      toast.error('Select an input level condition');
       return null;
     }
 
@@ -310,6 +300,14 @@ export default function DeployedPipelinesPage() {
       triggerSource: form.triggerSource,
       description: form.description,
     };
+    const payloadEventQueueKey = eventQueueKey(payload.sourceQueue, payload.eventType);
+    const duplicateRule = payload.active
+      ? rules.find((rule) => rule.active && rule.id !== payload.id && ruleEventQueueKey(rule) === payloadEventQueueKey)
+      : undefined;
+    if (duplicateRule) {
+      toast.error('동일한 이벤트와 큐가 이미 활성화되어 있습니다.');
+      return null;
+    }
 
     setSavingPipelineId(form.pipelineId);
     const res = await service.파이프라인_자동실행규칙을_저장한다(payload);
@@ -324,12 +322,12 @@ export default function DeployedPipelinesPage() {
       setRuleForm(ruleToForm(res.data));
     }
     return res.data ?? null;
-  }, [service, refresh]);
+  }, [service, refresh, rules]);
 
   const handleAutomate = useCallback(async () => {
     setAutomating(true);
     await new Promise((resolve) => setTimeout(resolve, 720));
-    const result = await handleSaveRule({ ...ruleForm, active: true });
+    const result = await handleSaveRule({ ...ruleForm, active: true }, { requireInputLevel: true });
     setAutomating(false);
     if (!result) return;
     setMappingModalOpen(false);
@@ -337,8 +335,17 @@ export default function DeployedPipelinesPage() {
   }, [handleSaveRule, ruleForm]);
 
   const handleToggleRuleActive = useCallback((rule: PipelineActivationRule) => {
-    void handleSaveRule({ ...ruleToForm(rule), active: !rule.active });
-  }, [handleSaveRule]);
+    setToggleConfirmRule(rule);
+  }, []);
+
+  const handleConfirmToggleRuleActive = useCallback(async () => {
+    if (!toggleConfirmRule) return;
+    const nextActive = !toggleConfirmRule.active;
+    const result = await handleSaveRule({ ...ruleToForm(toggleConfirmRule), active: nextActive });
+    if (!result) return;
+    setToggleConfirmRule(null);
+    toast.success(nextActive ? 'Automation rule activated.' : 'Automation rule deactivated.');
+  }, [handleSaveRule, toggleConfirmRule]);
 
   const handleOpenNewRuleModal = useCallback(() => {
     setRuleForm(makeEmptyRuleForm());
@@ -391,6 +398,7 @@ export default function DeployedPipelinesPage() {
                 >
                   <span>Status</span>
                   <span>pgmq Incoming Event</span>
+                  <span>Source Queue</span>
                   <span>Match Conditions</span>
                   <span>Processing Flow</span>
                   <span>Execution Pipeline</span>
@@ -400,7 +408,11 @@ export default function DeployedPipelinesPage() {
                   {matchingRules.map((rule) => {
                     const pipeline = pipelineById.get(rule.pipelineId);
                     const conditions = ruleConditions(rule);
-                    const hasDuplicateRoute = duplicateRouteKeys.has(routeKey(rule));
+                    const hasActiveEventQueueDuplicate = !rule.active && rules.some((item) => (
+                      item.active
+                        && item.id !== rule.id
+                        && ruleEventQueueKey(item) === ruleEventQueueKey(rule)
+                    ));
                     const previewSteps = pipeline ? toPreviewSteps(pipeline) : [];
                     const expanded = expandedRuleId === rule.id;
                     return (
@@ -420,14 +432,14 @@ export default function DeployedPipelinesPage() {
                               <span className={`h-1.5 w-1.5 rounded-full ${rule.active ? 'bg-success' : 'bg-muted-foreground/50'}`} />
                               {rule.active ? 'Active' : 'Inactive'}
                             </span>
-                            <p className="mt-1 text-[10px] text-muted-foreground truncate">
-                              {rule.active ? 'Auto-run target' : 'Awaiting match'}
-                            </p>
                           </div>
 
                           <div className="relative min-w-0">
                             <p className="text-xs font-medium text-foreground truncate">{PIPELINE_EVENT_TYPE_LABELS[rule.eventType]}</p>
-                            <p className="mt-1 font-mono text-[10px] text-muted-foreground truncate">{rule.sourceQueue}</p>
+                          </div>
+
+                          <div className="relative min-w-0">
+                            <p className="font-mono text-[10px] text-muted-foreground truncate">{rule.sourceQueue}</p>
                           </div>
 
                           <div className="relative flex gap-1.5 overflow-hidden">
@@ -440,38 +452,23 @@ export default function DeployedPipelinesPage() {
                             ))}
                           </div>
 
-                          <span className="relative rounded border border-border px-1.5 py-0.5 text-[10px] text-accent truncate max-w-[140px]">
+                          <span className="relative px-1.5 py-0.5 text-[10px] text-accent truncate max-w-[140px]">
                             {TRIGGER_SOURCE_LABELS[rule.triggerSource]}
                           </span>
 
                           <div className="relative min-w-0">
                             <div className="flex items-center gap-2">
-                              <p className="text-sm font-semibold text-foreground truncate">{pipeline?.name ?? rule.pipelineId}</p>
+                              <p className="text-xs font-medium text-foreground truncate">{pipeline?.name ?? rule.pipelineId}</p>
                               {expanded ? <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                             </div>
-                            <p className="mt-1 text-[11px] text-muted-foreground truncate">
-                              {hasDuplicateRoute
-                                ? 'Duplicate route — please verify'
-                                : ruleConditions(rule).join(' · ') || `created ${formatDate(rule.deployedAt)}`}
-                            </p>
                           </div>
 
                           <div className="relative flex justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleOpenPipeline(rule.pipelineId);
-                              }}
-                              className="flex items-center gap-1 rounded-md border border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors cursor-pointer"
-                            >
-                              <ExternalLink className="w-3 h-3" />
-                              Console
-                            </button>
                             {canManage && (
                               <button
                                 type="button"
-                                disabled={savingPipelineId === rule.pipelineId}
+                                disabled={savingPipelineId === rule.pipelineId || hasActiveEventQueueDuplicate}
+                                title={hasActiveEventQueueDuplicate ? 'An active rule already uses this event and source queue.' : undefined}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   handleToggleRuleActive(rule);
@@ -534,10 +531,10 @@ export default function DeployedPipelinesPage() {
       </main>
 
       {mappingModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-5 py-6" onClick={() => !automating && setMappingModalOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-5 py-3" onClick={() => !automating && setMappingModalOpen(false)}>
           <div
-            className={`flex max-h-[88vh] w-full flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl transition-[max-width] duration-200 ${
-              selectedFormPipeline ? 'max-w-7xl' : 'max-w-5xl'
+            className={`flex w-full flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl transition-[max-width] duration-200 ${
+              selectedFormPipeline ? 'h-[calc(100vh-24px)] max-w-7xl' : 'max-h-[calc(100vh-24px)] max-w-5xl'
             }`}
             onClick={(event) => event.stopPropagation()}
           >
@@ -557,160 +554,175 @@ export default function DeployedPipelinesPage() {
               </button>
             </div>
 
-            <div className={`grid min-h-0 flex-1 ${
-              selectedFormPipeline
-                ? 'grid-cols-[minmax(0,0.82fr)_minmax(320px,0.88fr)_minmax(360px,1fr)]'
-                : 'grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)]'
-            }`}>
-              <div className="min-h-0 overflow-y-auto border-r border-border px-5 py-4">
-                <div className="space-y-5">
-                  <div>
-                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">pgmq Event</p>
-                    <div className="flex flex-wrap gap-2">
-                      {EVENT_TYPE_OPTIONS.map((eventType) => (
-                        <BadgeButton
-                          key={eventType}
-                          active={ruleForm.eventType === eventType}
-                          disabled={automating}
-                          onClick={() => setRuleForm((prev) => ({ ...prev, eventType }))}
-                        >
-                          {PIPELINE_EVENT_TYPE_LABELS[eventType]}
-                        </BadgeButton>
-                      ))}
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="grid h-72 min-h-0 shrink-0 grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)] overflow-hidden border-b border-border">
+                <div className="min-h-0 overflow-y-auto border-r border-border px-5 py-4">
+                  <div className="space-y-5">
+                    <div>
+                      <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">pgmq Event</p>
+                      <div className="flex flex-wrap gap-2">
+                        {EVENT_TYPE_OPTIONS.map((eventType) => (
+                          <BadgeButton
+                            key={eventType}
+                            active={ruleForm.eventType === eventType}
+                            disabled={automating}
+                            onClick={() => setRuleForm((prev) => ({ ...prev, eventType }))}
+                          >
+                            {PIPELINE_EVENT_TYPE_LABELS[eventType]}
+                          </BadgeButton>
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Source Queue</p>
-                    <div className="flex flex-wrap gap-2">
-                      {QUEUE_OPTIONS.map((queue) => (
-                        <BadgeButton
-                          key={queue}
-                          active={ruleForm.sourceQueue === queue}
-                          disabled={automating}
-                          onClick={() => setRuleForm((prev) => ({ ...prev, sourceQueue: queue }))}
-                        >
-                          <span className="font-mono">{queue}</span>
-                        </BadgeButton>
-                      ))}
+                    <div>
+                      <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Source Queue</p>
+                      <div className="flex flex-wrap gap-2">
+                        {QUEUE_OPTIONS.map((queue) => (
+                          <BadgeButton
+                            key={queue}
+                            active={ruleForm.sourceQueue === queue}
+                            disabled={automating}
+                            onClick={() => setRuleForm((prev) => ({ ...prev, sourceQueue: queue }))}
+                          >
+                            <span className="font-mono">{queue}</span>
+                          </BadgeButton>
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Satellite</p>
-                    <div className="flex flex-wrap gap-2">
-                      {satelliteOptions.map((satelliteId) => (
-                        <BadgeButton
-                          key={satelliteId}
-                          active={ruleForm.satelliteId === satelliteId}
-                          disabled={automating}
-                          onClick={() => setRuleForm((prev) => ({ ...prev, satelliteId }))}
-                        >
-                          {satelliteId}
-                        </BadgeButton>
-                      ))}
+                    <div>
+                      <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Input Level</p>
+                      <div className="flex flex-wrap gap-2">
+                        {PRODUCT_LEVEL_OPTIONS.map((inputLevel) => (
+                          <BadgeButton
+                            key={inputLevel}
+                            active={ruleForm.inputLevel === inputLevel}
+                            disabled={automating}
+                            onClick={() => setRuleForm((prev) => ({ ...prev, inputLevel }))}
+                          >
+                            {PRODUCT_LEVEL_LABELS[inputLevel]}
+                          </BadgeButton>
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Mode</p>
-                    <div className="flex flex-wrap gap-2">
-                      {modeOptions.map((mode) => (
-                        <BadgeButton
+                    <div>
+                      <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Satellite</p>
+                      <div className="flex flex-wrap gap-2">
+                        {satelliteOptions.map((satelliteId) => (
+                          <BadgeButton
+                            key={satelliteId}
+                            active={ruleForm.satelliteId === satelliteId}
+                            disabled={automating}
+                            onClick={() => setRuleForm((prev) => ({
+                              ...prev,
+                              satelliteId: prev.satelliteId === satelliteId ? '' : satelliteId,
+                            }))}
+                          >
+                            {satelliteId}
+                          </BadgeButton>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Mode</p>
+                      <div className="flex flex-wrap gap-2">
+                        {modeOptions.map((mode) => (
+                          <BadgeButton
                           key={mode}
                           active={ruleForm.mode === mode}
                           disabled={automating}
-                          onClick={() => setRuleForm((prev) => ({ ...prev, mode }))}
+                          onClick={() => setRuleForm((prev) => ({
+                            ...prev,
+                            mode: prev.mode === mode ? '' : mode,
+                          }))}
                         >
                           {mode}
                         </BadgeButton>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Polarization</p>
-                    <div className="flex flex-wrap gap-2">
-                      {POLARIZATION_OPTIONS.map((polarization) => (
-                        <BadgeButton
+                    <div>
+                      <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Polarization</p>
+                      <div className="flex flex-wrap gap-2">
+                        {POLARIZATION_OPTIONS.map((polarization) => (
+                          <BadgeButton
                           key={polarization}
                           active={ruleForm.polarization === polarization}
                           disabled={automating}
-                          onClick={() => setRuleForm((prev) => ({ ...prev, polarization }))}
+                          onClick={() => setRuleForm((prev) => ({
+                            ...prev,
+                            polarization: prev.polarization === polarization ? '' : polarization,
+                          }))}
                         >
                           {polarization}
                         </BadgeButton>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Input Level</p>
-                    <div className="flex flex-wrap gap-2">
-                      {PRODUCT_LEVEL_OPTIONS.map((inputLevel) => (
-                        <BadgeButton
-                          key={inputLevel}
-                          active={ruleForm.inputLevel === inputLevel}
-                          disabled={automating}
-                          onClick={() => setRuleForm((prev) => ({ ...prev, inputLevel }))}
-                        >
-                          {PRODUCT_LEVEL_LABELS[inputLevel]}
-                        </BadgeButton>
-                      ))}
-                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className={`min-h-0 overflow-y-auto px-5 py-4 ${selectedFormPipeline ? 'border-r border-border' : ''}`}>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <p className="text-[10px] font-semibold uppercase text-muted-foreground">Active Pipelines</p>
-                  <span className="rounded-full bg-muted/60 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">{automationTargetPipelines.length}</span>
-                </div>
-                {automationTargetPipelines.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-border px-4 py-12 text-center">
-                    <GitBranch className="mx-auto h-8 w-8 text-muted-foreground/35" />
-                    <p className="mt-3 text-xs text-muted-foreground">No pipelines have been activated in pipeline management</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {automationTargetPipelines.map((pipeline) => {
-                      const selected = ruleForm.pipelineId === pipeline.id;
-                      return (
-                        <button
-                          key={pipeline.id}
-                          type="button"
-                          disabled={automating}
-                          onClick={() => setRuleForm((prev) => ({
-                            ...prev,
-                            pipelineId: pipeline.id,
-                          }))}
-                          className={`w-full rounded-lg border px-3 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                            selected
-                              ? 'border-accent/45 bg-accent/10'
-                              : 'border-border bg-background hover:bg-muted/35'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-foreground">{pipeline.name}</p>
-                            </div>
-                            {selected && <CheckCircle2 className="h-4 w-4 shrink-0 text-accent" />}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              {selectedFormPipeline && (
                 <div className="min-h-0 overflow-y-auto px-5 py-4">
-                  <div className="mb-3">
-                    <p className="text-[10px] font-semibold uppercase text-muted-foreground">Pipeline Steps</p>
-                    <p className="mt-1 truncate text-xs font-semibold text-foreground">{selectedFormPipeline.name}</p>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-semibold uppercase text-muted-foreground">Active Pipelines</p>
+                    <span className="rounded-full bg-muted/60 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">{automationTargetPipelines.length}</span>
                   </div>
-                  <div className="deployed-preview-flow h-[420px] overflow-hidden rounded-lg border border-border bg-background">
+                  {automationTargetPipelines.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-border px-4 py-12 text-center">
+                      <GitBranch className="mx-auto h-8 w-8 text-muted-foreground/35" />
+                      <p className="mt-3 text-xs text-muted-foreground">No pipelines have been activated in pipeline management</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {automationTargetPipelines.map((pipeline) => {
+                        const selected = ruleForm.pipelineId === pipeline.id;
+                        return (
+                          <button
+                            key={pipeline.id}
+                            type="button"
+                            disabled={automating}
+                            onClick={() => setRuleForm((prev) => ({
+                              ...prev,
+                              pipelineId: pipeline.id,
+                            }))}
+                            className={`w-full rounded-lg border px-3 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                              selected
+                                ? 'border-accent/45 bg-accent/10'
+                                : 'border-border bg-background hover:bg-muted/35'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-foreground">{pipeline.name}</p>
+                              </div>
+                              {selected && <CheckCircle2 className="h-4 w-4 shrink-0 text-accent" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {selectedFormPipeline && (
+                <div className="flex min-h-0 flex-1 flex-col bg-muted/10 px-5 py-4">
+                  <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase text-muted-foreground">Pipeline Preview</p>
+                      <p className="mt-1 truncate text-xs font-semibold text-foreground">{selectedFormPipeline.name}</p>
+                    </div>
+                    <span className="rounded-full bg-background px-2 py-1 font-mono text-[10px] text-muted-foreground">
+                      {selectedFormPipeline.steps.length} steps
+                    </span>
+                  </div>
+                  <div className="deployed-preview-flow min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-background">
                     <CanvasGraph
+                      key={`automation-modal-graph-${selectedFormPipeline.id}`}
                       pipelineId={`automation-modal-${selectedFormPipeline.id}`}
                       steps={selectedFormPreviewSteps}
                       pipelineEdges={selectedFormPipeline.edges}
@@ -749,25 +761,77 @@ export default function DeployedPipelinesPage() {
                   </span>
                 </div>
               </div>
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  disabled={automating}
-                  onClick={() => setMappingModalOpen(false)}
-                  className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/45 hover:text-foreground disabled:opacity-45"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={automating || !ruleForm.pipelineId || !ruleForm.satelliteId || !ruleForm.mode || !ruleForm.polarization || !ruleForm.inputLevel}
-                  onClick={handleAutomate}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-foreground transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  {automating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
-                  {automating ? 'Adding automation' : 'Automate'}
-                </button>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium text-muted-foreground">
+                    {missingAutomationSelections.length > 0
+                      ? `Additional selections required: ${missingAutomationSelections.join(', ')}`
+                      : 'Ready to automate'}
+                  </p>
+                  {duplicateFormRule && (
+                    <p className="mt-1 text-xs font-medium text-destructive">The selected event and source queue are already active.</p>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={automating}
+                    onClick={() => setMappingModalOpen(false)}
+                    className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/45 hover:text-foreground disabled:opacity-45"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={automating || missingAutomationSelections.length > 0 || Boolean(duplicateFormRule)}
+                    onClick={handleAutomate}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-foreground transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {automating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
+                    {automating ? 'Adding automation' : 'Automate'}
+                  </button>
+                </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toggleConfirmRule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-5 py-4" onClick={() => setToggleConfirmRule(null)}>
+          <div
+            className="w-full max-w-sm rounded-lg border border-border bg-card shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="border-b border-border px-5 py-4">
+              <h2 className="text-sm font-semibold text-foreground">
+                {toggleConfirmRule.active ? '비활성화 하시겠습니까?' : '활성화 하시겠습니까?'}
+              </h2>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                {pipelineById.get(toggleConfirmRule.pipelineId)?.name ?? toggleConfirmRule.pipelineId}
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-4">
+              <button
+                type="button"
+                disabled={savingPipelineId === toggleConfirmRule.pipelineId}
+                onClick={() => setToggleConfirmRule(null)}
+                className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/45 hover:text-foreground disabled:opacity-45"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={savingPipelineId === toggleConfirmRule.pipelineId}
+                onClick={handleConfirmToggleRuleActive}
+                className={`rounded-md px-3.5 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                  toggleConfirmRule.active
+                    ? 'bg-destructive text-white hover:brightness-110'
+                    : 'bg-accent text-accent-foreground hover:brightness-110'
+                }`}
+              >
+                {toggleConfirmRule.active ? 'Deactivate' : 'Activate'}
+              </button>
             </div>
           </div>
         </div>

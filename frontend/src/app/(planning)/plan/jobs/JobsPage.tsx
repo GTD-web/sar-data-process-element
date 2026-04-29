@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import PipelineProgressStepper from '@/components/graph/PipelineProgressStepper';
@@ -14,7 +14,7 @@ import CancelConfirmDialog from '@/components/panels/CancelConfirmDialog';
 import ExecutionLogPanel from '@/components/panels/ExecutionLogPanel';
 import StepDetailPopover from '@/components/panels/StepDetailPopover';
 import { toast } from '@/components/ui/Toast';
-import { Check, ChevronDown, FlaskConical, GitBranch, PanelRightOpen, Archive } from 'lucide-react';
+import { Check, ChevronDown, FlaskConical, GitBranch, PanelRightOpen, Archive, Search } from 'lucide-react';
 import type {
   PipelineDefinition,
   ExecutionLog,
@@ -27,6 +27,18 @@ import type {
 import { SAR_STAGE_TO_CSC, SAR_STAGE_TO_LEVEL } from '@/types/pipeline';
 
 const JOB_PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
+const JOB_ID_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+type RunTargetType = 'job' | 'pipeline';
+
+function compareJobsByIdDesc(a: JobSummary, b: JobSummary): number {
+  const byJobId = JOB_ID_COLLATOR.compare(b.jobId, a.jobId);
+  if (byJobId !== 0) return byJobId;
+  return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+}
+
+function normalizeSearch(value: string): string {
+  return value.trim().toLowerCase();
+}
 
 // ---------------------------------------------------------------------------
 // Canvas (dynamic import — ReactFlow only on client)
@@ -122,6 +134,7 @@ export default function JobsPage() {
   // --- Data ---
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [pipelines, setPipelines] = useState<PipelineDefinition[]>([]);
+  const [activePipelineIds, setActivePipelineIds] = useState<Set<string>>(() => new Set());
   const [autoPipelineCount, setAutoPipelineCount] = useState(0);
   const [selectedJob, setSelectedJob] = useState<JobDetail | null>(null);
   const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
@@ -139,20 +152,26 @@ export default function JobsPage() {
   const [jobPage, setJobPage] = useState(1);
   const [jobPageSize, setJobPageSize] = useState<(typeof JOB_PAGE_SIZE_OPTIONS)[number]>(20);
   const [runPipelineId, setRunPipelineId] = useState('');
+  const [runTargetType, setRunTargetType] = useState<RunTargetType>('job');
   const canvasRef = useRef<HTMLDivElement>(null);
-  const pipelineSelectRef = useRef<HTMLDivElement>(null);
-  const [pipelineSelectOpen, setPipelineSelectOpen] = useState(false);
+  const jobSelectRef = useRef<HTMLDivElement>(null);
+  const [jobSelectOpen, setJobSelectOpen] = useState(false);
+  const [jobSelectSearch, setJobSelectSearch] = useState('');
 
   useEffect(() => {
-    if (!pipelineSelectOpen) return;
+    if (!jobSelectOpen && jobSelectSearch) setJobSelectSearch('');
+  }, [jobSelectOpen, jobSelectSearch]);
+
+  useEffect(() => {
+    if (!jobSelectOpen) return;
     const onDocClick = (event: MouseEvent) => {
-      if (!pipelineSelectRef.current?.contains(event.target as Node)) {
-        setPipelineSelectOpen(false);
+      if (!jobSelectRef.current?.contains(event.target as Node)) {
+        setJobSelectOpen(false);
       }
     };
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
-  }, [pipelineSelectOpen]);
+  }, [jobSelectOpen]);
 
   // --- Initial load ---
   useEffect(() => {
@@ -164,8 +183,13 @@ export default function JobsPage() {
         service.실행_로그를_조회한다({ limit: 300 }),
         service.파이프라인_자동실행규칙을_조회한다(),
       ]);
-      if (jobsRes.data) setJobs(jobsRes.data.items);
-      if (rulesRes.data) setAutoPipelineCount(rulesRes.data.filter((rule) => rule.active).length);
+      const loadedJobs = jobsRes.data?.items ?? [];
+      if (jobsRes.data) setJobs(loadedJobs);
+      if (rulesRes.data) {
+        const activeRules = rulesRes.data.filter((rule) => rule.active);
+        setAutoPipelineCount(activeRules.length);
+        setActivePipelineIds(new Set(activeRules.map((rule) => rule.pipelineId)));
+      }
       // 활성 + 아카이브 파이프라인을 통합 — Job이 아카이브된 파이프라인을 참조해도 다이어그램을 표시할 수 있게
       const active = plRes.data ?? [];
       const archived = (archivedRes.data ?? []).map((p) => ({ ...p, archived: true }));
@@ -174,12 +198,13 @@ export default function JobsPage() {
 
       // Deep-link: ?jobId=
       const urlJobId = searchParams.get('jobId');
-      const initialId = urlJobId ?? jobsRes.data?.items[0]?.jobId;
+      const initialId = urlJobId ?? [...loadedJobs].sort(compareJobsByIdDesc)[0]?.jobId;
       if (initialId) {
         const jobRes = await service.Job_상세를_조회한다(initialId);
         if (jobRes.data) {
           setSelectedJob(jobRes.data);
           setRunPipelineId(jobRes.data.pipelineId);
+          setRunTargetType('job');
           setConsoleMode({ type: 'job', job: jobRes.data });
         }
       }
@@ -227,6 +252,7 @@ export default function JobsPage() {
     if (res.data) {
       setSelectedJob(res.data);
       setRunPipelineId(res.data.pipelineId);
+      setRunTargetType('job');
       setActiveStepOrder(null);
       setConsoleMode({ type: 'job', job: res.data });
       setRightCollapsed(false);
@@ -240,8 +266,41 @@ export default function JobsPage() {
   const selectedPipeline = selectedJob
     ? pipelines.find((p) => p.id === selectedJob.pipelineId) ?? null
     : null;
-  const runnablePipelines = pipelines.filter((pipeline) => !pipeline.archived);
-  const selectedRunPipeline = runnablePipelines.find((pipeline) => pipeline.id === runPipelineId) ?? null;
+  const pipelineNameById = useMemo(
+    () => new Map(pipelines.map((pipeline) => [pipeline.id, pipeline.name])),
+    [pipelines],
+  );
+  const sortedJobs = useMemo(() => [...jobs].sort(compareJobsByIdDesc), [jobs]);
+  const runTargetPipeline = runPipelineId
+    ? pipelines.find((pipeline) => pipeline.id === runPipelineId && !pipeline.archived) ?? null
+    : null;
+  const runTargetJob = runTargetType === 'job' && selectedJob?.pipelineId === runPipelineId ? selectedJob : null;
+  const activeRunPipelines = useMemo(
+    () => pipelines
+      .filter((pipeline) => !pipeline.archived && activePipelineIds.has(pipeline.id))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [activePipelineIds, pipelines],
+  );
+  const jobSelectKeyword = normalizeSearch(jobSelectSearch);
+  const selectableJobs = useMemo(() => {
+    if (!jobSelectKeyword) return sortedJobs;
+    return sortedJobs.filter((job) => {
+      const pipelineName = pipelineNameById.get(job.pipelineId) ?? job.pipelineId;
+      return [
+        job.jobId,
+        job.sceneId,
+        job.status,
+        pipelineName,
+      ].some((value) => value.toLowerCase().includes(jobSelectKeyword));
+    });
+  }, [jobSelectKeyword, pipelineNameById, sortedJobs]);
+  const selectableActivePipelines = useMemo(() => {
+    if (!jobSelectKeyword) return activeRunPipelines;
+    return activeRunPipelines.filter((pipeline) => (
+      pipeline.id.toLowerCase().includes(jobSelectKeyword)
+      || pipeline.name.toLowerCase().includes(jobSelectKeyword)
+    ));
+  }, [activeRunPipelines, jobSelectKeyword]);
 
   const graphSteps: PipelineStep[] = selectedPipeline
     ? selectedPipeline.steps.map((s) => {
@@ -270,7 +329,7 @@ export default function JobsPage() {
     : [];
 
   const graphEdges = selectedPipeline?.edges ?? [];
-  const filteredJobs = statusFilter ? jobs.filter((job) => job.status === statusFilter) : jobs;
+  const filteredJobs = statusFilter ? sortedJobs.filter((job) => job.status === statusFilter) : sortedJobs;
   const pendingJobCount = jobs.filter((job) => job.status === 'CREATED').length;
   const runningJobCount = jobs.filter((job) => job.status === 'ASSIGNED').length;
   const totalJobPages = Math.max(1, Math.ceil(filteredJobs.length / jobPageSize));
@@ -283,12 +342,6 @@ export default function JobsPage() {
       setJobPage(totalJobPages);
     }
   }, [jobPage, totalJobPages]);
-
-  useEffect(() => {
-    if (runnablePipelines.length === 0) return;
-    if (runnablePipelines.some((pipeline) => pipeline.id === runPipelineId)) return;
-    setRunPipelineId(runnablePipelines[0]!.id);
-  }, [runPipelineId, runnablePipelines]);
 
   // --- Job actions ---
   const handleReprocessJob = useCallback(() => {
@@ -346,13 +399,14 @@ export default function JobsPage() {
   }, [selectedJob, selectedPipeline, handlePartialReprocess]);
 
   const handleRunPipeline = useCallback(async () => {
-    if (!runPipelineId) return;
-    const runnablePipeline = pipelines.find((pipeline) => pipeline.id === runPipelineId && !pipeline.archived);
+    const pipelineIdToRun = runPipelineId;
+    if (!pipelineIdToRun) return;
+    const runnablePipeline = pipelines.find((pipeline) => pipeline.id === pipelineIdToRun && !pipeline.archived);
     if (!runnablePipeline) {
-      toast.error('Select an active pipeline that can be executed.');
+      toast.error('Select a job or active pipeline that can be executed.');
       return;
     }
-    const res = await service.파이프라인을_실행한다(runPipelineId);
+    const res = await service.파이프라인을_실행한다(pipelineIdToRun);
     if (!res.success) {
       toast.error(res.message);
       return;
@@ -371,11 +425,25 @@ export default function JobsPage() {
       if (jobRes.data) {
         setSelectedJob(jobRes.data);
         setRunPipelineId(jobRes.data.pipelineId);
+        setRunTargetType('job');
         setConsoleMode({ type: 'job', job: jobRes.data });
         updateJobIdParam(jobRes.data.jobId);
       }
     }
   }, [pipelines, runPipelineId, service, updateJobIdParam]);
+
+  const handleSelectJobFromDropdown = useCallback((jobId: string) => {
+    setJobSelectOpen(false);
+    setJobSelectSearch('');
+    void handleSelectJob(jobId);
+  }, [handleSelectJob]);
+
+  const handleSelectPipelineFromDropdown = useCallback((pipelineId: string) => {
+    setRunPipelineId(pipelineId);
+    setRunTargetType('pipeline');
+    setJobSelectOpen(false);
+    setJobSelectSearch('');
+  }, []);
 
   // --- Canvas node interactions ---
   const handleNodeClick = useCallback((stepOrder: number, clickY: number) => {
@@ -421,51 +489,110 @@ export default function JobsPage() {
         <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-2.5 shrink-0">
           <PipelineExecutionTabs active="manual" counts={{ auto: autoPipelineCount, manual: jobs.length }} />
           <div className="flex min-w-0 items-center gap-2">
-          <div ref={pipelineSelectRef} className="relative min-w-0">
+          <div ref={jobSelectRef} className="relative min-w-0">
             <button
               type="button"
-              disabled={runnablePipelines.length === 0}
-              onClick={() => setPipelineSelectOpen((open) => !open)}
+              disabled={jobs.length === 0 && activeRunPipelines.length === 0}
+              onClick={() => setJobSelectOpen((open) => !open)}
               className="flex h-8 w-72 max-w-[36vw] items-center justify-between gap-2 rounded-md border border-border bg-background px-2.5 text-left text-xs text-foreground shadow-sm transition-colors hover:border-accent/60 disabled:cursor-not-allowed disabled:opacity-45"
               aria-haspopup="listbox"
-              aria-expanded={pipelineSelectOpen}
-              aria-label="Pipeline to run"
+              aria-expanded={jobSelectOpen}
+              aria-label="Pipeline run target"
             >
               <span className="min-w-0 truncate">
-                {selectedRunPipeline?.name ?? 'No runnable pipelines'}
+                {runTargetJob
+                  ? `${runTargetJob.jobId} · ${selectedPipeline?.name ?? runTargetJob.pipelineId}`
+                  : runTargetPipeline
+                    ? `Pipeline · ${runTargetPipeline.name}`
+                    : 'Select job or active pipeline'}
               </span>
-              <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${pipelineSelectOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${jobSelectOpen ? 'rotate-180' : ''}`} />
             </button>
-            {pipelineSelectOpen && runnablePipelines.length > 0 && (
+            {jobSelectOpen && (jobs.length > 0 || activeRunPipelines.length > 0) && (
               <div
                 role="listbox"
-                className="absolute right-0 top-full z-30 mt-1 max-h-72 w-80 max-w-[42vw] overflow-y-auto rounded-md border border-border bg-card py-1 shadow-xl"
+                className="absolute right-0 top-full z-30 mt-1 flex max-h-80 w-[26rem] max-w-[48vw] flex-col overflow-hidden rounded-md border border-border bg-card shadow-xl"
               >
-                {runnablePipelines.map((pipeline) => {
-                  const selected = pipeline.id === runPipelineId;
-                  return (
-                    <button
-                      key={pipeline.id}
-                      type="button"
-                      role="option"
-                      aria-selected={selected}
-                      onClick={() => {
-                        setRunPipelineId(pipeline.id);
-                        setPipelineSelectOpen(false);
-                      }}
-                      className={`flex w-full items-start gap-2 px-2.5 py-2 text-left text-xs transition-colors ${
-                        selected ? 'bg-accent/10 text-accent' : 'text-foreground hover:bg-muted/35'
-                      }`}
-                    >
-                      <span className="mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-                        {selected && <Check className="h-3.5 w-3.5" />}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate font-semibold">{pipeline.name}</span>
-                      </span>
-                    </button>
-                  );
-                })}
+                <div className="shrink-0 border-b border-border/70 bg-card px-2 pb-2 pt-1">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      value={jobSelectSearch}
+                      onChange={(event) => setJobSelectSearch(event.target.value)}
+                      placeholder="Search job ID, scene, pipeline..."
+                      className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-2 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent/60 focus:ring-1 focus:ring-accent/30"
+                      aria-label="Search job or active pipeline"
+                    />
+                  </div>
+                </div>
+                <div className="min-h-0 overflow-y-auto py-1">
+                  {selectableJobs.length > 0 && (
+                    <div className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">
+                      Jobs
+                    </div>
+                  )}
+                  {selectableJobs.map((job) => {
+                    const selected = runTargetType === 'job' && job.jobId === selectedJob?.jobId && runPipelineId === job.pipelineId;
+                    const pipelineName = pipelineNameById.get(job.pipelineId) ?? job.pipelineId;
+                    return (
+                      <button
+                        key={`job-${job.jobId}`}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        onClick={() => handleSelectJobFromDropdown(job.jobId)}
+                        className={`flex w-full items-start gap-2 px-2.5 py-2 text-left text-xs transition-colors ${
+                          selected ? 'bg-accent/10 text-accent' : 'text-foreground hover:bg-muted/35'
+                        }`}
+                      >
+                        <span className="mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                          {selected && <Check className="h-3.5 w-3.5" />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate font-semibold">{job.jobId}</span>
+                          <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
+                            {pipelineName} · {job.status}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {selectableActivePipelines.length > 0 && (
+                    <div className="border-t border-border/70 px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">
+                      Active Pipelines
+                    </div>
+                  )}
+                  {selectableActivePipelines.map((pipeline) => {
+                    const selected = runTargetType === 'pipeline' && runPipelineId === pipeline.id;
+                    return (
+                      <button
+                        key={`pipeline-${pipeline.id}`}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        onClick={() => handleSelectPipelineFromDropdown(pipeline.id)}
+                        className={`flex w-full items-start gap-2 px-2.5 py-2 text-left text-xs transition-colors ${
+                          selected ? 'bg-accent/10 text-accent' : 'text-foreground hover:bg-muted/35'
+                        }`}
+                      >
+                        <span className="mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                          {selected && <Check className="h-3.5 w-3.5" />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate font-semibold">{pipeline.name}</span>
+                          <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
+                            {pipeline.steps.length} steps · active
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {selectableJobs.length === 0 && selectableActivePipelines.length === 0 && (
+                    <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                      No jobs or active pipelines match the search.
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -480,10 +607,10 @@ export default function JobsPage() {
           </button>
           </div>
         </div>
-        {selectedJob && graphSteps.length > 0 ? (
+        {selectedJob && selectedPipeline && graphSteps.length > 0 ? (
           <div ref={canvasRef} className="flex-1 relative overflow-hidden">
             <CanvasGraph
-              pipelineId={selectedJob.pipelineId}
+              pipelineId={selectedPipeline.id}
               steps={graphSteps}
               pipelineEdges={graphEdges}
               editable={false}
@@ -494,10 +621,10 @@ export default function JobsPage() {
             />
             <JobNameBadge
               jobId={selectedJob.jobId}
-              pipelineName={selectedPipeline?.name ?? 'Unknown pipeline'}
+              pipelineName={selectedPipeline.name}
               satelliteId={selectedJob.satelliteId}
               mode={selectedJob.mode}
-              archived={selectedPipeline?.archived}
+              archived={selectedPipeline.archived}
             />
 
             {/* Open right panel */}
@@ -517,6 +644,7 @@ export default function JobsPage() {
 
             {/* Step detail popover */}
             {activeStepOrder != null && activeStepOrder > 0 && (() => {
+              if (!selectedJob) return null;
               const activeStep = selectedJob.steps.find((s) => s.order === activeStepOrder);
               if (!activeStep) return null;
               const canvasRect = canvasRef.current?.getBoundingClientRect();
@@ -546,7 +674,7 @@ export default function JobsPage() {
         )}
 
         {/* Progress Stepper */}
-        {selectedJob && graphSteps.length > 0 && (
+        {selectedJob && selectedPipeline && graphSteps.length > 0 && (
           <PipelineProgressStepper steps={graphSteps} />
         )}
 

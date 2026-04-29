@@ -1,18 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowLeft, Sparkles, Antenna, FileInput, Folder, GitBranch } from 'lucide-react';
+import { ArrowLeft, Sparkles, Antenna, FileInput, Folder, GitBranch, HardDrive } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { PipelineNodeKind, ProductLevel } from '@/types/pipeline';
+import type { PipelineNodeKind, ProductLevel, SarStage } from '@/types/pipeline';
 
 export interface StartNodeSelection {
   startNodeKind: PipelineNodeKind;
   startNodeInputLevel?: ProductLevel;
+  startNodeSarStage?: SarStage;
 }
 
 type StartNodeOption = {
   kind: PipelineNodeKind;
   inputLevel?: ProductLevel;
+  sarStage?: SarStage;
   icon: React.ElementType;
   iconColor: string;
   borderActive: string;
@@ -36,6 +38,19 @@ const OPTIONS: StartNodeOption[] = [
     label: 'Raw Data Reception Trigger',
     sublabel: 'EI-01',
     description: 'Processes the entire L0 → L1 → L2 → L3 pipeline starting from raw data delivered by the ground station.',
+  },
+  {
+    kind: 'SAR',
+    sarStage: 'L0',
+    icon: HardDrive,
+    iconColor: 'text-cyan-400',
+    borderActive: 'border-cyan-500/70',
+    bgActive: 'bg-cyan-500/8',
+    badgeText: 'Manual Start',
+    badgeColor: 'bg-cyan-500/20 text-cyan-400',
+    label: 'L0 Processing Node',
+    sublabel: 'CSC-03',
+    description: 'Starts the DAG directly from the L0 SAR processing node, without adding a raw-data trigger first.',
   },
   {
     kind: 'FILE_INPUT',
@@ -83,7 +98,11 @@ export default function SelectStartNodeDialog({
 
   const handleConfirm = () => {
     const opt = OPTIONS[selectedIdx];
-    onConfirm({ startNodeKind: opt.kind, startNodeInputLevel: opt.inputLevel });
+    onConfirm({
+      startNodeKind: opt.kind,
+      startNodeInputLevel: opt.inputLevel,
+      startNodeSarStage: opt.sarStage,
+    });
   };
 
   return (
@@ -113,7 +132,7 @@ export default function SelectStartNodeDialog({
         </div>
 
         {/* Options */}
-        <div className="px-4 py-3 space-y-2">
+        <div className="max-h-[68vh] space-y-2 overflow-y-auto px-4 py-3">
           {OPTIONS.map((opt, idx) => {
             const Icon = opt.icon;
             const active = selectedIdx === idx;

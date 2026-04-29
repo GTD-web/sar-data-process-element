@@ -719,7 +719,11 @@ export default function ConsolePage() {
     if (!createBasicData) return;
     setCreateStep(null);
     const steps: { kind: PipelineNodeKind; sarStage?: SarStage; inputLevel?: import('@/types/pipeline').ProductLevel }[] = [
-      { kind: selection.startNodeKind, inputLevel: selection.startNodeInputLevel },
+      {
+        kind: selection.startNodeKind,
+        inputLevel: selection.startNodeInputLevel,
+        sarStage: selection.startNodeSarStage,
+      },
     ];
     const res = await service.파이프라인을_생성한다({ ...createBasicData, steps });
     if (res.data) {

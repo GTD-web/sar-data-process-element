@@ -47,6 +47,7 @@ import {
   SAR_STAGE_TO_LEVEL,
   SATELLITE_OPTIONS,
   MODE_OPTIONS,
+  POLARIZATION_OPTIONS,
 } from '@/types/pipeline';
 import type {
   CreateUserRequest,
@@ -158,6 +159,37 @@ const PARTIAL_L1_SPOTLIGHT_STEPS: StepDef[] = [
 const PARTIAL_L2_STEPS: StepDef[] = [
   { kind: 'FILE_INPUT', inputLevel: 'LEVEL_2' },
   JOB_INIT_STEP,
+  { kind: 'SAR', sarStage: 'L3' },
+  CATALOG_STEP,
+];
+
+/** L0 노드에서 직접 시작 → 전체 SAR 후속 흐름 처리 */
+const START_FROM_L0_STEPS: StepDef[] = [
+  { kind: 'SAR', sarStage: 'L0' },
+  { kind: 'SAR', sarStage: 'L1A' },
+  { kind: 'SAR', sarStage: 'L1B' },
+  { kind: 'SAR', sarStage: 'L1C' },
+  { kind: 'SAR', sarStage: 'L2A' },
+  { kind: 'SAR', sarStage: 'L2B' },
+  { kind: 'SAR', sarStage: 'L3' },
+  CATALOG_STEP,
+];
+
+/** L1 단계에서 직접 시작 → L1/L2/L3 후속 흐름 처리 */
+const START_FROM_L1_STEPS: StepDef[] = [
+  { kind: 'SAR', sarStage: 'L1A' },
+  { kind: 'SAR', sarStage: 'L1B' },
+  { kind: 'SAR', sarStage: 'L1C' },
+  { kind: 'SAR', sarStage: 'L2A' },
+  { kind: 'SAR', sarStage: 'L2B' },
+  { kind: 'SAR', sarStage: 'L3' },
+  CATALOG_STEP,
+];
+
+/** L2 단계에서 직접 시작 → L2/L3 후속 흐름 처리 */
+const START_FROM_L2_STEPS: StepDef[] = [
+  { kind: 'SAR', sarStage: 'L2A' },
+  { kind: 'SAR', sarStage: 'L2B' },
   { kind: 'SAR', sarStage: 'L3' },
   CATALOG_STEP,
 ];
@@ -1243,6 +1275,9 @@ function generatePipelines(): PipelineDefinition[] {
   // 하나씩만 부여한다.
   const active: PipelineDefinition[] = [
     buildPipelineFromSteps('PL-FULL-SAR-PROCESSING', 'Full SAR Processing', PIPELINE_STEPS, '2026-01-15T09:00:00Z'),
+    buildPipelineFromSteps('PL-START-FROM-L0', 'Start from L0 Processing', START_FROM_L0_STEPS, '2026-01-20T09:00:00Z'),
+    buildPipelineFromSteps('PL-START-FROM-L1', 'Start from L1 Processing', START_FROM_L1_STEPS, '2026-01-25T09:00:00Z'),
+    buildPipelineFromSteps('PL-START-FROM-L2', 'Start from L2 Processing', START_FROM_L2_STEPS, '2026-01-30T09:00:00Z'),
     buildPipelineFromSteps('PL-PARTIAL-REPROCESS-FROM-L1', 'Partial Reprocess from L1', PARTIAL_L1_STRIPMAP_STEPS, '2026-02-01T09:00:00Z'),
     buildPipelineFromSteps('PL-PARTIAL-REPROCESS-FROM-L2', 'Partial Reprocess from L2', PARTIAL_L2_STEPS, '2026-03-01T09:00:00Z'),
     buildBranchedPipeline('PL-MULTI-LEVEL-BRANCHED', 'Multi-level Branched', MULTI_LEVEL_BRANCH_STEPS, MULTI_LEVEL_BRANCH_EDGES, '2026-03-20T09:00:00Z'),
@@ -1304,6 +1339,54 @@ function getPipelineProfileTags(
   };
 }
 
+type ActivationRouteCandidate = Pick<PipelineActivationRule, 'sourceQueue' | 'eventType' | 'match' | 'active'> & {
+  id?: string;
+};
+
+function activationMatchValuesKey(values?: readonly string[]): string {
+  return values && values.length > 0 ? [...values].sort().join(',') : '*';
+}
+
+function activationRouteKey(rule: Pick<PipelineActivationRule, 'sourceQueue' | 'eventType' | 'match'>): string {
+  return [
+    rule.sourceQueue,
+    rule.eventType,
+    activationMatchValuesKey(rule.match.satelliteIds),
+    activationMatchValuesKey(rule.match.modes),
+    activationMatchValuesKey(rule.match.polarizations),
+    rule.match.inputLevel ?? '*',
+  ].join('|');
+}
+
+function activationEventQueueKey(rule: Pick<PipelineActivationRule, 'sourceQueue' | 'eventType'>): string {
+  return `${rule.sourceQueue}|${rule.eventType}`;
+}
+
+function withUniqueActivationRoute(
+  rule: PipelineActivationRule,
+  existingRouteKeys: Set<string>,
+  offset: number,
+): PipelineActivationRule {
+  if (!existingRouteKeys.has(activationRouteKey(rule))) return rule;
+
+  const candidates = [
+    { satelliteIds: [SATELLITE_OPTIONS[offset % SATELLITE_OPTIONS.length]] },
+    { modes: [MODE_OPTIONS[offset % MODE_OPTIONS.length]] },
+    { polarizations: [POLARIZATION_OPTIONS[offset % POLARIZATION_OPTIONS.length]] },
+    {
+      satelliteIds: [SATELLITE_OPTIONS[offset % SATELLITE_OPTIONS.length]],
+      modes: [MODE_OPTIONS[Math.floor(offset / SATELLITE_OPTIONS.length) % MODE_OPTIONS.length]],
+    },
+  ];
+
+  for (const candidate of candidates) {
+    const nextRule = { ...rule, match: { ...rule.match, ...candidate } };
+    if (!existingRouteKeys.has(activationRouteKey(nextRule))) return nextRule;
+  }
+
+  return rule;
+}
+
 function buildActivationRuleForPipeline(
   pipeline: PipelineDefinition,
   profiles: ProcessingProfile[],
@@ -1340,9 +1423,25 @@ function generateActivationRules(
   pipelines: PipelineDefinition[],
   profiles: ProcessingProfile[],
 ): PipelineActivationRule[] {
-  return pipelines
-    .map((pipeline) => buildActivationRuleForPipeline(pipeline, profiles, DEFAULT_DEPLOYED_PIPELINE_IDS.has(pipeline.id)))
-    .filter((rule): rule is PipelineActivationRule => rule !== null);
+  const routeKeys = new Set<string>();
+  const activeEventQueueKeys = new Set<string>();
+  return pipelines.reduce<PipelineActivationRule[]>((rules, pipeline) => {
+    const rule = buildActivationRuleForPipeline(pipeline, profiles, DEFAULT_DEPLOYED_PIPELINE_IDS.has(pipeline.id));
+    if (!rule) return rules;
+    const uniqueRule = withUniqueActivationRoute(rule, routeKeys, rules.length);
+    if (uniqueRule.active) {
+      const eventQueueKey = activationEventQueueKey(uniqueRule);
+      if (activeEventQueueKeys.has(eventQueueKey)) {
+        uniqueRule.active = false;
+        uniqueRule.deployedAt = undefined;
+      } else {
+        activeEventQueueKeys.add(eventQueueKey);
+      }
+    }
+    routeKeys.add(activationRouteKey(uniqueRule));
+    rules.push(uniqueRule);
+    return rules;
+  }, []);
 }
 
 let nextPipelineSeq = 100;
@@ -1451,10 +1550,27 @@ class MockPipelineUIService implements IPipelineUIService {
 
   private upsertActivationRule(pipeline: PipelineDefinition, active?: boolean): PipelineActivationRule | null {
     const current = this.activationRules.find((rule) => rule.pipelineId === pipeline.id);
-    const nextRule = buildActivationRuleForPipeline(pipeline, this.profiles, active ?? current?.active ?? false);
+    const nextActive = active ?? current?.active ?? false;
+    const nextRule = current
+      ? {
+          ...current,
+          active: nextActive,
+          deployedAt: nextActive ? new Date().toISOString() : undefined,
+        }
+      : buildActivationRuleForPipeline(pipeline, this.profiles, nextActive);
     this.activationRules = this.activationRules.filter((rule) => rule.pipelineId !== pipeline.id);
     if (nextRule) this.activationRules.push(nextRule);
     return nextRule;
+  }
+
+  private hasDuplicateActiveRoute(candidate: ActivationRouteCandidate): boolean {
+    if (!candidate.active) return false;
+    const nextKey = activationEventQueueKey(candidate);
+    return this.activationRules.some((rule) => (
+      rule.active
+        && rule.id !== candidate.id
+        && activationEventQueueKey(rule) === nextKey
+    ));
   }
 
   private saveActivationRule(data: SavePipelineActivationRuleData): PipelineActivationRule | null {
@@ -1927,6 +2043,9 @@ class MockPipelineUIService implements IPipelineUIService {
   async 파이프라인_자동실행규칙을_저장한다(
     data: SavePipelineActivationRuleData,
   ): Promise<ServiceResponseWithData<PipelineActivationRule>> {
+    if (this.hasDuplicateActiveRoute(data)) {
+      return { success: false, message: '동일한 이벤트와 큐가 이미 활성화되어 있습니다.' };
+    }
     const rule = this.saveActivationRule(data);
     if (!rule) return { success: false, message: 'Failed to save activation rule' };
     return {
