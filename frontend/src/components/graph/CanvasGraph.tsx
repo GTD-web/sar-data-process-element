@@ -50,16 +50,15 @@ function getStepIdentity(step: Pick<PipelineStep, 'kind' | 'sarStage' | 'inputLe
 }
 
 /** Per-node radial glow — each node gets its own soft halo so the background lights up evenly */
-function CanvasGlow({ completionRatio }: { completionRatio: number }) {
+function CanvasGlow() {
   const nodesFromStore = useStore((s) => s.nodes);
   const [px, py, zoom] = useStore((s) => s.transform);
 
   if (nodesFromStore.length === 0) return null;
 
-  // Per-node glow radius scales with completion: 110px base → +90px at 100%
-  const radius = (110 + completionRatio * 90) * zoom;
-  // Per-node opacity also scales with completion: 0.10 → 0.20
-  const glowOpacity = 0.10 + completionRatio * 0.10;
+  // Per-node glow는 노드 개수/완료 비율에 무관하게 항상 동일한 범위·강도를 갖는다.
+  const radius = 155 * zoom;
+  const glowOpacity = 0.15;
   const greenInner = `rgba(52,211,153,${glowOpacity})`;
   const greenMid = `rgba(52,211,153,${(glowOpacity * 0.4).toFixed(3)})`;
   // FAILED nodes get a red halo at a fixed, slightly stronger intensity so they stand out
@@ -297,12 +296,6 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const edgeLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Glow intensity scales with completion ratio
-  const completionRatio = useMemo(() => {
-    if (steps.length === 0) return 0;
-    return steps.filter((s) => s.status === 'COMPLETED').length / steps.length;
-  }, [steps]);
-
   if (pipelineId !== syncedPipelineId) {
     setSyncedPipelineId(pipelineId);
     setSyncedStepsKey(stepsKey);
@@ -458,7 +451,7 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
         defaultEdgeOptions={{ style: { stroke: 'transparent', strokeWidth: 0 } }}
       >
         <FlowEntryFocus trigger={focusEntryTrigger} nodes={nodes} />
-        {showGlow && <CanvasGlow completionRatio={completionRatio} />}
+        {showGlow && <CanvasGlow />}
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color={t.canvasDot} />
         {showControls && (
           <Controls showInteractive={false} position="bottom-left" className="!bg-card !border-border !shadow-lg [&>button]:!bg-muted [&>button]:!border-border [&>button]:!text-foreground" />

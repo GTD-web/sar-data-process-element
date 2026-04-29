@@ -288,6 +288,12 @@ export interface PipelineStepDefinition {
   fileInputConfig?: FileInputConfig;
   /** UC13: 실행 시 건너뛰도록 비활성화된 노드. 진입 노드는 비활성화하지 않습니다. */
   disabled?: boolean;
+  /** L1/L2 SAR 노드 전용. 사용자 업로드 처리 코드 (Mock — 사용자 정의 알고리즘). */
+  code?: string;
+  /** 업로드 코드의 언어 (monaco 식별자, 예: 'python', 'cpp'). */
+  codeLanguage?: string;
+  /** 업로드 시점의 원본 파일명. */
+  codeFilename?: string;
 }
 
 export interface PipelineEdge {

@@ -262,10 +262,12 @@ export default function JobsPage() {
     }
   }, [service, updateJobIdParam]);
 
-  // --- Derived: pipeline + graph data for the selected job ---
-  const selectedPipeline = selectedJob
-    ? pipelines.find((p) => p.id === selectedJob.pipelineId) ?? null
-    : null;
+  // --- Derived: pipeline + graph data for the selected job (or selected unrun pipeline) ---
+  const selectedPipeline = runTargetType === 'pipeline' && runPipelineId
+    ? pipelines.find((pipeline) => pipeline.id === runPipelineId && !pipeline.archived) ?? null
+    : selectedJob
+      ? pipelines.find((p) => p.id === selectedJob.pipelineId) ?? null
+      : null;
   const pipelineNameById = useMemo(
     () => new Map(pipelines.map((pipeline) => [pipeline.id, pipeline.name])),
     [pipelines],
@@ -443,7 +445,12 @@ export default function JobsPage() {
     setRunTargetType('pipeline');
     setJobSelectOpen(false);
     setJobSelectSearch('');
-  }, []);
+    // 파이프라인을 선택하면 "아직 실행하지 않은" 상태로 보여준다 — 이전 Job 선택을 비운다.
+    setSelectedJob(null);
+    setActiveStepOrder(null);
+    setConsoleMode({ type: 'idle' });
+    updateJobIdParam(null);
+  }, [updateJobIdParam]);
 
   // --- Canvas node interactions ---
   const handleNodeClick = useCallback((stepOrder: number, clickY: number) => {
@@ -607,7 +614,7 @@ export default function JobsPage() {
           </button>
           </div>
         </div>
-        {selectedJob && selectedPipeline && graphSteps.length > 0 ? (
+        {selectedPipeline && graphSteps.length > 0 ? (
           <div ref={canvasRef} className="flex-1 relative overflow-hidden">
             <CanvasGraph
               pipelineId={selectedPipeline.id}
@@ -615,17 +622,28 @@ export default function JobsPage() {
               pipelineEdges={graphEdges}
               editable={false}
               onNodeClick={handleNodeClick}
-              onTrigger={handleRunPipeline}
+              onTrigger={selectedJob?.status === 'ASSIGNED' ? undefined : handleRunPipeline}
               onReprocessStep={handleReprocessFromNode}
               isJobMode
             />
-            <JobNameBadge
-              jobId={selectedJob.jobId}
-              pipelineName={selectedPipeline.name}
-              satelliteId={selectedJob.satelliteId}
-              mode={selectedJob.mode}
-              archived={selectedPipeline.archived}
-            />
+            {selectedJob ? (
+              <JobNameBadge
+                jobId={selectedJob.jobId}
+                pipelineName={selectedPipeline.name}
+                satelliteId={selectedJob.satelliteId}
+                mode={selectedJob.mode}
+                archived={selectedPipeline.archived}
+              />
+            ) : (
+              <div className="absolute top-3 left-3 z-10 flex items-center gap-2 rounded-md border border-border bg-card/80 backdrop-blur-sm px-2.5 py-1.5 shadow-sm">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Not yet executed
+                </span>
+                <span className="text-xs font-semibold text-foreground truncate max-w-[260px]" title={selectedPipeline.name}>
+                  {selectedPipeline.name}
+                </span>
+              </div>
+            )}
 
             {/* Open right panel */}
             {rightCollapsed && (
@@ -669,7 +687,9 @@ export default function JobsPage() {
               ? 'No manual pipeline runs yet'
               : selectedJob && !selectedPipeline
                 ? 'Pipeline for the selected job was not found'
-                : 'Select a manual pipeline run from the left panel'}
+                : runTargetType === 'pipeline' && !selectedPipeline
+                  ? 'Selected pipeline was not found or is archived'
+                  : 'Select a manual pipeline run from the left panel'}
           </div>
         )}
 

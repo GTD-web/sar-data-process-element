@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { X, Play, Loader, CheckCircle, ChevronRight, Check, Save, Antenna, SlidersHorizontal, HardDrive, Cpu, Layers, Compass, Map, Crosshair, Package, Database, FileInput as FileInputIcon, Image as ImageIcon } from 'lucide-react';
+import { X, Play, Loader, CheckCircle, ChevronRight, Antenna, SlidersHorizontal, HardDrive, Cpu, Layers, Compass, Map as MapIcon, Crosshair, Package, Database, FileInput as FileInputIcon, Image as ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { PipelineStepDefinition, SarStage, TargetCsc, ProcessingProfile } from '@/types/pipeline';
 import {
@@ -9,6 +9,8 @@ import {
   CSC_VT_SECONDS, MAX_RETRY_COUNT, RETRY_INTERVAL_LABELS, PRODUCT_LEVEL_LABELS, QUEUE_NAME,
 } from '@/types/pipeline';
 import JobInitEditPanel from './JobInitEditPanel';
+import NodeCodeEditorPanel from './NodeCodeEditorPanel';
+import { getDefaultCode, isTaskActiveInCode, TASK_KEYWORDS_BY_STAGE } from './node-code-defaults';
 import type { PipelineNodeKind, ProductLevel } from '@/types/pipeline';
 
 /** 이전 노드 요약 정보 — INPUT 패널에 표시 */
@@ -155,7 +157,7 @@ function getNodeIcon(kind: PipelineNodeKind, sarStage?: SarStage): React.Element
   if (kind === 'THUMBNAIL') return ImageIcon;
   if (kind === 'SAR' && sarStage) {
     const icons: Record<SarStage, React.ElementType> = {
-      L0: HardDrive, L1A: Cpu, L1B: Layers, L1C: Compass, L2A: Map, L2B: Crosshair, L3: Package,
+      L0: HardDrive, L1A: Cpu, L1B: Layers, L1C: Compass, L2A: MapIcon, L2B: Crosshair, L3: Package,
     };
     return icons[sarStage] ?? HardDrive;
   }
@@ -172,7 +174,7 @@ function NodeIcon({ step, size = 18 }: { step: PipelineStepDefinition; size?: nu
   if (step.kind === 'THUMBNAIL')  return <ImageIcon {...props} />;
   if (step.kind === 'SAR') {
     const icons: Record<SarStage, React.ElementType> = {
-      L0: HardDrive, L1A: Cpu, L1B: Layers, L1C: Compass, L2A: Map, L2B: Crosshair, L3: Package,
+      L0: HardDrive, L1A: Cpu, L1B: Layers, L1C: Compass, L2A: MapIcon, L2B: Crosshair, L3: Package,
     };
     const Icon = step.sarStage ? (icons[step.sarStage] ?? HardDrive) : HardDrive;
     return <Icon {...props} />;
@@ -233,13 +235,22 @@ function ProcessInfoSection({ kind }: { kind: string }) {
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
 type ExecState = 'idle' | 'running' | 'done';
-type ModalTab = 'info' | 'parameters' | 'settings';
+type ModalTab = 'info' | 'parameters';
 
 const MODAL_TABS: { id: ModalTab; label: string }[] = [
   { id: 'info', label: 'Info' },
   { id: 'parameters', label: 'Parameters' },
-  { id: 'settings', label: 'Settings' },
 ];
+
+/** L0 / L1x / L2x SAR 노드 사용자 코드 업로드/편집 가능 */
+function supportsCodeEditor(step: PipelineStepDefinition): boolean {
+  if (step.kind !== 'SAR' || !step.sarStage) return false;
+  return (
+    step.sarStage === 'L0'
+    || step.sarStage.startsWith('L1')
+    || step.sarStage.startsWith('L2')
+  );
+}
 
 interface NodeDetailModalProps {
   step: PipelineStepDefinition;
@@ -261,43 +272,50 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
   const [outputData, setOutputData] = useState<MockRecord | null>(null);
   const [activeTab, setActiveTab] = useState<ModalTab>('info');
 
-  // ── SAR 태스크 편집 상태 ──
+  // ── SAR stage sub-function 사양 (readonly) ──
+  // TASKS 활성/비활성 상태는 CODE 섹션의 코드 본문에서 자동 도출된다.
+  // 사용자가 비활성화하려면 CODE에서 해당 코드를 주석 처리한다.
   const allTasks = useMemo(
     () => (step.kind === 'SAR' && step.sarStage ? SAR_STAGE_TASKS[step.sarStage] : []),
     [step.kind, step.sarStage],
   );
-  const [editableTasks, setEditableTasks] = useState<string[]>(step.enabledTasks ?? allTasks);
-  const [tasksDirty, setTasksDirty] = useState(false);
+
+  // 에디터 본문 — 저장 전이라도 실시간으로 task 활성 상태를 반영한다.
+  const initialCode = useMemo(() => {
+    if (step.kind !== 'SAR') return '';
+    return step.code ?? getDefaultCode(step.sarStage)?.code ?? '';
+  }, [step.kind, step.sarStage, step.code]);
+  const [currentCode, setCurrentCode] = useState<string>(initialCode);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 모달이 열린 채로 step이 바뀔 때 편집 상태를 새 step에 재동기화
-    setEditableTasks(step.enabledTasks ?? allTasks);
-    setTasksDirty(false);
-  }, [step, allTasks]);
+    setCurrentCode(initialCode);
+  }, [initialCode]);
 
-  const toggleTask = useCallback((task: string) => {
-    setEditableTasks((prev) => {
-      if (prev.includes(task)) {
-        if (prev.length === 1) return prev;
-        return prev.filter((t) => t !== task);
-      }
-      return [...prev, task];
-    });
-    setTasksDirty(true);
-  }, []);
+  const taskActiveMap = useMemo(() => {
+    const result = new Map<string, boolean>();
+    if (step.kind !== 'SAR' || !step.sarStage) return result;
+    const keywords = TASK_KEYWORDS_BY_STAGE[step.sarStage] ?? {};
+    for (const task of allTasks) {
+      const kws = keywords[task] ?? [];
+      result.set(task, isTaskActiveInCode(currentCode, task, kws));
+    }
+    return result;
+  }, [step.kind, step.sarStage, allTasks, currentCode]);
 
-  const handleSaveTasks = useCallback(() => {
-    if (!onSaveNode) return;
-    onSaveNode({
-      ...step,
-      enabledTasks: editableTasks.length < allTasks.length ? editableTasks : undefined,
-    });
-    setTasksDirty(false);
-  }, [onSaveNode, step, editableTasks, allTasks]);
+  const activeTaskCount = useMemo(
+    () => Array.from(taskActiveMap.values()).filter(Boolean).length,
+    [taskActiveMap],
+  );
 
   const handleSaveJobInit = useCallback((updated: PipelineStepDefinition) => {
     onSaveNode?.(updated);
   }, [onSaveNode]);
+
+  const handleSaveCode = useCallback((updated: PipelineStepDefinition) => {
+    onSaveNode?.(updated);
+  }, [onSaveNode]);
+
+  const codeEditorEnabled = supportsCodeEditor(step);
 
   const description = step.kind === 'SAR' && step.sarStage
     ? SAR_STAGE_DESCRIPTIONS[step.sarStage]
@@ -378,7 +396,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
 
         {/* ── Left: INPUT — 이전 노드 참조 ── */}
         <div className="w-[30%] flex flex-col border-r border-border bg-background">
-          <div className="shrink-0 px-4 py-2 border-b border-border">
+          <div className="shrink-0 h-9 flex items-center px-4 border-b border-border">
             <span className="text-[10px] font-semibold tracking-widest text-muted-foreground">INPUT</span>
           </div>
           <div className="flex-1 overflow-y-auto min-h-0">
@@ -438,9 +456,9 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
           </div>
 
           {/* Tab content */}
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="flex-1 min-h-0 flex flex-col">
             {/* ── Info 탭: 노드 개요 + 타입별 읽기 전용 정보 ── */}
-            <div className={cn('px-5 py-4 space-y-4', activeTab !== 'info' && 'hidden')}>
+            <div className={cn('h-full overflow-y-auto px-5 py-4 space-y-4', activeTab !== 'info' && 'hidden')}>
               {/* Description */}
               <div>
                 <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Description</div>
@@ -495,7 +513,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                   <div className="space-y-1.5 text-[11px]">
                     <InfoRow label="SAR Stage" value={step.sarStage} />
                     <InfoRow label="Output Type" value={SAR_STAGE_OUTPUT_TYPE[step.sarStage]} />
-                    <InfoRow label="Active Tasks" value={`${(step.enabledTasks ?? allTasks).length}/${allTasks.length}`} />
+                    <InfoRow label="Active Tasks" value={`${activeTaskCount}/${allTasks.length}`} />
                   </div>
                 </>
               )}
@@ -513,70 +531,162 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
 
               {/* 처리 프로세스 */}
               <ProcessInfoSection kind={step.kind} />
+
+              {/* ── 상세 설정 (구 Settings 탭) ───────────────────────── */}
+              <div className="h-px bg-border" />
+
+              <SettingSection title="Node Info">
+                <SettingRow label="Kind" value={step.kind} />
+                {step.sarStage && <SettingRow label="SAR Stage" value={step.sarStage} />}
+                <SettingRow label="CSC" value={nodeCsc(step)} />
+                <SettingRow label="Order" value={`#${step.order}`} />
+              </SettingSection>
+
+              {step.kind === 'TRIGGER' && (
+                <SettingSection title="Event Source">
+                  <SettingRow label="Event Type" value="RAW_DATA_RECEIVED" status="confirmed" />
+                  <SettingRow label="Provider" value="Ground Station (EI-01)" status="confirmed" />
+                  <SettingRow label="Queue" value={QUEUE_NAME.RECEPTION_EVENTS} status="confirmed" />
+                  <SettingRow label="Checksum" value="SHA-256" status="confirmed" />
+                  <SettingRow label="Schema Version" value="1.0" status="confirmed" />
+                </SettingSection>
+              )}
+
+              {step.kind === 'FILE_INPUT' && (
+                <SettingSection title="Partial Reprocessing Settings">
+                  <SettingRow label="Trigger Source" value="PARTIAL_REPROCESS" status="confirmed" />
+                  <SettingRow
+                    label="Input Level"
+                    value={step.inputLevel ? PRODUCT_LEVEL_LABELS[step.inputLevel] : '—'}
+                    status={step.inputLevel ? 'confirmed' : undefined}
+                  />
+                  <SettingRow label="Interface" value="SI-07" status="tbc" note="ICD 5.4" />
+                </SettingSection>
+              )}
+
+              {step.kind === 'JOB_INIT' && (
+                <SettingSection title="Job Limits">
+                  <SettingRow label="Max Retries" value={`${MAX_RETRY_COUNT}`} status="confirmed" note="ICD 3.5" />
+                  <SettingRow
+                    label="Retry Strategy"
+                    value={step.jobInitConfig?.retryInterval
+                      ? RETRY_INTERVAL_LABELS[step.jobInitConfig.retryInterval]
+                      : '—'}
+                    status="tbc"
+                    note="ICD 3.5"
+                  />
+                  <SettingRow
+                    label="Deadline"
+                    value={step.jobInitConfig?.deadlineHours ? `${step.jobInitConfig.deadlineHours}h` : '—'}
+                    status="tbc"
+                    note="SI-04"
+                  />
+                </SettingSection>
+              )}
+
+              {step.kind === 'SAR' && step.sarStage && (() => {
+                const csc = nodeCsc(step);
+                const vt = CSC_VT_SECONDS[csc as TargetCsc];
+                return (
+                  <SettingSection title={`Execution Limits (${csc})`}>
+                    {vt !== undefined && (
+                      <SettingRow
+                        label="Visibility Timeout"
+                        value={formatVt(vt)}
+                        status="confirmed"
+                        note="ICD 6.6"
+                      />
+                    )}
+                    <SettingRow
+                      label="Output Type"
+                      value={SAR_STAGE_OUTPUT_TYPE[step.sarStage]}
+                      status="confirmed"
+                    />
+                    <SettingRow label="Priority" value="—" status="tbc" note="ICD 6.6" />
+                    <SettingRow label="Deadline" value="—" status="tbc" note="SI-04" />
+                    <SettingRow label="Retry Strategy" value="—" status="tbc" note="ICD 3.5" />
+                  </SettingSection>
+                );
+              })()}
+
+              {step.kind === 'CATALOG' && (
+                <SettingSection title="Catalog Settings">
+                  <SettingRow label="Target Levels" value="Level-1 / 2 / 3" status="confirmed" note="Level-0 excluded" />
+                  <SettingRow label="Quality Validation" value="—" status="tbc" note="SI-05" />
+                  <SettingRow label="SI-05 Interface" value="TBC" status="tbc" note="ICD 2.3" />
+                  <SettingRow label="Queue" value={QUEUE_NAME.CATALOG_REGISTRATION} status="confirmed" />
+                </SettingSection>
+              )}
             </div>
 
             {/* ── Parameters 탭 — 편집 가능 ── */}
-            <div className={cn(activeTab !== 'parameters' && 'hidden')}>
-              {/* SAR: 편집 가능한 태스크 토글 */}
+            <div className={cn('h-full flex flex-col min-h-0', activeTab !== 'parameters' && 'hidden')}>
+              {/* SAR: stage sub-function — CODE 본문에서 자동 도출되는 readonly 상태 표시 */}
               {step.kind === 'SAR' && allTasks.length > 0 && (
-                <div className="px-5 py-4 space-y-3">
+                <div className="shrink-0 px-5 py-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                      Tasks ({editableTasks.length}/{allTasks.length})
+                      Tasks ({activeTaskCount}/{allTasks.length})
                     </div>
-                    {onSaveNode && tasksDirty && (
-                      <button
-                        type="button"
-                        onClick={handleSaveTasks}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent text-accent-foreground text-[10px] font-semibold hover:bg-accent/80 transition-colors"
-                      >
-                        <Save className="w-3 h-3" />
-                        Apply
-                      </button>
-                    )}
+                    <span className="text-[10px] text-muted-foreground/70">Auto-derived from CODE</span>
                   </div>
-                  <div className="space-y-0.5">
+                  <p className="text-[10px] leading-relaxed text-muted-foreground/70">
+                    Active when (1) the task name appears in a <code className="font-mono">#</code> comment (e.g. <code className="font-mono">{`# DEM Integration`}</code>), or (2) a related keyword shows up in actual code. Docstrings don&apos;t count.
+                  </p>
+                  <div className="space-y-0.5 pt-1">
                     {allTasks.map((task) => {
-                      const isEnabled = editableTasks.includes(task);
-                      const isLast = editableTasks.length === 1 && isEnabled;
+                      const isActive = taskActiveMap.get(task) ?? false;
                       return (
-                        <button
+                        <div
                           key={task}
-                          type="button"
-                          onClick={() => onSaveNode ? toggleTask(task) : undefined}
-                          disabled={isLast || !onSaveNode}
+                          title={isActive
+                            ? 'Detected in code — comment out the relevant lines to disable'
+                            : 'Not detected in code (or fully commented out)'}
                           className={cn(
-                            'w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-[11px] transition-colors',
-                            isEnabled ? 'bg-accent/10 text-foreground' : 'bg-transparent text-muted-foreground/50 line-through',
-                            isLast || !onSaveNode ? 'cursor-default' : 'hover:bg-muted/50 cursor-pointer',
+                            'flex items-center gap-2 px-2 py-1.5 rounded-md text-[11px]',
+                            isActive ? 'bg-accent/10 text-foreground' : 'bg-transparent text-muted-foreground/60',
                           )}
-                          title={isLast ? 'At least one task must be selected' : undefined}
                         >
-                          <span className={cn(
-                            'w-3.5 h-3.5 rounded shrink-0 border flex items-center justify-center transition-colors',
-                            isEnabled ? 'bg-accent border-accent' : 'bg-transparent border-muted-foreground/30',
-                          )}>
-                            {isEnabled && <Check className="w-2.5 h-2.5 text-accent-foreground" strokeWidth={3} />}
+                          <span className="w-3.5 flex items-center justify-center shrink-0">
+                            {isActive ? (
+                              <CheckCircle className="w-3.5 h-3.5 text-accent" strokeWidth={2.5} />
+                            ) : (
+                              <span className="w-2 h-px bg-muted-foreground/30" aria-hidden />
+                            )}
                           </span>
-                          {task}
-                        </button>
+                          <span className="flex-1 truncate">{task}</span>
+                        </div>
                       );
                     })}
                   </div>
                 </div>
               )}
 
-              {/* JOB_INIT: 편집 패널 임베드 */}
-              {step.kind === 'JOB_INIT' && onSaveNode && satelliteId && mode && availableProfiles ? (
-                <JobInitEditPanel
-                  step={step}
-                  satelliteId={satelliteId}
-                  mode={mode}
-                  profiles={availableProfiles}
-                  onSave={handleSaveJobInit}
-                />
+              {/* SAR L0/L1x/L2x: 처리 코드 업로드/편집 (CODE 섹션) — 남은 세로 영역을 채움 */}
+              {step.kind === 'SAR' && codeEditorEnabled && onSaveNode && (
+                <div className="flex-1 min-h-0 flex flex-col px-5 pb-3 border-t border-border pt-3">
+                  <div className="shrink-0 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                    Code
+                  </div>
+                  <div className="flex-1 min-h-0 rounded-md border border-border overflow-hidden">
+                    <NodeCodeEditorPanel step={step} onSave={handleSaveCode} onCodeChange={setCurrentCode} />
+                  </div>
+                </div>
+              )}
+
+              {/* JOB_INIT: 편집 패널 임베드 — 파이프라인 편집 시에는 satelliteId/mode가 없을 수 있음 */}
+              {step.kind === 'JOB_INIT' && onSaveNode && availableProfiles && availableProfiles.length > 0 ? (
+                <div className="flex-1 min-h-0 overflow-y-auto">
+                  <JobInitEditPanel
+                    step={step}
+                    satelliteId={satelliteId}
+                    mode={mode}
+                    profiles={availableProfiles}
+                    onSave={handleSaveJobInit}
+                  />
+                </div>
               ) : step.kind === 'JOB_INIT' && (
-                <div className="px-5 py-4 space-y-2 text-[12px]">
+                <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-2 text-[12px]">
                   <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Job Initialization Settings</div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Processing Profile</span>
@@ -622,102 +732,12 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
               )}
             </div>
 
-            {/* ── Settings 탭 ── */}
-            <div className={cn('px-5 py-4 space-y-5', activeTab !== 'settings' && 'hidden')}>
-              {/* ── 노드 정보 ── */}
-              <SettingSection title="Node Info">
-                <SettingRow label="Kind" value={step.kind} />
-                {step.sarStage && <SettingRow label="SAR Stage" value={step.sarStage} />}
-                <SettingRow label="CSC" value={nodeCsc(step)} />
-                <SettingRow label="Order" value={`#${step.order}`} />
-              </SettingSection>
-
-              {/* ── TRIGGER ── */}
-              {step.kind === 'TRIGGER' && (
-                <SettingSection title="Event Source">
-                  <SettingRow label="Event Type" value="RAW_DATA_RECEIVED" status="confirmed" />
-                  <SettingRow label="Provider" value="Ground Station (EI-01)" status="confirmed" />
-                  <SettingRow label="Queue" value={QUEUE_NAME.RECEPTION_EVENTS} status="confirmed" />
-                  <SettingRow label="Checksum" value="SHA-256" status="confirmed" />
-                  <SettingRow label="Schema Version" value="1.0" status="confirmed" />
-                </SettingSection>
-              )}
-
-              {/* ── FILE_INPUT ── */}
-              {step.kind === 'FILE_INPUT' && (
-                <SettingSection title="Partial Reprocessing Settings">
-                  <SettingRow label="Trigger Source" value="PARTIAL_REPROCESS" status="confirmed" />
-                  <SettingRow
-                    label="Input Level"
-                    value={step.inputLevel ? PRODUCT_LEVEL_LABELS[step.inputLevel] : '—'}
-                    status={step.inputLevel ? 'confirmed' : undefined}
-                  />
-                  <SettingRow label="Interface" value="SI-07" status="tbc" note="ICD 5.4" />
-                </SettingSection>
-              )}
-
-              {/* ── JOB_INIT ── */}
-              {step.kind === 'JOB_INIT' && (
-                <SettingSection title="Job Limits">
-                  <SettingRow label="Max Retries" value={`${MAX_RETRY_COUNT}`} status="confirmed" note="ICD 3.5" />
-                  <SettingRow
-                    label="Retry Strategy"
-                    value={step.jobInitConfig?.retryInterval
-                      ? RETRY_INTERVAL_LABELS[step.jobInitConfig.retryInterval]
-                      : '—'}
-                    status={step.jobInitConfig?.retryInterval ? 'confirmed' : 'tbc'}
-                  />
-                  <SettingRow
-                    label="Deadline"
-                    value={step.jobInitConfig?.deadlineHours ? `${step.jobInitConfig.deadlineHours}h` : '—'}
-                    status="tbc"
-                    note="ICD 6.6"
-                  />
-                </SettingSection>
-              )}
-
-              {/* ── SAR ── */}
-              {step.kind === 'SAR' && step.sarStage && (() => {
-                const csc = nodeCsc(step);
-                const vt = CSC_VT_SECONDS[csc as TargetCsc];
-                return (
-                  <SettingSection title={`Execution Limits (${csc})`}>
-                    {vt !== undefined && (
-                      <SettingRow
-                        label="Visibility Timeout"
-                        value={formatVt(vt)}
-                        status="confirmed"
-                        note="ICD 6.6"
-                      />
-                    )}
-                    <SettingRow
-                      label="Output Type"
-                      value={SAR_STAGE_OUTPUT_TYPE[step.sarStage]}
-                      status="confirmed"
-                    />
-                    <SettingRow label="Priority" value="—" status="tbc" note="ICD 6.6" />
-                    <SettingRow label="Deadline" value="—" status="tbc" note="ICD 6.6" />
-                    <SettingRow label="Retry Strategy" value="—" status="tbc" note="ICD 3.5" />
-                  </SettingSection>
-                );
-              })()}
-
-              {/* ── CATALOG ── */}
-              {step.kind === 'CATALOG' && (
-                <SettingSection title="Catalog Settings">
-                  <SettingRow label="Target Levels" value="Level-1 / 2 / 3" status="confirmed" note="Level-0 excluded" />
-                  <SettingRow label="Quality Validation" value="—" status="tbc" note="SI-05" />
-                  <SettingRow label="SI-05 Interface" value="TBC" status="tbc" note="ICD 2.3" />
-                  <SettingRow label="Queue" value={QUEUE_NAME.CATALOG_REGISTRATION} status="confirmed" />
-                </SettingSection>
-              )}
-            </div>
           </div>
         </div>
 
         {/* ── Right: OUTPUT ── */}
         <div className="w-[30%] flex flex-col border-l border-border bg-background">
-          <div className="shrink-0 px-4 py-2 border-b border-border">
+          <div className="shrink-0 h-9 flex items-center px-4 border-b border-border">
             <span className="text-[10px] font-semibold tracking-widest text-muted-foreground">OUTPUT</span>
           </div>
           <div className="flex-1 overflow-y-auto min-h-0">

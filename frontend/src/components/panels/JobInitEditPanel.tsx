@@ -1,20 +1,25 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { PipelineStepDefinition, ProcessingProfile, JobInitConfig, RetryInterval } from '@/types/pipeline';
 import {
-  POLARIZATION_OPTIONS,
   MAX_RETRY_COUNT,
   DEADLINE_HOUR_OPTIONS,
   RETRY_INTERVAL_LABELS,
   JOB_INIT_PROFILE_MISSING_MESSAGE,
 } from '@/types/pipeline';
-import { SlidersHorizontal, Save, ChevronDown, ChevronRight, Shield, Clock, Zap, UserCog, AlertTriangle } from 'lucide-react';
+import {
+  SlidersHorizontal, Save, ChevronDown, ChevronRight,
+  Shield, Zap, UserCog, AlertTriangle,
+  Satellite, Radio, Activity, Pencil,
+} from 'lucide-react';
+import CustomSelect, { type CustomSelectOption } from '@/components/ui/CustomSelect';
 
 interface JobInitEditPanelProps {
   step: PipelineStepDefinition;
-  satelliteId: string;
-  mode: string;
+  /** 파이프라인 편집 컨텍스트에서는 비어 있을 수 있다 — satellite/mode 매칭은 비어 있으면 생략. */
+  satelliteId?: string;
+  mode?: string;
   profiles: ProcessingProfile[];
   onSave: (step: PipelineStepDefinition) => void;
 }
@@ -26,43 +31,82 @@ const DEFAULT_CONFIG: JobInitConfig = {
   deadlineHours: 4,
 };
 
-function profileMatchesTags(profile: ProcessingProfile, satelliteId: string, mode: string, polarization: string) {
-  const satelliteTags = profile.satelliteTags ?? (profile.satelliteId ? [profile.satelliteId] : []);
-  const modeTags = profile.modeTags ?? (profile.mode ? [profile.mode] : []);
-  const polarizationTags = profile.polarizationTags ?? (profile.polarization ? [profile.polarization] : []);
+function ConfirmedBadge({ note }: { note?: string }) {
   return (
-    (satelliteTags.length === 0 || satelliteTags.includes(satelliteId)) &&
-    (modeTags.length === 0 || modeTags.includes(mode)) &&
-    (polarizationTags.length === 0 || polarizationTags.includes(polarization))
+    <span className="inline-flex items-center text-[9px] bg-accent/10 text-accent rounded px-1.5 py-0.5 shrink-0">
+      Confirmed{note ? ` · ${note}` : ''}
+    </span>
+  );
+}
+
+function TbcBadge({ note }: { note?: string }) {
+  return (
+    <span className="inline-flex items-center text-[9px] bg-amber-500/10 text-amber-500 rounded px-1.5 py-0.5 shrink-0">
+      TBC{note ? ` · ${note}` : ''}
+    </span>
+  );
+}
+
+function getProfileTags(profile: ProcessingProfile) {
+  return {
+    satellites: profile.satelliteTags ?? (profile.satelliteId ? [profile.satelliteId] : []),
+    modes: profile.modeTags ?? (profile.mode ? [profile.mode] : []),
+    polarizations: profile.polarizationTags ?? (profile.polarization ? [profile.polarization] : []),
+  };
+}
+
+/** satellite/mode가 주어졌을 때만 그 차원으로 필터 (polarization은 필터 차원에서 제외 — 프로필 선택 후 자동 적용). */
+function profileMatchesContext(profile: ProcessingProfile, satelliteId: string | undefined, mode: string | undefined) {
+  const { satellites, modes } = getProfileTags(profile);
+  return (
+    (!satelliteId || satellites.length === 0 || satellites.includes(satelliteId)) &&
+    (!mode || modes.length === 0 || modes.includes(mode))
   );
 }
 
 export default function JobInitEditPanel({ step, satelliteId, mode, profiles, onSave }: JobInitEditPanelProps) {
   const initial = step.jobInitConfig ?? DEFAULT_CONFIG;
 
-  const [polarization, setPolarization] = useState(initial.polarization);
   const [profileId, setProfileId] = useState(initial.profileId ?? '');
+  const [polarization, setPolarization] = useState(initial.polarization);
   const [priority, setPriority] = useState(initial.priority);
   const [deadlineHours, setDeadlineHours] = useState<number | undefined>(initial.deadlineHours);
   const [retryInterval, setRetryInterval] = useState<RetryInterval>(initial.retryInterval);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [overrideOpen, setOverrideOpen] = useState(false);
 
   const matchingProfiles = useMemo(
-    () => profiles.filter((p) => profileMatchesTags(p, satelliteId, mode, polarization)),
-    [profiles, satelliteId, mode, polarization],
+    () => profiles.filter((p) => profileMatchesContext(p, satelliteId, mode)),
+    [profiles, satelliteId, mode],
   );
 
-  const handlePolarizationChange = (newPol: string) => {
-    setPolarization(newPol);
-    const next = profiles.filter((p) => profileMatchesTags(p, satelliteId, mode, newPol));
-    if (next.length === 0) {
-      setProfileId('');
-    } else if (!next.find((p) => p.id === profileId)) {
-      setProfileId(next[0].id);
+  const selectedProfile = profiles.find((p) => p.id === profileId);
+  const selectedTags = selectedProfile ? getProfileTags(selectedProfile) : null;
+
+  // 사용자가 다른 프로필로 바꾸면 그 프로필이 들고 있는 값들로 자동 갱신:
+  //   - polarization: 첫 번째 polarizationTag (이미 새 프로필 태그에 있으면 유지)
+  //   - priority    : 프로필의 priority 그대로 사용
+  // 다른 job-level 설정(deadlineHours, retryInterval)은 프로필이 보유하지 않으므로 유지.
+  const handleProfileChange = (nextProfileId: string) => {
+    setProfileId(nextProfileId);
+    const next = profiles.find((p) => p.id === nextProfileId);
+    if (!next) return;
+    const tags = getProfileTags(next);
+    if (tags.polarizations.length > 0 && !tags.polarizations.includes(polarization)) {
+      setPolarization(tags.polarizations[0]);
     }
+    setPriority(next.priority);
+    setOverrideOpen(false);
   };
 
-  const selectedProfile = profiles.find((p) => p.id === profileId);
+  // 모달 처음 열렸을 때 step의 polarization이 선택된 프로필의 polarizationTags에 없으면 첫 태그로 보정.
+  useEffect(() => {
+    if (!selectedTags) return;
+    if (selectedTags.polarizations.length > 0 && !selectedTags.polarizations.includes(polarization)) {
+      setPolarization(selectedTags.polarizations[0]);
+    }
+    // selectedTags 변경에만 반응 (polarization 자체 변경엔 반응 X — 무한루프 방지)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTags?.polarizations.join(',')]);
 
   const profileMissingInDefinition = !step.jobInitConfig?.profileId;
 
@@ -87,6 +131,10 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
     };
     onSave({ ...step, jobInitConfig: config });
   };
+
+  const polarizationOverridden = selectedTags
+    ? selectedTags.polarizations.length > 0 && polarization !== selectedTags.polarizations[0]
+    : false;
 
   return (
     <div className="p-4 space-y-4">
@@ -115,53 +163,108 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
           Processing Profile
         </div>
 
-        <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
-          {/* Polarization */}
-          <div>
-            <label className="text-[10px] text-muted-foreground block mb-1">Polarization</label>
-            <select
-              value={polarization}
-              onChange={(e) => handlePolarizationChange(e.target.value)}
-              className="w-full bg-card border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent/50"
-            >
-              {POLARIZATION_OPTIONS.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-          </div>
-
+        <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
           {/* Profile Select */}
           <div>
             <label className="text-[10px] text-muted-foreground block mb-1">Profile</label>
             {matchingProfiles.length > 0 ? (
-              <select
+              <CustomSelect<string>
                 value={profileId}
-                onChange={(e) => setProfileId(e.target.value)}
-                className="w-full bg-card border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent/50"
-              >
-                {matchingProfiles.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+                onChange={handleProfileChange}
+                placeholder="Select a profile…"
+                options={matchingProfiles.map((p) => ({
+                  value: p.id,
+                  label: p.name,
+                  description: p.description,
+                } satisfies CustomSelectOption))}
+              />
             ) : (
               <div className="px-2.5 py-1.5 text-[10px] text-muted-foreground/60 bg-card border border-border rounded-md">
-                No profile tags match {satelliteId} / {mode} / {polarization}
+                No profile tags match {satelliteId ?? 'any satellite'} / {mode ?? 'any mode'}
               </div>
             )}
           </div>
 
-          {/* Profile Description */}
-          {selectedProfile?.description && (
-            <div className="text-[10px] text-muted-foreground leading-relaxed pt-1 border-t border-border/50">
-              {selectedProfile.description}
-            </div>
-          )}
+          {/* Profile-derived tags (readonly chips) */}
+          {selectedProfile && selectedTags && (
+            <div className="space-y-2 pt-2 border-t border-border/50">
+              <div className="text-[10px] text-muted-foreground">Linked tags from profile</div>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedTags.satellites.map((s) => (
+                  <span key={`sat-${s}`} className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 text-[10px] text-foreground/80">
+                    <Satellite className="w-3 h-3 text-accent/70" />
+                    {s}
+                  </span>
+                ))}
+                {selectedTags.modes.map((m) => (
+                  <span key={`mode-${m}`} className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 text-[10px] text-foreground/80">
+                    <Activity className="w-3 h-3 text-accent/70" />
+                    {m}
+                  </span>
+                ))}
+                {selectedTags.polarizations.map((p) => {
+                  const isUsed = p === polarization;
+                  return (
+                    <span
+                      key={`pol-${p}`}
+                      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] ${
+                        isUsed ? 'border-accent/50 bg-accent/10 text-accent' : 'border-border bg-card text-foreground/80'
+                      }`}
+                    >
+                      <Radio className="w-3 h-3" />
+                      {p}
+                      {isUsed && <span className="text-[9px] opacity-70">· in use</span>}
+                    </span>
+                  );
+                })}
+              </div>
 
-          {/* Profile ID */}
-          {selectedProfile && (
-            <div className="flex justify-between text-[10px] pt-1 border-t border-border/50">
-              <span className="text-muted-foreground">Profile ID</span>
-              <span className="font-mono text-muted-foreground/70">{selectedProfile.id}</span>
+              {/* Override toggle — 평소엔 닫혀 있음. polarization 등 조정하고 싶을 때만 펼침. */}
+              {selectedTags.polarizations.length > 1 && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setOverrideOpen((v) => !v)}
+                    className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {overrideOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                    <Pencil className="w-3 h-3" />
+                    Override profile values
+                    {polarizationOverridden && (
+                      <span className="ml-1 rounded-sm bg-accent/15 px-1 text-[9px] font-semibold text-accent">modified</span>
+                    )}
+                  </button>
+
+                  {overrideOpen && (
+                    <div className="mt-2 rounded-md border border-border bg-card p-2.5 space-y-2">
+                      <div>
+                        <label className="text-[10px] text-muted-foreground block mb-1">Polarization (override)</label>
+                        <CustomSelect<string>
+                          value={polarization}
+                          onChange={setPolarization}
+                          options={selectedTags.polarizations.map((p) => ({ value: p, label: p }))}
+                        />
+                      </div>
+                      <p className="text-[9px] text-muted-foreground/70 leading-relaxed">
+                        Picks one of the polarizations linked to this profile. Defaults to the first tag.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Profile description */}
+              {selectedProfile.description && (
+                <div className="text-[10px] text-muted-foreground leading-relaxed pt-2 border-t border-border/50">
+                  {selectedProfile.description}
+                </div>
+              )}
+
+              {/* Profile ID */}
+              <div className="flex justify-between text-[10px] pt-1">
+                <span className="text-muted-foreground">Profile ID</span>
+                <span className="font-mono text-muted-foreground/70">{selectedProfile.id}</span>
+              </div>
             </div>
           )}
         </div>
@@ -197,17 +300,18 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
 
           {/* Deadline */}
           <div>
-            <label className="text-[10px] text-muted-foreground block mb-1">Deadline</label>
-            <select
-              value={deadlineHours ?? ''}
-              onChange={(e) => setDeadlineHours(e.target.value ? Number(e.target.value) : undefined)}
-              className="w-full bg-card border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-accent/50"
-            >
-              <option value="">Not set</option>
-              {DEADLINE_HOUR_OPTIONS.map((h) => (
-                <option key={h} value={h}>{h} hours</option>
-              ))}
-            </select>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] text-muted-foreground">Deadline</label>
+              <TbcBadge note="SI-04" />
+            </div>
+            <CustomSelect<string>
+              value={deadlineHours != null ? String(deadlineHours) : ''}
+              onChange={(v) => setDeadlineHours(v ? Number(v) : undefined)}
+              options={[
+                { value: '', label: 'Not set' },
+                ...DEADLINE_HOUR_OPTIONS.map((h) => ({ value: String(h), label: `${h} hours` })),
+              ]}
+            />
           </div>
         </div>
       </div>
@@ -220,13 +324,19 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
         </div>
 
         <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
-          <div className="flex justify-between text-[10px]">
+          <div className="flex items-center justify-between text-[10px]">
             <span className="text-muted-foreground">Max retries</span>
-            <span className="text-foreground font-medium">{MAX_RETRY_COUNT} fixed</span>
+            <div className="flex items-center gap-2">
+              <span className="text-foreground font-medium">{MAX_RETRY_COUNT} fixed</span>
+              <ConfirmedBadge note="ICD 3.5" />
+            </div>
           </div>
 
           <div>
-            <label className="text-[10px] text-muted-foreground block mb-1">Retry interval</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] text-muted-foreground">Retry interval</label>
+              <TbcBadge note="ICD 3.5" />
+            </div>
             <div className="flex gap-1.5">
               {(Object.entries(RETRY_INTERVAL_LABELS) as [RetryInterval, string][]).map(([key, label]) => (
                 <button
@@ -244,33 +354,6 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Section 4: Advanced (collapsible) */}
-      <div className="space-y-2">
-        <button
-          onClick={() => setAdvancedOpen(!advancedOpen)}
-          className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {advancedOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-          <Clock className="w-3.5 h-3.5" />
-          Advanced Settings
-        </button>
-
-        {advancedOpen && (
-          <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
-            <div className="text-[10px] text-muted-foreground">
-              Parameter overrides will be enabled after the FI signature is finalized.
-            </div>
-            <div className="bg-card border border-dashed border-border rounded-md p-3 text-center">
-              <code className="text-[10px] text-muted-foreground/40">{'{ }'}</code>
-            </div>
-            <div className="flex justify-between text-[10px]">
-              <span className="text-muted-foreground">Trigger source</span>
-              <span className="text-foreground">Auto</span>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Save Button */}

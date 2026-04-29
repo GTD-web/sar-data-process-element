@@ -19,6 +19,7 @@ import FileInputConfigDialog from '@/components/panels/FileInputConfigDialog';
 import PipelineArchiveConfirmDialog from '@/components/panels/PipelineArchiveConfirmDialog';
 import PipelineDeleteConfirmDialog from '@/components/panels/PipelineDeleteConfirmDialog';
 import PipelineUndeployConfirmDialog from '@/components/panels/PipelineUndeployConfirmDialog';
+import PipelineDeployConfirmDialog from '@/components/panels/PipelineDeployConfirmDialog';
 import { toast } from '@/components/ui/Toast';
 import { Plus, GitBranch, Pencil, Check, X, Radio, Info, Archive } from 'lucide-react';
 import type {
@@ -283,6 +284,7 @@ export default function ConsolePage() {
   const [archivePipelineTarget, setArchivePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [deletePipelineTarget, setDeletePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [undeployTarget, setUndeployTarget] = useState<PipelineDefinition | null>(null);
+  const [deployTarget, setDeployTarget] = useState<PipelineDefinition | null>(null);
   const [activeStepOrder, setActiveStepOrder] = useState<number | null>(null);
   const [popoverClickY, setPopoverClickY] = useState(0);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -494,21 +496,27 @@ export default function ConsolePage() {
   }, [selectedPipelineId, service, profileMissing]);
 
   const handleSetDeployment = useCallback(async (active: boolean) => {
-    if (!selectedPipelineId) return;
-    if (!active && selectedPipeline) {
-      setUndeployTarget(selectedPipeline);
+    if (!selectedPipelineId || !selectedPipeline) return;
+    if (active) {
+      setDeployTarget(selectedPipeline);
       return;
     }
+    setUndeployTarget(selectedPipeline);
+  }, [selectedPipelineId, selectedPipeline]);
+
+  const handleConfirmDeploy = useCallback(async () => {
+    if (!deployTarget) return;
     setDeploymentSaving(true);
-    const res = await service.파이프라인_배포상태를_변경한다(selectedPipelineId, active);
+    const res = await service.파이프라인_배포상태를_변경한다(deployTarget.id, true);
     setDeploymentSaving(false);
     if (!res.success) {
       toast.error(res.message);
       return;
     }
+    setDeployTarget(null);
     await refreshActivationRules();
-    toast.success(active ? 'Automatic execution link activated.' : 'Automatic execution link deactivated.');
-  }, [service, selectedPipelineId, selectedPipeline, refreshActivationRules]);
+    toast.success('Automatic execution link activated.');
+  }, [service, deployTarget, refreshActivationRules]);
 
   const handleConfirmUndeploy = useCallback(async () => {
     if (!undeployTarget) return;
@@ -1056,6 +1064,14 @@ export default function ConsolePage() {
           pipelineName={undeployTarget.name}
           onConfirm={handleConfirmUndeploy}
           onCancel={() => setUndeployTarget(null)}
+        />
+      )}
+
+      {deployTarget && (
+        <PipelineDeployConfirmDialog
+          pipelineName={deployTarget.name}
+          onConfirm={handleConfirmDeploy}
+          onCancel={() => setDeployTarget(null)}
         />
       )}
 

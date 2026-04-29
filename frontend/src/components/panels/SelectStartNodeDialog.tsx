@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowLeft, Sparkles, Antenna, FileInput, Folder, GitBranch, HardDrive } from 'lucide-react';
+import { ArrowLeft, Sparkles, Antenna, FileInput, Folder, GitBranch, FileBox } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { PipelineNodeKind, ProductLevel, SarStage } from '@/types/pipeline';
 
@@ -40,17 +40,17 @@ const OPTIONS: StartNodeOption[] = [
     description: 'Processes the entire L0 → L1 → L2 → L3 pipeline starting from raw data delivered by the ground station.',
   },
   {
-    kind: 'SAR',
-    sarStage: 'L0',
-    icon: HardDrive,
+    kind: 'FILE_INPUT',
+    inputLevel: 'LEVEL_0',
+    icon: FileBox,
     iconColor: 'text-cyan-400',
     borderActive: 'border-cyan-500/70',
     bgActive: 'bg-cyan-500/8',
-    badgeText: 'Manual Start',
-    badgeColor: 'bg-cyan-500/20 text-cyan-400',
-    label: 'L0 Processing Node',
-    sublabel: 'CSC-03',
-    description: 'Starts the DAG directly from the L0 SAR processing node, without adding a raw-data trigger first.',
+    badgeText: 'Partial Reprocessing',
+    badgeColor: 'bg-violet-500/20 text-violet-300',
+    label: 'L0 Result Input',
+    sublabel: 'SI-07',
+    description: 'Takes existing L0 result HDF5 files as input and reprocesses the L1 → L2 → L3 segment.',
   },
   {
     kind: 'FILE_INPUT',
@@ -60,10 +60,10 @@ const OPTIONS: StartNodeOption[] = [
     borderActive: 'border-amber-500/70',
     bgActive: 'bg-amber-500/8',
     badgeText: 'Partial Reprocessing',
-    badgeColor: 'bg-amber-500/20 text-amber-400',
+    badgeColor: 'bg-violet-500/20 text-violet-300',
     label: 'L1 Result Input',
     sublabel: 'SI-07',
-    description: 'Takes existing L1 processing result files as input and reprocesses only the L2 → L3 segment.',
+    description: 'Takes existing L1 result HDF5 files as input and reprocesses only the L2 → L3 segment.',
   },
   {
     kind: 'FILE_INPUT',
@@ -73,10 +73,10 @@ const OPTIONS: StartNodeOption[] = [
     borderActive: 'border-sky-500/70',
     bgActive: 'bg-sky-500/8',
     badgeText: 'Partial Reprocessing',
-    badgeColor: 'bg-sky-500/20 text-sky-400',
+    badgeColor: 'bg-violet-500/20 text-violet-300',
     label: 'L2 Result Input',
     sublabel: 'SI-07',
-    description: 'Takes existing L2 processing result files as input and reprocesses only the L3 segment.',
+    description: 'Takes existing L2 result HDF5 files as input and reprocesses only the L3 segment.',
   },
 ];
 
@@ -127,12 +127,31 @@ export default function SelectStartNodeDialog({
         </div>
 
         {/* Pipeline summary */}
-        <div className="px-4 pt-3 pb-1">
-          <div className="text-[11px] font-medium text-foreground truncate">{pipelineName}</div>
+        <div className="px-4 pt-3">
+          <div className="flex items-stretch gap-2.5 rounded-lg border border-accent/30 bg-accent/5 px-3 py-2.5">
+            <div className="flex-shrink-0 flex items-center">
+              <div className="w-7 h-7 rounded-md bg-accent/15 flex items-center justify-center">
+                <GitBranch className="w-3.5 h-3.5 text-accent" />
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+                Creating pipeline
+              </div>
+              <div className="text-sm font-semibold text-foreground truncate" title={pipelineName}>
+                {pipelineName}
+              </div>
+            </div>
+            <div className="flex-shrink-0 flex items-center">
+              <span className="text-[9px] font-medium text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded">
+                Step 2 — Choose where to start
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Options */}
-        <div className="max-h-[68vh] space-y-2 overflow-y-auto px-4 py-3">
+        <div className="max-h-[60vh] space-y-2 overflow-y-auto px-4 py-3">
           {OPTIONS.map((opt, idx) => {
             const Icon = opt.icon;
             const active = selectedIdx === idx;

@@ -163,9 +163,10 @@ const PARTIAL_L2_STEPS: StepDef[] = [
   CATALOG_STEP,
 ];
 
-/** L0 노드에서 직접 시작 → 전체 SAR 후속 흐름 처리 */
+/** L0 결과 HDF5 입력에서 시작 → L1/L2/L3 후속 흐름 처리 (Raw trigger 없음 → 부분 재처리) */
 const START_FROM_L0_STEPS: StepDef[] = [
-  { kind: 'SAR', sarStage: 'L0' },
+  { kind: 'FILE_INPUT', inputLevel: 'LEVEL_0' },
+  JOB_INIT_STEP,
   { kind: 'SAR', sarStage: 'L1A' },
   { kind: 'SAR', sarStage: 'L1B' },
   { kind: 'SAR', sarStage: 'L1C' },
@@ -175,21 +176,20 @@ const START_FROM_L0_STEPS: StepDef[] = [
   CATALOG_STEP,
 ];
 
-/** L1 단계에서 직접 시작 → L1/L2/L3 후속 흐름 처리 */
+/** L1 결과 HDF5 입력에서 시작 → L2/L3 후속 흐름 처리 (Raw trigger 없음 → 부분 재처리) */
 const START_FROM_L1_STEPS: StepDef[] = [
-  { kind: 'SAR', sarStage: 'L1A' },
-  { kind: 'SAR', sarStage: 'L1B' },
-  { kind: 'SAR', sarStage: 'L1C' },
+  { kind: 'FILE_INPUT', inputLevel: 'LEVEL_1' },
+  JOB_INIT_STEP,
   { kind: 'SAR', sarStage: 'L2A' },
   { kind: 'SAR', sarStage: 'L2B' },
   { kind: 'SAR', sarStage: 'L3' },
   CATALOG_STEP,
 ];
 
-/** L2 단계에서 직접 시작 → L2/L3 후속 흐름 처리 */
+/** L2 결과 HDF5 입력에서 시작 → L3만 처리 후 등록 (Raw trigger 없음 → 부분 재처리) */
 const START_FROM_L2_STEPS: StepDef[] = [
-  { kind: 'SAR', sarStage: 'L2A' },
-  { kind: 'SAR', sarStage: 'L2B' },
+  { kind: 'FILE_INPUT', inputLevel: 'LEVEL_2' },
+  JOB_INIT_STEP,
   { kind: 'SAR', sarStage: 'L3' },
   CATALOG_STEP,
 ];
