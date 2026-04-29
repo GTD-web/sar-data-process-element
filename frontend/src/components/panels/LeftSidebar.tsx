@@ -44,6 +44,8 @@ interface LeftSidebarJobsProps extends LeftSidebarBaseProps {
   mode: 'jobs';
   pipelines: PipelineDefinition[];
   jobs: JobSummary[];
+  pendingJobCount?: number;
+  runningJobCount?: number;
   selectedJobId: string | null;
   onSelectJob: (jobId: string) => void;
   statusFilter?: JobStatus | '';
@@ -113,7 +115,8 @@ export default function LeftSidebar(props: LeftSidebarProps) {
   const consolePl = isConsole ? (props as LeftSidebarConsoleProps) : null;
   const jobsPl = isJobs ? (props as LeftSidebarJobsProps) : null;
   const navProps = isNav ? (props as LeftSidebarNavProps) : null;
-  const activeJobCount = jobsPl?.jobs.filter((j) => j.status === 'ASSIGNED' || j.status === 'CREATED').length ?? 0;
+  const pendingJobCount = jobsPl?.pendingJobCount ?? jobsPl?.jobs.filter((j) => j.status === 'CREATED').length ?? 0;
+  const runningJobCount = jobsPl?.runningJobCount ?? jobsPl?.jobs.filter((j) => j.status === 'ASSIGNED').length ?? 0;
   const pipelineNameById = new Map(
     (isConsole ? consolePl?.pipelines ?? [] : jobsPl?.pipelines ?? []).map((pipeline) => [pipeline.id, pipeline.name]),
   );
@@ -334,19 +337,32 @@ export default function LeftSidebar(props: LeftSidebarProps) {
             </div>
           )}
 
-          {/* ── Jobs mode: 수동 파이프라인 섹션만 ── */}
+          {/* ── Jobs mode: Job 실행 이력 섹션 ── */}
           {isJobs && jobsPl && (
             <div className="flex-1 min-h-0 flex flex-col">
               <button
                 onClick={() => setJobsOpen((v) => !v)}
-                className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:bg-muted/20 transition-colors"
+                className="w-full flex items-start gap-1.5 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:bg-muted/20 transition-colors"
               >
-                <ChevronDown className={cn('w-3 h-3 transition-transform', !jobsOpen && '-rotate-90')} />
-                <Briefcase className="w-3 h-3" />
-                <span className="flex-1 text-left">수동 파이프라인</span>
-                {activeJobCount > 0 && (
-                  <span className="px-1 rounded-full text-[9px] bg-accent/15 text-accent font-normal normal-case">{activeJobCount}</span>
-                )}
+                <ChevronDown className={cn('mt-0.5 w-3 h-3 transition-transform', !jobsOpen && '-rotate-90')} />
+                <Briefcase className="mt-0.5 w-3 h-3" />
+                <span className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left">
+                  <span className="max-w-full truncate leading-3">Job Execution History</span>
+                  <span
+                    className="flex max-w-full items-center gap-1 overflow-hidden normal-case tracking-normal"
+                    title={`${pendingJobCount} pending, ${runningJobCount} running`}
+                    aria-label={`${pendingJobCount} pending jobs and ${runningJobCount} running jobs`}
+                  >
+                    <span className="inline-flex min-w-0 items-center gap-0.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-[9px] font-medium leading-none text-warning">
+                      <span className="truncate">Pending</span>
+                      <span className="font-mono">{pendingJobCount}</span>
+                    </span>
+                    <span className="inline-flex min-w-0 items-center gap-0.5 rounded-full bg-accent/15 px-1.5 py-0.5 text-[9px] font-medium leading-none text-accent">
+                      <span className="truncate">Running</span>
+                      <span className="font-mono">{runningJobCount}</span>
+                    </span>
+                  </span>
+                </span>
               </button>
               {jobsOpen && (
                 <>

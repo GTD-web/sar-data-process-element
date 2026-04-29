@@ -9,7 +9,7 @@ type PipelineExecutionTab = 'auto' | 'manual';
 
 const tabs: { id: PipelineExecutionTab; label: string; icon: React.ElementType }[] = [
   { id: 'auto', label: 'Automatic Pipelines', icon: Radio },
-  { id: 'manual', label: 'Manual Pipelines', icon: Briefcase },
+  { id: 'manual', label: 'Job Execution History', icon: Briefcase },
 ];
 
 export default function PipelineExecutionTabs({

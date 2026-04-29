@@ -271,6 +271,8 @@ export default function JobsPage() {
 
   const graphEdges = selectedPipeline?.edges ?? [];
   const filteredJobs = statusFilter ? jobs.filter((job) => job.status === statusFilter) : jobs;
+  const pendingJobCount = jobs.filter((job) => job.status === 'CREATED').length;
+  const runningJobCount = jobs.filter((job) => job.status === 'ASSIGNED').length;
   const totalJobPages = Math.max(1, Math.ceil(filteredJobs.length / jobPageSize));
   const currentJobPage = Math.min(jobPage, totalJobPages);
   const pageStart = (currentJobPage - 1) * jobPageSize;
@@ -391,6 +393,8 @@ export default function JobsPage() {
         activePage="jobs"
         pipelines={pipelines}
         jobs={pagedJobs}
+        pendingJobCount={pendingJobCount}
+        runningJobCount={runningJobCount}
         selectedJobId={selectedJob?.jobId ?? null}
         onSelectJob={handleSelectJob}
         statusFilter={statusFilter}
