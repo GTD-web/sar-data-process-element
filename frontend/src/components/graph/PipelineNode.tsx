@@ -97,6 +97,37 @@ const STATUS_GLOW: Record<StepStatus, string> = {
 const JOB_PENDING_BORDER = 'border-muted-foreground/30';
 const JOB_PENDING_GLOW = 'none';
 
+/**
+ * 노드 종류별 베이스 톤.
+ * - JOB_INIT 만 별도 컬러(파랑) — 설정 단계 강조
+ * - SAR/THUMBNAIL: 기본 accent(mint) — 처리 단계
+ * - TRIGGER/FILE_INPUT/CATALOG: 컬러 톤 대신 회색 배경 + 흰색 아이콘 (NEUTRAL_FILLED 처리)
+ * `rgb` 는 CSS 변수(--node-tone-rgb)로 노출돼 hover/selected/overlay 까지 색상이 따라옴.
+ */
+export const KIND_TONE: Partial<Record<NonNullable<PipelineNodeKind>, { hex: string; rgb: string }>> = {
+  JOB_INIT: { hex: '#029FE7', rgb: '2, 159, 231' },
+};
+const DEFAULT_TONE_RGB = '52, 211, 153';
+
+const NEUTRAL_FILL_BG = '#6A7282';
+const NEUTRAL_FILL_RGB = '106, 114, 130';
+const NEUTRAL_ICON_COLOR = '#FFFFFF';
+
+export function kindToneHex(kind: PipelineNodeKind | undefined): string | undefined {
+  return kind ? KIND_TONE[kind]?.hex : undefined;
+}
+
+export function isNeutralFilledKind(kind: PipelineNodeKind | undefined): boolean {
+  return kind === 'TRIGGER' || kind === 'FILE_INPUT' || kind === 'CATALOG';
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 const STATUS_INDICATOR: Record<StepStatus, { icon: React.ElementType; color: string }> = {
   PENDING: { icon: Circle, color: 'text-muted-foreground' },
   RUNNING: { icon: Loader, color: 'text-accent' },
@@ -277,6 +308,45 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
   const isEntryNode = isTrigger || isFileInput;
   const isJobInit = kind === 'JOB_INIT';
   const isCatalog = kind === 'CATALOG';
+  const kindToneEntry = kind ? KIND_TONE[kind] : undefined;
+  const kindToneColor = kindToneEntry?.hex;
+  const neutralFilled = isNeutralFilledKind(kind);
+  const neutralVisible = neutralFilled
+    && isEnabled
+    && status !== 'FAILED'
+    && status !== 'CANCELED'
+    && !(isJobMode && status === 'PENDING');
+  const kindToneRgb = neutralFilled ? NEUTRAL_FILL_RGB : (kindToneEntry?.rgb ?? DEFAULT_TONE_RGB);
+  const kindToneActive = Boolean(
+    kindToneColor
+      && isEnabled
+      && status !== 'FAILED'
+      && status !== 'CANCELED'
+      && !(isJobMode && status === 'PENDING')
+      && !isSelected,
+  );
+  const kindToneBorderColor = kindToneActive && kindToneColor
+    ? hexToRgba(kindToneColor, status === 'PENDING' ? 0.4 : 1)
+    : undefined;
+  const kindToneGlow = kindToneActive && kindToneColor
+    ? (status === 'RUNNING'
+        ? `0 0 20px ${hexToRgba(kindToneColor, 0.35)}`
+        : status === 'COMPLETED'
+          ? `0 0 16px ${hexToRgba(kindToneColor, 0.25)}`
+          : `0 0 12px ${hexToRgba(kindToneColor, 0.18)}`)
+    : undefined;
+  const kindToneIconStyle: React.CSSProperties | undefined = kindToneActive && kindToneColor
+    ? { color: kindToneColor }
+    : undefined;
+  const kindToneSelectedGlow = kindToneEntry && isSelected && isEnabled && status !== 'FAILED'
+    ? `0 0 0 2px rgba(${kindToneRgb}, 0.6), 0 0 32px rgba(${kindToneRgb}, 0.5)`
+    : undefined;
+  const kindToneSelectedBorder = kindToneEntry && isSelected && isEnabled && status !== 'FAILED'
+    ? `rgba(${kindToneRgb}, 0.8)`
+    : undefined;
+  const neutralIconStyle: React.CSSProperties | undefined = neutralVisible
+    ? { color: NEUTRAL_ICON_COLOR }
+    : undefined;
   const isThumbnail = kind === 'THUMBNAIL';
   const isSAR = kind === 'SAR';
 
@@ -410,14 +480,21 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
             style={{
               width: NODE_SIZE,
               height: NODE_SIZE,
+              '--node-tone-rgb': kindToneRgb,
+              backgroundColor: neutralVisible ? NEUTRAL_FILL_BG : undefined,
+              borderColor: neutralVisible
+                ? NEUTRAL_FILL_BG
+                : (kindToneSelectedBorder ?? kindToneBorderColor),
               boxShadow: !isEnabled
                 ? 'none'
                 : isSelected
                   ? (status === 'FAILED'
                     ? '0 0 0 2px rgba(239, 68, 68, 0.6), 0 0 32px rgba(239, 68, 68, 0.5)'
-                    : '0 0 0 2px rgba(52, 211, 153, 0.6), 0 0 32px rgba(52, 211, 153, 0.5)')
-                  : (isJobMode && status === 'PENDING') ? JOB_PENDING_GLOW : STATUS_GLOW[status],
-            }}
+                    : kindToneSelectedGlow ?? '0 0 0 2px rgba(52, 211, 153, 0.6), 0 0 32px rgba(52, 211, 153, 0.5)')
+                  : neutralVisible
+                    ? `0 0 12px rgba(${NEUTRAL_FILL_RGB}, 0.18)`
+                    : kindToneGlow ?? ((isJobMode && status === 'PENDING') ? JOB_PENDING_GLOW : STATUS_GLOW[status]),
+            } as React.CSSProperties}
           >
             <div className="node-hover-overlay" style={isSelected && isEnabled ? { opacity: 1 } : undefined} />
             {showNodeWarning && warningReason && (
@@ -443,10 +520,14 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
                   '!w-3 !h-3 !border-2 !border-card !-left-1.5 hover:!scale-125 !transition-all',
                   status === 'FAILED' ? '!bg-destructive/50 hover:!bg-destructive' : '!bg-accent/50 hover:!bg-accent',
                 )}
+                style={kindToneColor && status !== 'FAILED' ? { background: hexToRgba(kindToneColor, 0.5) } : undefined}
               />
             )}
 
-            <CscIcon className={cn('w-7 h-7', !isEnabled ? 'text-muted-foreground/40' : status === 'FAILED' ? 'text-destructive' : status === 'CANCELED' || (isJobMode && status === 'PENDING') ? 'text-muted-foreground/40' : 'text-accent')} />
+            <CscIcon
+              className={cn('w-7 h-7', !isEnabled ? 'text-muted-foreground/40' : status === 'FAILED' ? 'text-destructive' : status === 'CANCELED' || (isJobMode && status === 'PENDING') ? 'text-muted-foreground/40' : 'text-accent')}
+              style={neutralIconStyle ?? kindToneIconStyle}
+            />
 
             <Handle
               type="source"
@@ -457,6 +538,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
                   ? '!bg-destructive/50'
                   : isLeaf && editable ? '!bg-accent !opacity-100' : '!bg-accent/50',
               )}
+              style={kindToneColor && status !== 'FAILED' ? { background: hexToRgba(kindToneColor, isLeaf && editable ? 1 : 0.5) } : undefined}
             />
           </div>
 

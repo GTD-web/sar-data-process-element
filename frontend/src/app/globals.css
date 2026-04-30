@@ -123,7 +123,7 @@ button:disabled {
   opacity: 0;
   transition: opacity 0.25s ease;
   pointer-events: none;
-  background: radial-gradient(circle at center, rgba(52, 211, 153, 0.12) 0%, rgba(52, 211, 153, 0.04) 100%);
+  background: radial-gradient(circle at center, rgba(var(--node-tone-rgb, 52, 211, 153), 0.12) 0%, rgba(var(--node-tone-rgb, 52, 211, 153), 0.04) 100%);
 }
 .node-icon-box.node-failed .node-hover-overlay {
   background: radial-gradient(circle at center, rgba(239, 68, 68, 0.12) 0%, rgba(239, 68, 68, 0.04) 100%);
@@ -132,8 +132,8 @@ button:disabled {
   opacity: 1;
 }
 .react-flow__node-pipeline:hover .node-icon-box {
-  border-color: rgba(52, 211, 153, 0.8) !important;
-  box-shadow: 0 0 24px rgba(52, 211, 153, 0.35) !important;
+  border-color: rgba(var(--node-tone-rgb, 52, 211, 153), 0.8) !important;
+  box-shadow: 0 0 24px rgba(var(--node-tone-rgb, 52, 211, 153), 0.35) !important;
 }
 .react-flow__node-pipeline:hover .node-icon-box.node-failed {
   border-color: rgba(239, 68, 68, 0.8) !important;
@@ -152,8 +152,8 @@ button:disabled {
   opacity: 1;
 }
 .react-flow__node-pipeline.selected .node-icon-box {
-  border-color: rgba(52, 211, 153, 0.8) !important;
-  box-shadow: 0 0 24px rgba(52, 211, 153, 0.35) !important;
+  border-color: rgba(var(--node-tone-rgb, 52, 211, 153), 0.8) !important;
+  box-shadow: 0 0 24px rgba(var(--node-tone-rgb, 52, 211, 153), 0.35) !important;
 }
 .react-flow__node-pipeline.selected .node-icon-box.node-failed {
   border-color: rgba(239, 68, 68, 0.8) !important;
@@ -203,10 +203,9 @@ button:disabled {
   border-radius: 50%;
 }
 
-/* Edge paths: smooth transition + emerald glow */
+/* Edge paths: smooth transition. Glow filter is set inline per-edge so it follows stroke. */
 .react-flow__edge path.react-flow__edge-path {
   transition: stroke 0.25s ease, stroke-width 0.25s ease, filter 0.25s ease;
-  filter: drop-shadow(0 0 4px rgba(52, 211, 153, 0.3));
 }
 
 /* Connection line styling */

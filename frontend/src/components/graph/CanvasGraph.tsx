@@ -19,7 +19,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
-import { PipelineNode, type PipelineNodeData } from './PipelineNode';
+import { PipelineNode, type PipelineNodeData, kindToneHex, isNeutralFilledKind } from './PipelineNode';
 import { DeletableEdge, type DeletableEdgeData } from './DeletableEdge';
 import { EdgeHoverContext } from './EdgeHoverContext';
 import type { PipelineStep, PipelineEdge } from '@/types/pipeline';
@@ -59,11 +59,17 @@ function CanvasGlow() {
   // Per-node glow는 노드 개수/완료 비율에 무관하게 항상 동일한 범위·강도를 갖는다.
   const radius = 155 * zoom;
   const glowOpacity = 0.15;
-  const greenInner = `rgba(52,211,153,${glowOpacity})`;
-  const greenMid = `rgba(52,211,153,${(glowOpacity * 0.4).toFixed(3)})`;
+  const defaultInner = `rgba(52,211,153,${glowOpacity})`;
+  const defaultMid = `rgba(52,211,153,${(glowOpacity * 0.4).toFixed(3)})`;
   // FAILED nodes get a red halo at a fixed, slightly stronger intensity so they stand out
   const redInner = `rgba(239,68,68,0.18)`;
   const redMid = `rgba(239,68,68,0.07)`;
+
+  const hexToRgb = (hex: string): [number, number, number] => [
+    parseInt(hex.slice(1, 3), 16),
+    parseInt(hex.slice(3, 5), 16),
+    parseInt(hex.slice(5, 7), 16),
+  ];
 
   const gradients = nodesFromStore
     .map((n) => {
@@ -75,8 +81,17 @@ function CanvasGlow() {
         inner = redInner;
         mid = redMid;
       } else if (status === 'COMPLETED' || status === 'RUNNING') {
-        inner = greenInner;
-        mid = greenMid;
+        // Neutral 노드(시작/종료/카탈로그) 는 색조 halo 없이 조용히 표시
+        if (isNeutralFilledKind(data?.kind)) return null;
+        const toneHex = kindToneHex(data?.kind);
+        if (toneHex) {
+          const [r, g, b] = hexToRgb(toneHex);
+          inner = `rgba(${r},${g},${b},${glowOpacity})`;
+          mid = `rgba(${r},${g},${b},${(glowOpacity * 0.4).toFixed(3)})`;
+        } else {
+          inner = defaultInner;
+          mid = defaultMid;
+        }
       } else {
         // PENDING / SKIPPED / CANCELED → no glow
         return null;
@@ -195,9 +210,10 @@ function buildEdges(
     const srcDisabled = disabledNodeOrders?.has(source) ?? false;
     const tgtDisabled = disabledNodeOrders?.has(target) ?? false;
     const dimmed = srcFailed || tgtCanceled || tgtPendingInJob || srcDisabled || tgtDisabled;
+    const kindToneStroke = kindToneHex(srcStep?.kind);
     const stroke = dimmed
       ? t.edgeMuted
-      : completed ? t.edgeSuccess : running ? t.accent : t.edge;
+      : kindToneStroke ?? (completed ? t.edgeSuccess : running ? t.accent : t.edge);
     const markerVariant = dimmed ? 'outline' : 'solid';
     const edgeId = `${graphScope}-e-${source}-${target}`;
     // Use custom marker ID so arrow size stays fixed on hover (markerUnits=userSpaceOnUse)

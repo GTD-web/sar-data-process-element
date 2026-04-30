@@ -130,6 +130,30 @@ const PIPELINE_STEPS: StepDef[] = [
   CATALOG_STEP,
 ];
 
+/** L1 까지만 처리하고 종료하는 파이프라인 (Quick-Look / 영상화만 필요한 운영 케이스) */
+const PIPELINE_STEPS_TARGET_L1: StepDef[] = [
+  TRIGGER_STEP,
+  JOB_INIT_STEP,
+  { kind: 'SAR', sarStage: 'L0' },
+  { kind: 'SAR', sarStage: 'L1A' },
+  { kind: 'SAR', sarStage: 'L1B' },
+  { kind: 'SAR', sarStage: 'L1C' },
+  CATALOG_STEP,
+];
+
+/** L2 까지만 처리하고 종료하는 파이프라인 (Geocoding 까지만 필요한 운영 케이스) */
+const PIPELINE_STEPS_TARGET_L2: StepDef[] = [
+  TRIGGER_STEP,
+  JOB_INIT_STEP,
+  { kind: 'SAR', sarStage: 'L0' },
+  { kind: 'SAR', sarStage: 'L1A' },
+  { kind: 'SAR', sarStage: 'L1B' },
+  { kind: 'SAR', sarStage: 'L1C' },
+  { kind: 'SAR', sarStage: 'L2A' },
+  { kind: 'SAR', sarStage: 'L2B' },
+  CATALOG_STEP,
+];
+
 // ─── 부분 재처리 파이프라인 스텝 정의 (OPS-06) ─────────────────────────────
 /** L1 결과 입력 → L2A부터 처리 (OPS-06 주요 시나리오, Stripmap) */
 const PARTIAL_L1_STRIPMAP_STEPS: StepDef[] = [
@@ -408,72 +432,148 @@ function toStepDefs(pipeline: PipelineDefinition): StepDef[] {
   }));
 }
 
-function generateJobs(count: number, pipelines: PipelineDefinition[]): JobDetail[] {
+/**
+ * Job 생성. RAW 단위로 묶어서 처리 일관성을 보장한다:
+ *   - 각 RAW에 1개 이상의 "primary"(FILE_INPUT 없음, RAW 트리거) 실행을 먼저 보장
+ *   - partial-reprocess(FILE_INPUT)는 primary 실행이 있는 RAW에만 추가
+ *   - 결과적으로 동일 RAW에 여러 알고리즘 변형이 공존하여 SUBWAY MAP의 다중 노선 케이스를 표현
+ *
+ * 반환되는 각 JobDetail은 자신이 사용한 RAW의 id를 `rawDataId`로 보관하여 이후 product 생성 시 일치시킨다.
+ */
+type RawBoundJob = JobDetail & { rawDataId: string };
+
+function generateJobs(rawData: RawDataSummary[], pipelines: PipelineDefinition[]): RawBoundJob[] {
   const statuses: JobStatus[] = ['CREATED', 'ASSIGNED', 'COMPLETED', 'FAILED', 'CANCELED'];
   const weights = [0.05, 0.25, 0.45, 0.15, 0.1];
 
-  return Array.from({ length: count }, (_, idx) => {
+  const isPrimary = (p: PipelineDefinition) =>
+    !p.archived && !p.steps.some((s) => s.kind === 'FILE_INPUT');
+  const isPartial = (p: PipelineDefinition) =>
+    !p.archived && p.steps.some((s) => s.kind === 'FILE_INPUT');
+
+  const primaryPipelines = pipelines.filter(isPrimary);
+  const partialPipelines = pipelines.filter(isPartial);
+
+  const profileForPipeline = (p: PipelineDefinition): ProcessingProfileSummary => {
+    const jobInit = p.steps.find((s) => s.kind === 'JOB_INIT');
+    const profileId = jobInit?.jobInitConfig?.profileId ?? 'PROF-L1A-RANGE-BASELINE';
+    const profile = MOCK_PROCESSING_PROFILES.find((mp) => mp.id === profileId);
+    return {
+      id: profile?.id ?? 'PROF-L1A-RANGE-BASELINE',
+      name: profile?.name ?? 'L1A Range Processing Baseline',
+      description: profile?.description ?? 'Generic processing profile',
+    };
+  };
+
+  const pickStatus = (): JobStatus => {
     const r = Math.random();
     let cumulative = 0;
-    let status: JobStatus = 'CREATED';
     for (let j = 0; j < weights.length; j++) {
       cumulative += weights[j];
-      if (r < cumulative) { status = statuses[j]; break; }
+      if (r < cumulative) return statuses[j];
+    }
+    return 'COMPLETED';
+  };
+
+  const jobs: RawBoundJob[] = [];
+  let jobSeq = 0;
+  const nextJobId = () => `JOB-${String(++jobSeq).padStart(4, '0')}`;
+
+  rawData.forEach((raw, rawIdx) => {
+    // 각 RAW의 primary 실행 개수. 일부 RAW는 운영 부하 케이스를 표현하기 위해 최대 ~7개까지 부풀린다.
+    // 7번째 RAW마다 "고볼륨 RAW" → primary 6~7개 + partial 3~4개 → 총 9~11개 노선
+    // 그 외 RAW: primary 1~3개 + partial 0~2개 (기존 동작 유지)
+    const isHighVolume = rawIdx % 7 === 0;
+    const primaryCount = isHighVolume
+      ? 6 + (rawIdx % 2)
+      : 1 + ((rawIdx + Math.floor(Math.random() * 3)) % 3);
+    let primaryDone = 0;
+
+    // 한 RAW 내부에서는 primary가 partial 보다 시각적으로 먼저(=startedAt 더 이른) 표시되도록
+    // receivedAt를 기준으로 deterministic 시간을 주입한다.
+    const baseMs = new Date(raw.receivedAt).getTime();
+    let cursorMs = baseMs + 5 * 60_000;
+
+    for (let p = 0; p < primaryCount && primaryPipelines.length > 0; p++) {
+      const pipeline = primaryPipelines[(rawIdx + p) % primaryPipelines.length];
+      const status: JobStatus = p === 0 ? 'COMPLETED' : pickStatus();
+      const startedAt = new Date(cursorMs).toISOString();
+      jobs.push(buildJob({ raw, rawIdx, pipeline, status, jobId: nextJobId(), startedAt, profileForPipeline }));
+      cursorMs += 30 * 60_000;
+      if (status === 'COMPLETED') primaryDone++;
     }
 
-    const pipeline = pipelines[idx % pipelines.length];
-    const pipelineStepDefs = toStepDefs(pipeline);
-    const satelliteId = SATELLITE_IDS[idx % SATELLITE_IDS.length];
-    const mode = MODES[idx % MODES.length];
-
-    const retryCount = status === 'FAILED' ? Math.floor(Math.random() * 4) : 0;
-    const steps = buildSteps(pipelineStepDefs, status, retryCount);
-    const runningStep = steps.find((s) => s.status === 'RUNNING' || s.status === 'FAILED');
-    const acqStart = randomDate(7);
-    const acqEnd = new Date(new Date(acqStart).getTime() + 120000).toISOString();
-    const rawDataName = formatRawDataTitle(
-      satelliteId,
-      acqStart,
-      34.95 + ((idx * 0.18324) % 3.6),
-      126.14 + ((idx * 0.21437) % 3.8),
-    );
-
-    // 파이프라인에 FILE_INPUT이 있으면 부분 재처리
-    const isPartial = pipelineStepDefs.some((s) => s.kind === 'FILE_INPUT');
-    const triggerSource: TriggerSource = isPartial ? 'PARTIAL_REPROCESS' : (idx < 40 ? 'PIPELINE_AUTO' : randomChoice(['PIPELINE_AUTO', 'MANUAL_REQUEST', 'PARTIAL_REPROCESS'] as TriggerSource[]));
-
-    // 완료 시 최종 산출물 레벨은 파이프라인의 마지막 SAR 스테이지 기준
-    const lastSarStep = [...pipelineStepDefs].reverse().find((s) => s.kind === 'SAR');
-    const finalLevel: ProductLevel = lastSarStep?.sarStage ? SAR_STAGE_TO_LEVEL[lastSarStep.sarStage] : 'LEVEL_3';
-
-    const processingProfile: ProcessingProfileSummary = {
-      id: 'PROF-L1A-RANGE-BASELINE',
-      name: 'L1A Range Processing Baseline',
-      description: 'Generic processing profile',
-    };
-
-    return {
-      jobId: `JOB-${String(idx + 1).padStart(4, '0')}`,
-      pipelineId: pipeline.id,
-      sceneId: SCENE_IDS[idx % SCENE_IDS.length],
-      status,
-      currentLevel: runningStep?.productLevel ?? (status === 'COMPLETED' ? finalLevel : null),
-      currentTargetCsc: runningStep?.targetCsc ?? null,
-      retryCount,
-      startedAt: randomDate(3),
-      updatedAt: randomDate(0.5),
-      steps,
-      acquisitionStart: acqStart,
-      acquisitionEnd: acqEnd,
-      receivedAt: new Date(new Date(acqEnd).getTime() + 300000).toISOString(),
-      satelliteId,
-      mode,
-      rawDataPath: `/mnt/nas/sdpe/raw/${satelliteId}/${mode.toLowerCase()}/${rawDataName}`,
-      processingProfile,
-      priority: 3 + Math.floor(Math.random() * 5),
-      triggerSource,
-    };
+    if (primaryDone > 0 && partialPipelines.length > 0) {
+      const partialCount = isHighVolume
+        ? 3 + (rawIdx % 2)
+        : (rawIdx % 3 === 0) ? 2 : (rawIdx % 2 === 0) ? 1 : 0;
+      for (let p = 0; p < partialCount; p++) {
+        const pipeline = partialPipelines[(rawIdx + p) % partialPipelines.length];
+        const status: JobStatus = pickStatus();
+        const startedAt = new Date(cursorMs).toISOString();
+        jobs.push(buildJob({ raw, rawIdx, pipeline, status, jobId: nextJobId(), startedAt, profileForPipeline }));
+        cursorMs += 60 * 60_000;
+      }
+    }
   });
+
+  return jobs;
+}
+
+function buildJob({
+  raw,
+  rawIdx,
+  pipeline,
+  status,
+  jobId,
+  startedAt,
+  profileForPipeline,
+}: {
+  raw: RawDataSummary;
+  rawIdx: number;
+  pipeline: PipelineDefinition;
+  status: JobStatus;
+  jobId: string;
+  startedAt: string;
+  profileForPipeline: (p: PipelineDefinition) => ProcessingProfileSummary;
+}): RawBoundJob {
+  const pipelineStepDefs = toStepDefs(pipeline);
+  const retryCount = status === 'FAILED' ? Math.floor(Math.random() * 4) : 0;
+  const steps = buildSteps(pipelineStepDefs, status, retryCount);
+  const runningStep = steps.find((s) => s.status === 'RUNNING' || s.status === 'FAILED');
+
+  const isPartial = pipelineStepDefs.some((s) => s.kind === 'FILE_INPUT');
+  const triggerSource: TriggerSource = isPartial
+    ? (rawIdx % 2 === 0 ? 'PARTIAL_REPROCESS' : 'MANUAL_REQUEST')
+    : (rawIdx % 5 === 0 ? 'MANUAL_REQUEST' : 'PIPELINE_AUTO');
+
+  const lastSarStep = [...pipelineStepDefs].reverse().find((s) => s.kind === 'SAR');
+  const finalLevel: ProductLevel = lastSarStep?.sarStage
+    ? SAR_STAGE_TO_LEVEL[lastSarStep.sarStage]
+    : 'LEVEL_3';
+
+  return {
+    jobId,
+    pipelineId: pipeline.id,
+    sceneId: SCENE_IDS[rawIdx % SCENE_IDS.length],
+    status,
+    currentLevel: runningStep?.productLevel ?? (status === 'COMPLETED' ? finalLevel : null),
+    currentTargetCsc: runningStep?.targetCsc ?? null,
+    retryCount,
+    startedAt,
+    updatedAt: new Date(new Date(startedAt).getTime() + (5 + Math.floor(Math.random() * 30)) * 60_000).toISOString(),
+    steps,
+    acquisitionStart: raw.capturedAt,
+    acquisitionEnd: new Date(new Date(raw.capturedAt).getTime() + 120000).toISOString(),
+    receivedAt: raw.receivedAt,
+    satelliteId: raw.satelliteId,
+    mode: raw.mode,
+    rawDataPath: raw.rawDataPath,
+    processingProfile: profileForPipeline(pipeline),
+    priority: 3 + Math.floor(Math.random() * 5),
+    triggerSource,
+    rawDataId: raw.id,
+  };
 }
 
 function generateAlerts(jobs: JobDetail[]): Alert[] {
@@ -665,10 +765,22 @@ function generateProducts(jobs: JobDetail[], rawData: RawDataSummary[], pipeline
   const completedJobs = jobs.filter((j) => j.status === 'COMPLETED' || j.status === 'FAILED');
   const products: Product[] = [];
   const pipelinesById = new Map(pipelines.map((p) => [p.id, p]));
+  const rawById = new Map(rawData.map((r) => [r.id, r]));
   const levelOrder: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
 
+  // Per-level processing offset from acquisitionEnd. Reflects the natural
+  // chronology RAW → L0 (HDF5) → L1 → L2 → L3 in mock timestamps.
+  const LEVEL_OFFSET_MS: Record<ProductLevel, number> = {
+    LEVEL_0: 5 * 60_000,
+    LEVEL_1: 30 * 60_000,
+    LEVEL_2: 60 * 60_000,
+    LEVEL_3: 120 * 60_000,
+  };
+
   for (const [jobIndex, job] of completedJobs.entries()) {
-    const sourceRawData = rawData[jobIndex % rawData.length];
+    // 작업이 자신이 사용한 RAW를 보관하는 경우(rawDataId) 그것을 우선 사용. 폴백은 인덱스 기반.
+    const boundRawId = (job as JobDetail & { rawDataId?: string }).rawDataId;
+    const sourceRawData = (boundRawId ? rawById.get(boundRawId) : undefined) ?? rawData[jobIndex % rawData.length];
     const pipeline = pipelinesById.get(job.pipelineId);
 
     // Levels actually produced by this pipeline = unique product levels of SAR steps,
@@ -685,11 +797,11 @@ function generateProducts(jobs: JobDetail[], rawData: RawDataSummary[], pipeline
 
     if (pipelineProducedLevels.length === 0) continue;
 
-    // Choose how many of the produced levels to populate (truncate from the end on FAILED).
+    // COMPLETED 작업은 파이프라인이 생성하는 모든 레벨을 산출. FAILED는 어느 레벨까지 진행됐는지를 랜덤 잘라서 표현.
     const maxProducts = pipelineProducedLevels.length;
     const numProducts = job.status === 'COMPLETED'
-      ? Math.max(1, Math.min(maxProducts, 1 + Math.floor(Math.random() * maxProducts)))
-      : (Math.random() > 0.5 ? 1 : 0);
+      ? maxProducts
+      : Math.floor(Math.random() * maxProducts) + (Math.random() > 0.4 ? 1 : 0);
 
     for (let i = 0; i < numProducts; i++) {
       const level = pipelineProducedLevels[i];
@@ -730,7 +842,9 @@ function generateProducts(jobs: JobDetail[], rawData: RawDataSummary[], pipeline
         processingTimeMs: Math.floor(60_000 + Math.random() * 3_600_000),
         quality,
         thumbnailUrl: status === 'COMPLETED' ? `/api/products/PROD-${job.jobId}-${level}/thumbnail` : undefined,
-        createdAt: job.updatedAt,
+        createdAt: new Date(
+          new Date(job.acquisitionEnd).getTime() + LEVEL_OFFSET_MS[level],
+        ).toISOString(),
       });
     }
   }
@@ -940,6 +1054,11 @@ function generateHdf5AttributeFiles(rawData: RawDataSummary[]): Hdf5FileSummary[
       };
     });
 
+    // L0 (HDF5) is generated AFTER the raw data is ingested. Bump receivedAt
+    // a few minutes past the raw's receivedAt so the lineage strip shows L0
+    // chronologically downstream of RAW.
+    const hdf5ReceivedAt = new Date(new Date(item.receivedAt).getTime() + 5 * 60_000).toISOString();
+
     return {
       id: `H5-${item.id}`,
       rawDataId: item.id,
@@ -947,7 +1066,7 @@ function generateHdf5AttributeFiles(rawData: RawDataSummary[]): Hdf5FileSummary[
       fileName,
       satelliteId: item.satelliteId,
       mode: item.mode,
-      receivedAt: item.receivedAt,
+      receivedAt: hdf5ReceivedAt,
       capturedAt: item.capturedAt,
       fileSizeBytes: Math.round(item.fileSizeBytes * 0.92),
       rootGroups: [template.rootGroup, 'Products'],
@@ -1273,8 +1392,17 @@ function generatePipelines(): PipelineDefinition[] {
   // 운영 환경에서는 위성/모드/편파가 한 종류씩이므로, 의도(처리 목적) 기반으로 파이프라인을
   // 구성한다. satellite/mode/polarization은 태그로 표현해 다중 매칭은 가능하지만 기본적으로
   // 하나씩만 부여한다.
+  // 동일 RAW에 대해 여러 알고리즘 변형으로 처리될 수 있도록, Full SAR 흐름의 알고리즘 변형(RDA/CSA/BPA 등)을 추가한다.
   const active: PipelineDefinition[] = [
-    buildPipelineFromSteps('PL-FULL-SAR-PROCESSING', 'Full SAR Processing', PIPELINE_STEPS, '2026-01-15T09:00:00Z'),
+    buildPipelineFromSteps('PL-FULL-SAR-PROCESSING', 'Full SAR Processing (RDA)', PIPELINE_STEPS, '2026-01-15T09:00:00Z'),
+    buildPipelineFromSteps('PL-FULL-SAR-CSA', 'Full SAR Processing (CSA)', PIPELINE_STEPS, '2026-01-16T09:00:00Z'),
+    buildPipelineFromSteps('PL-FULL-SAR-BPA', 'Full SAR Processing (BPA)', PIPELINE_STEPS, '2026-01-17T09:00:00Z'),
+    buildPipelineFromSteps('PL-FULL-SAR-FAST', 'Full SAR Fast (Lightweight)', PIPELINE_STEPS, '2026-01-18T09:00:00Z'),
+    buildPipelineFromSteps('PL-FULL-SAR-HIRES', 'Full SAR Hi-Precision', PIPELINE_STEPS, '2026-01-19T09:00:00Z'),
+    buildPipelineFromSteps('PL-QUICKLOOK-L1', 'Quick-Look (L1 Only)', PIPELINE_STEPS_TARGET_L1, '2026-02-05T09:00:00Z'),
+    buildPipelineFromSteps('PL-IMAGE-ONLY-L1', 'Image-Only Calibration (L1)', PIPELINE_STEPS_TARGET_L1, '2026-02-06T09:00:00Z'),
+    buildPipelineFromSteps('PL-GEOCODING-L2', 'Geocoded Output (L2 Only)', PIPELINE_STEPS_TARGET_L2, '2026-02-10T09:00:00Z'),
+    buildPipelineFromSteps('PL-RADIOMETRY-L2', 'Radiometric L2 (No L3)', PIPELINE_STEPS_TARGET_L2, '2026-02-11T09:00:00Z'),
     buildPipelineFromSteps('PL-START-FROM-L0', 'Start from L0 Processing', START_FROM_L0_STEPS, '2026-01-20T09:00:00Z'),
     buildPipelineFromSteps('PL-START-FROM-L1', 'Start from L1 Processing', START_FROM_L1_STEPS, '2026-01-25T09:00:00Z'),
     buildPipelineFromSteps('PL-START-FROM-L2', 'Start from L2 Processing', START_FROM_L2_STEPS, '2026-01-30T09:00:00Z'),
@@ -1540,7 +1668,7 @@ class MockPipelineUIService implements IPipelineUIService {
     this.activationRules = generateActivationRules(this.pipelines, this.profiles);
     this.rawData = generateRawData(this.pipelines);
     this.hdf5Files = generateHdf5AttributeFiles(this.rawData);
-    this.jobs = generateJobs(50, this.pipelines);
+    this.jobs = generateJobs(this.rawData, this.pipelines);
     this.alerts = generateAlerts(this.jobs);
     this.auditEvents = generateAuditEvents(this.jobs);
     this.queueHealth = generateQueueHealth();

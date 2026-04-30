@@ -1,14 +1,13 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Activity,
   ArrowRight,
   CheckCircle2,
   ChevronDown,
-  ChevronUp,
   ExternalLink,
   GitBranch,
   Loader2,
@@ -16,6 +15,7 @@ import {
   Power,
   ServerCog,
   X,
+  Zap,
 } from 'lucide-react';
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import PipelineExecutionTabs from '@/components/panels/PipelineExecutionTabs';
@@ -30,6 +30,7 @@ import type {
   PipelineDefinition,
   PipelineEventType,
   PipelineStep,
+  PipelineStepDefinition,
   ProductLevel,
   SavePipelineActivationRuleData,
   TriggerSource,
@@ -56,10 +57,586 @@ const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
   ),
 });
 
-const DEPLOYMENT_TABLE_WIDTH = 1380;
-const DEPLOYMENT_TABLE_GRID = '92px 220px 220px 250px 150px minmax(220px,1fr) 116px';
+const MAPPING_CONTENT_MIN_WIDTH = 1180;
+const MAPPING_GROUP_GRID = '260px 84px minmax(0,1fr)';
+const MAPPING_RULE_GRID = 'minmax(0,1fr) 280px 132px 96px';
 const EVENT_TYPE_OPTIONS: PipelineEventType[] = ['RAW_DATA_RECEIVED', 'PARTIAL_REPROCESS_REQUESTED', 'PRODUCT_REPROCESS_REQUESTED'];
+const EVENT_TYPE_GROUP_ORDER: PipelineEventType[] = ['RAW_DATA_RECEIVED', 'PARTIAL_REPROCESS_REQUESTED', 'PRODUCT_REPROCESS_REQUESTED'];
 const PRODUCT_LEVEL_OPTIONS: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
+
+type EventTone = { fg: string; bg: string; soft: string; border: string };
+// 모든 이벤트 채널을 하나의 파랑 톤으로 통일 — 채널을 색으로 구분하지 않고 라벨로 구분.
+// 컬러 노이즈 최소화 + JOB_INIT 노드와 동일 톤이라 "외부 입력 → 설정 단계" 흐름이 자연스럽게 읽힘.
+const EVENT_TONE_BASE: EventTone = {
+  fg: '#029FE7',
+  bg: 'rgba(2,159,231,0.10)',
+  soft: 'rgba(2,159,231,0.18)',
+  border: 'rgba(2,159,231,0.40)',
+};
+const EVENT_TONE: Record<PipelineEventType, EventTone> = {
+  RAW_DATA_RECEIVED:           EVENT_TONE_BASE,
+  PARTIAL_REPROCESS_REQUESTED: EVENT_TONE_BASE,
+  PRODUCT_REPROCESS_REQUESTED: EVENT_TONE_BASE,
+};
+
+const PIPELINE_NODE_COLOR_NEUTRAL = '#6A7282';
+const PIPELINE_NODE_COLOR_PROCESS = '#04B58B';
+const PIPELINE_NODE_COLOR_CONFIG  = '#029FE7';
+
+function colorForStep(step: PipelineStepDefinition): string {
+  switch (step.kind) {
+    case 'TRIGGER':
+    case 'FILE_INPUT':
+    case 'CATALOG':
+      return PIPELINE_NODE_COLOR_NEUTRAL;
+    case 'JOB_INIT':
+      return PIPELINE_NODE_COLOR_CONFIG;
+    default:
+      return PIPELINE_NODE_COLOR_PROCESS;
+  }
+}
+
+function buildPipelineLegend(pipeline: PipelineDefinition): { color: string; label: string }[] {
+  const hasNeutral  = pipeline.steps.some((s) => s.kind === 'TRIGGER' || s.kind === 'FILE_INPUT' || s.kind === 'CATALOG');
+  const hasConfig   = pipeline.steps.some((s) => s.kind === 'JOB_INIT');
+  const hasProcess  = pipeline.steps.some((s) => s.kind !== 'TRIGGER' && s.kind !== 'FILE_INPUT' && s.kind !== 'CATALOG' && s.kind !== 'JOB_INIT');
+  const out: { color: string; label: string }[] = [];
+  if (hasNeutral) out.push({ color: PIPELINE_NODE_COLOR_NEUTRAL, label: 'Trigger / Input / Catalog' });
+  if (hasConfig)  out.push({ color: PIPELINE_NODE_COLOR_CONFIG,  label: 'Configuration' });
+  if (hasProcess) out.push({ color: PIPELINE_NODE_COLOR_PROCESS, label: 'Processing'  });
+  return out;
+}
+
+const TRIGGER_TONE: Record<TriggerSource, { fg: string; bg: string; border: string }> = {
+  PIPELINE_AUTO:     { fg: '#0288c8', bg: 'rgba(2,159,231,0.08)',  border: 'rgba(2,159,231,0.35)'  },
+  MANUAL_REQUEST:    { fg: '#7b3fe6', bg: 'rgba(142,81,255,0.08)', border: 'rgba(142,81,255,0.35)' },
+  PARTIAL_REPROCESS: { fg: '#04B58B', bg: 'rgba(4,181,139,0.08)',  border: 'rgba(4,181,139,0.35)'  },
+};
+
+function isBranchedPipeline(pipeline: PipelineDefinition | undefined | null): boolean {
+  if (!pipeline) return false;
+  const out = new Map<number, number>();
+  pipeline.edges.forEach((e) => out.set(e.source, (out.get(e.source) ?? 0) + 1));
+  for (const c of out.values()) if (c > 1) return true;
+  return false;
+}
+
+function MiniPipelineStrip({ pipeline }: { pipeline: PipelineDefinition }) {
+  const layout = useMemo(() => {
+    const incoming = new Map<number, number[]>();
+    pipeline.steps.forEach((s) => incoming.set(s.order, []));
+    pipeline.edges.forEach((e) => {
+      if (incoming.has(e.target)) incoming.get(e.target)!.push(e.source);
+    });
+    const sorted = [...pipeline.steps].sort((a, b) => a.order - b.order);
+    const col = new Map<number, number>();
+    for (const s of sorted) {
+      const ins = incoming.get(s.order) ?? [];
+      let c = 0;
+      ins.forEach((p) => { c = Math.max(c, (col.get(p) ?? 0) + 1); });
+      col.set(s.order, c);
+    }
+    const byCol = new Map<number, number[]>();
+    sorted.forEach((s) => {
+      const c = col.get(s.order) ?? 0;
+      const arr = byCol.get(c) ?? [];
+      arr.push(s.order);
+      byCol.set(c, arr);
+    });
+    const row = new Map<number, number>();
+    let maxRows = 1;
+    byCol.forEach((arr) => {
+      arr.forEach((order, idx) => row.set(order, idx));
+      maxRows = Math.max(maxRows, arr.length);
+    });
+    const cols = (col.size === 0 ? 1 : Math.max(...col.values()) + 1);
+    return { col, row, cols, rows: maxRows };
+  }, [pipeline]);
+
+  const nodeSize = 16;
+  const colW = 22;
+  const rowH = 20;
+  const padX = 3, padY = 3;
+  const w = padX * 2 + Math.max(0, layout.cols - 1) * colW + nodeSize;
+  const h = padY * 2 + Math.max(0, layout.rows - 1) * rowH + nodeSize;
+  const cx = (order: number) => padX + (layout.col.get(order) ?? 0) * colW + nodeSize / 2;
+  const cy = (order: number) => padY + (layout.row.get(order) ?? 0) * rowH + nodeSize / 2;
+
+  return (
+    <svg width={w} height={h} style={{ display: 'block', overflow: 'visible' }}>
+      {pipeline.edges.map((e, i) => {
+        const ax = cx(e.source) + nodeSize / 2 - 1;
+        const ay = cy(e.source);
+        const bx = cx(e.target) - nodeSize / 2 + 1;
+        const by = cy(e.target);
+        const mx = (ax + bx) / 2;
+        return (
+          <path
+            key={i}
+            d={`M${ax},${ay} C${mx},${ay} ${mx},${by} ${bx},${by}`}
+            fill="none"
+            stroke="#cfd6e0"
+            strokeWidth={1.1}
+          />
+        );
+      })}
+      {pipeline.steps.map((s) => {
+        const c = colorForStep(s);
+        const x = cx(s.order) - nodeSize / 2;
+        const y = cy(s.order) - nodeSize / 2;
+        return (
+          <rect
+            key={s.order}
+            x={x}
+            y={y}
+            width={nodeSize}
+            height={nodeSize}
+            rx={4}
+            fill={c}
+            fillOpacity={0.18}
+            stroke={c}
+            strokeWidth={1}
+            strokeOpacity={0.4}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+type ThreadPath = { d: string; active: boolean };
+
+function RuleRow({
+  rule,
+  pipeline,
+  isFirst,
+  expanded,
+  tone,
+  eventType,
+  hasActiveDuplicate,
+  duplicateActiveRule,
+  canManage,
+  savingPipelineId,
+  onRowClick,
+  onToggleActive,
+  onRequestSwap,
+  onOpenPipeline,
+}: {
+  rule: PipelineActivationRule;
+  pipeline: PipelineDefinition | undefined;
+  isFirst: boolean;
+  expanded: boolean;
+  tone: EventTone;
+  eventType: PipelineEventType;
+  hasActiveDuplicate: boolean;
+  duplicateActiveRule: PipelineActivationRule | null;
+  canManage: boolean;
+  savingPipelineId: string | null;
+  onRowClick: (rule: PipelineActivationRule) => void;
+  onToggleActive: (rule: PipelineActivationRule) => void;
+  onRequestSwap: (from: PipelineActivationRule, to: PipelineActivationRule) => void;
+  onOpenPipeline: (pipelineId: string) => void;
+}) {
+  const conditions = ruleConditions(rule);
+  const branched = isBranchedPipeline(pipeline);
+  const triggerTone = TRIGGER_TONE[rule.triggerSource];
+  const previewSteps = pipeline ? toPreviewSteps(pipeline) : [];
+
+  const [renderExpanded, setRenderExpanded] = useState(expanded);
+  if (expanded && !renderExpanded) {
+    setRenderExpanded(true);
+  }
+  useEffect(() => {
+    if (expanded) return;
+    const t = window.setTimeout(() => setRenderExpanded(false), 320);
+    return () => window.clearTimeout(t);
+  }, [expanded]);
+
+  const swapMode = !rule.active && expanded && hasActiveDuplicate && Boolean(duplicateActiveRule);
+  const activateDisabled = savingPipelineId === rule.pipelineId || (hasActiveDuplicate && !expanded);
+
+  return (
+    <div
+      className={`group relative transition-opacity duration-300 ease-out ${isFirst ? '' : 'border-t border-border/60'} ${
+        expanded ? 'bg-accent/[0.04]' : ''
+      } ${rule.active ? '' : 'opacity-55 hover:opacity-100'}`}
+    >
+      <div
+        onClick={() => onRowClick(rule)}
+        className="grid cursor-pointer items-center gap-3 px-3 py-3 pr-4 transition-colors hover:bg-muted/30"
+        style={{ gridTemplateColumns: MAPPING_RULE_GRID }}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={`inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold ${
+            rule.active ? 'text-success' : 'text-muted-foreground'
+          }`}>
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={
+                rule.active
+                  ? { background: '#04B58B', boxShadow: '0 0 0 3px rgba(4,181,139,.18)' }
+                  : { background: '#c7cdd6' }
+              }
+            />
+            {rule.active ? 'Active' : 'Inactive'}
+          </span>
+          <svg
+            width={14}
+            height={10}
+            viewBox="0 0 14 10"
+            className="shrink-0"
+            style={{ color: tone.fg, opacity: rule.active ? 0.85 : 0.45 }}
+          >
+            <path
+              d="M0 5h11M9 1l4 4-4 4"
+              stroke="currentColor"
+              strokeWidth={1.4}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
+            {conditions.length === 0 ? (
+              <span className="rounded bg-muted/55 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                All conditions
+              </span>
+            ) : conditions.map((c) => (
+              <span
+                key={c}
+                className="max-w-[110px] truncate rounded bg-muted/55 px-1.5 py-0.5 text-[10px] text-foreground"
+              >
+                {c}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div
+          data-tgt
+          data-active={rule.active ? '1' : '0'}
+          className={`flex flex-col gap-1.5 rounded-lg border bg-card px-2.5 py-2 transition-colors ${
+            expanded ? 'border-accent/45 shadow-sm' : 'border-border'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-[12px] font-semibold text-foreground">
+                {pipeline?.name ?? rule.pipelineId}
+              </span>
+              {branched && (
+                <span
+                  className="rounded px-1 py-px font-mono text-[8.5px] font-bold tracking-wider"
+                  style={{ color: '#8E51FF', background: 'rgba(142,81,255,0.12)' }}
+                  title="Branched pipeline"
+                >
+                  BRANCHED
+                </span>
+              )}
+            </div>
+            <ChevronDown
+              className="h-3 w-3 shrink-0 text-muted-foreground transition-transform duration-300 ease-out"
+              style={{ transform: expanded ? 'rotate(180deg)' : 'none' }}
+            />
+          </div>
+          {pipeline && <MiniPipelineStrip pipeline={pipeline} />}
+        </div>
+
+        <div className="min-w-0">
+          <span
+            className="inline-flex max-w-full items-center truncate rounded-full border border-dashed px-2 py-0.5 font-mono text-[10px]"
+            style={{
+              color: triggerTone.fg,
+              background: triggerTone.bg,
+              borderColor: triggerTone.border,
+            }}
+          >
+            {TRIGGER_SOURCE_LABELS[rule.triggerSource]}
+          </span>
+        </div>
+
+        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+          {canManage && (
+            <button
+              type="button"
+              disabled={activateDisabled}
+              title={hasActiveDuplicate && !expanded ? '같은 이벤트·큐에 이미 활성 룰이 있습니다. 행을 펼쳐 교체하세요.' : undefined}
+              onClick={() => {
+                if (swapMode && duplicateActiveRule) {
+                  onRequestSwap(duplicateActiveRule, rule);
+                } else {
+                  onToggleActive(rule);
+                }
+              }}
+              className={`rounded-md border px-2.5 py-1 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                rule.active
+                  ? 'border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
+                  : 'border-accent/35 bg-accent/10 text-accent hover:bg-accent/20'
+              }`}
+            >
+              {rule.active ? 'Deactivate' : 'Activate'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div
+        className="grid transition-[grid-template-rows] duration-300 ease-out"
+        style={{ gridTemplateRows: expanded ? '1fr' : '0fr' }}
+        aria-hidden={!expanded}
+      >
+        <div className="min-h-0 overflow-hidden">
+          {renderExpanded && pipeline && (
+            <div
+              className="border-t border-dashed border-border/70 bg-card/50 px-4 py-4 transition-opacity duration-300 ease-out"
+              style={{ opacity: expanded ? 1 : 0 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-foreground">{pipeline.name}</div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    triggered by{' '}
+                    <b style={{ color: tone.fg }}>{PIPELINE_EVENT_TYPE_LABELS[eventType]}</b>
+                    {rule.match.satelliteIds?.length ? (
+                      <> when satellite is <b className="text-foreground">{rule.match.satelliteIds.join(', ')}</b></>
+                    ) : null}
+                    {rule.match.inputLevel ? (
+                      <> · level <b className="text-foreground">{PRODUCT_LEVEL_LABELS[rule.match.inputLevel]}</b></>
+                    ) : null}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onOpenPipeline(pipeline.id)}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-foreground transition-colors hover:bg-muted/40"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open pipeline
+                </button>
+              </div>
+              <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10.5px] text-muted-foreground">
+                <span className="font-mono uppercase tracking-wider opacity-70">Node colors</span>
+                {buildPipelineLegend(pipeline).map((item) => (
+                  <span key={item.color} className="inline-flex items-center gap-1.5">
+                    <span
+                      className="inline-block h-2 w-2 rounded-sm"
+                      style={{ background: item.color, opacity: 0.85 }}
+                    />
+                    <span className="text-foreground/80">{item.label}</span>
+                  </span>
+                ))}
+              </div>
+              <div className="deployed-preview-flow h-64 overflow-hidden rounded-lg border border-border bg-card">
+                <CanvasGraph
+                  pipelineId={`deployed-preview-${pipeline.id}`}
+                  steps={previewSteps}
+                  pipelineEdges={pipeline.edges}
+                  editable={false}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EventGroupCard({
+  eventType,
+  rules,
+  pipelineById,
+  expandedRuleId,
+  canManage,
+  savingPipelineId,
+  rulesAll,
+  onRowClick,
+  onToggleActive,
+  onRequestSwap,
+  onOpenPipeline,
+}: {
+  eventType: PipelineEventType;
+  rules: PipelineActivationRule[];
+  pipelineById: Map<string, PipelineDefinition>;
+  expandedRuleId: string | null;
+  canManage: boolean;
+  savingPipelineId: string | null;
+  rulesAll: PipelineActivationRule[];
+  onRowClick: (rule: PipelineActivationRule) => void;
+  onToggleActive: (rule: PipelineActivationRule) => void;
+  onRequestSwap: (from: PipelineActivationRule, to: PipelineActivationRule) => void;
+  onOpenPipeline: (pipelineId: string) => void;
+}) {
+  const tone = EVENT_TONE[eventType];
+  const queues = Array.from(new Set(rules.map((r) => r.sourceQueue)));
+  const activeCount = rules.filter((r) => r.active).length;
+  const total = rules.length;
+  const fanRef = useRef<HTMLDivElement>(null);
+  const [paths, setPaths] = useState<ThreadPath[]>([]);
+
+  useLayoutEffect(() => {
+    const recalc = () => {
+      const root = fanRef.current;
+      if (!root) return;
+      const src = root.querySelector('[data-src]') as HTMLElement | null;
+      const targets = root.querySelectorAll<HTMLElement>('[data-tgt]');
+      if (!src || targets.length === 0) {
+        setPaths([]);
+        return;
+      }
+      const rR = root.getBoundingClientRect();
+      const sR = src.getBoundingClientRect();
+      const sx = sR.right - rR.left;
+      const sy = sR.top + sR.height / 2 - rR.top;
+      const next: ThreadPath[] = [];
+      targets.forEach((t) => {
+        const tR = t.getBoundingClientRect();
+        const tx = tR.left - rR.left;
+        const ty = tR.top + tR.height / 2 - rR.top;
+        const dx = (tx - sx) * 0.55;
+        next.push({
+          d: `M${sx},${sy} C${sx + dx},${sy} ${tx - dx},${ty} ${tx},${ty}`,
+          active: t.dataset.active === '1',
+        });
+      });
+      setPaths(next);
+    };
+    recalc();
+    const ro = new ResizeObserver(recalc);
+    if (fanRef.current) ro.observe(fanRef.current);
+    window.addEventListener('resize', recalc);
+    const t = window.setTimeout(recalc, 80);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', recalc);
+      window.clearTimeout(t);
+    };
+  }, [rules.length, expandedRuleId]);
+
+  return (
+    <div
+      className="mb-4 overflow-hidden rounded-xl border border-border bg-card"
+      style={{ boxShadow: '0 1px 2px -1px rgba(12,30,51,.08)' }}
+    >
+      <div className="flex items-center gap-3 border-b border-border/60 bg-muted/20 px-4 py-2.5">
+        <span
+          className="inline-block h-2 w-2 rounded-full"
+          style={{ background: tone.fg, boxShadow: `0 0 0 4px ${tone.soft}` }}
+        />
+        <div className="flex min-w-0 flex-col">
+          <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+            {PIPELINE_EVENT_TYPE_LABELS[eventType]}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 font-mono text-[10.5px] text-muted-foreground">
+            <span>queue ·</span>
+            {queues.map((q) => (
+              <span key={q} className="rounded bg-background/70 px-1.5 py-0.5">{q}</span>
+            ))}
+          </div>
+        </div>
+        <div className="ml-auto flex items-center gap-4 text-[11px] text-muted-foreground">
+          <span>
+            <b className="font-mono font-semibold text-foreground" style={{ color: tone.fg }}>{activeCount}</b>
+            <span className="opacity-70">/{total} active</span>
+          </span>
+          <span>
+            <b className="font-mono font-semibold text-foreground">{total}</b>
+            <span className="opacity-70"> rules</span>
+          </span>
+        </div>
+      </div>
+
+      <div
+        ref={fanRef}
+        className="relative grid items-stretch"
+        style={{ gridTemplateColumns: MAPPING_GROUP_GRID, minHeight: 100 }}
+      >
+        <div className="flex items-center justify-center border-r border-dashed border-border bg-muted/10 p-3">
+          <div
+            data-src
+            className="flex w-full flex-col gap-1.5 rounded-lg border bg-card px-3 py-2.5"
+            style={{ borderColor: tone.border }}
+          >
+            <div className="flex items-center gap-2">
+              <span
+                className="flex h-7 w-7 items-center justify-center rounded-md"
+                style={{ background: tone.bg, color: tone.fg }}
+              >
+                <Zap className="h-3.5 w-3.5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="whitespace-nowrap text-[12px] font-semibold leading-tight text-foreground">
+                  {PIPELINE_EVENT_TYPE_LABELS[eventType]}
+                </div>
+              </div>
+            </div>
+            <div className="font-mono text-[10px] leading-tight text-muted-foreground">
+              {queues.length === 1 ? queues[0] : `${queues.length} queues`}
+            </div>
+            <div
+              className="flex items-center justify-between border-t border-dashed pt-1.5 font-mono text-[10px]"
+              style={{ borderColor: tone.border, color: tone.fg }}
+            >
+              <span>fan-out</span>
+              <span>→ {total} routes</span>
+            </div>
+          </div>
+        </div>
+
+        <svg
+          className="pointer-events-none absolute inset-0 h-full w-full"
+          aria-hidden
+        >
+          {paths.map((p, i) => (
+            <path
+              key={i}
+              d={p.d}
+              fill="none"
+              stroke={p.active ? tone.fg : '#cfd6e0'}
+              strokeWidth={p.active ? 1.6 : 1.1}
+              strokeDasharray={p.active ? '0' : '3 3'}
+              opacity={p.active ? 0.85 : 0.5}
+            />
+          ))}
+        </svg>
+
+        <div />
+
+        <div className="flex flex-col">
+          {rules.map((rule, idx) => {
+            const duplicateActiveRule = !rule.active
+              ? rulesAll.find((other) => (
+                  other.active
+                    && other.id !== rule.id
+                    && ruleEventQueueKey(other) === ruleEventQueueKey(rule)
+                )) ?? null
+              : null;
+            return (
+              <RuleRow
+                key={rule.id}
+                rule={rule}
+                pipeline={pipelineById.get(rule.pipelineId)}
+                isFirst={idx === 0}
+                expanded={expandedRuleId === rule.id}
+                tone={tone}
+                eventType={eventType}
+                hasActiveDuplicate={Boolean(duplicateActiveRule)}
+                duplicateActiveRule={duplicateActiveRule}
+                canManage={canManage}
+                savingPipelineId={savingPipelineId}
+                onRowClick={onRowClick}
+                onToggleActive={onToggleActive}
+                onRequestSwap={onRequestSwap}
+                onOpenPipeline={onOpenPipeline}
+              />
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 type RuleFormState = {
   id: string | null;
@@ -197,6 +774,8 @@ export default function DeployedPipelinesPage() {
   const [savingPipelineId, setSavingPipelineId] = useState<string | null>(null);
   const [mappingModalOpen, setMappingModalOpen] = useState(false);
   const [toggleConfirmRule, setToggleConfirmRule] = useState<PipelineActivationRule | null>(null);
+  const [swapConfirm, setSwapConfirm] = useState<{ from: PipelineActivationRule; to: PipelineActivationRule } | null>(null);
+  const [swapping, setSwapping] = useState(false);
   const [automating, setAutomating] = useState(false);
   const [logPanelOpen, setLogPanelOpen] = useState(false);
 
@@ -348,6 +927,25 @@ export default function DeployedPipelinesPage() {
     toast.success(nextActive ? 'Automation rule activated.' : 'Automation rule deactivated.');
   }, [handleSaveRule, toggleConfirmRule]);
 
+  const handleRequestSwap = useCallback((from: PipelineActivationRule, to: PipelineActivationRule) => {
+    setSwapConfirm({ from, to });
+  }, []);
+
+  const handleConfirmSwap = useCallback(async () => {
+    if (!swapConfirm) return;
+    setSwapping(true);
+    const offResult = await handleSaveRule({ ...ruleToForm(swapConfirm.from), active: false });
+    if (!offResult) {
+      setSwapping(false);
+      return;
+    }
+    const onResult = await handleSaveRule({ ...ruleToForm(swapConfirm.to), active: true });
+    setSwapping(false);
+    if (!onResult) return;
+    setSwapConfirm(null);
+    toast.success('Active automation rule swapped.');
+  }, [handleSaveRule, swapConfirm]);
+
   const handleOpenNewRuleModal = useCallback(() => {
     setRuleForm(makeEmptyRuleForm());
     setMappingModalOpen(true);
@@ -384,143 +982,38 @@ export default function DeployedPipelinesPage() {
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
-          <section className="min-h-[calc(100vh-128px)] rounded-lg border border-border bg-card overflow-x-auto overflow-y-hidden">
-            {matchingRules.length === 0 ? (
-              <div className="px-4 py-24 text-center">
-                <Activity className="w-10 h-10 mx-auto text-muted-foreground/30" />
-                <p className="mt-3 text-sm font-medium text-foreground">No automation matching rules</p>
-                <p className="mt-1 text-xs text-muted-foreground">Use the button at the top right to link a pgmq event condition to an execution pipeline.</p>
+          {matchingRules.length === 0 ? (
+            <section className="rounded-xl border border-border bg-card px-4 py-24 text-center">
+              <Activity className="w-10 h-10 mx-auto text-muted-foreground/30" />
+              <p className="mt-3 text-sm font-medium text-foreground">No automation matching rules</p>
+              <p className="mt-1 text-xs text-muted-foreground">Use the button at the top right to link a pgmq event condition to an execution pipeline.</p>
+            </section>
+          ) : (
+            <div className="overflow-x-auto">
+              <div style={{ minWidth: MAPPING_CONTENT_MIN_WIDTH }}>
+                {EVENT_TYPE_GROUP_ORDER.map((eventType) => {
+                  const groupRules = matchingRules.filter((r) => r.eventType === eventType);
+                  if (groupRules.length === 0) return null;
+                  return (
+                    <EventGroupCard
+                      key={eventType}
+                      eventType={eventType}
+                      rules={groupRules}
+                      pipelineById={pipelineById}
+                      expandedRuleId={expandedRuleId}
+                      canManage={canManage}
+                      savingPipelineId={savingPipelineId}
+                      rulesAll={rules}
+                      onRowClick={handleRowClick}
+                      onToggleActive={handleToggleRuleActive}
+                      onRequestSwap={handleRequestSwap}
+                      onOpenPipeline={handleOpenPipeline}
+                    />
+                  );
+                })}
               </div>
-            ) : (
-              <div className="max-w-none" style={{ width: `max(100%, ${DEPLOYMENT_TABLE_WIDTH}px)` }}>
-                <div
-                  className="grid gap-3 px-4 py-2.5 border-b border-border text-[10px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap"
-                  style={{ gridTemplateColumns: DEPLOYMENT_TABLE_GRID }}
-                >
-                  <span>Status</span>
-                  <span>pgmq Incoming Event</span>
-                  <span>Source Queue</span>
-                  <span>Match Conditions</span>
-                  <span>Processing Flow</span>
-                  <span>Execution Pipeline</span>
-                  <span className="text-right">Actions</span>
-                </div>
-                <div className="divide-y divide-border/70">
-                  {matchingRules.map((rule) => {
-                    const pipeline = pipelineById.get(rule.pipelineId);
-                    const conditions = ruleConditions(rule);
-                    const hasActiveEventQueueDuplicate = !rule.active && rules.some((item) => (
-                      item.active
-                        && item.id !== rule.id
-                        && ruleEventQueueKey(item) === ruleEventQueueKey(rule)
-                    ));
-                    const previewSteps = pipeline ? toPreviewSteps(pipeline) : [];
-                    const expanded = expandedRuleId === rule.id;
-                    return (
-                      <div key={rule.id}>
-                        <div
-                          onClick={() => handleRowClick(rule)}
-                          className="relative grid gap-3 px-4 py-3 items-center cursor-pointer whitespace-nowrap group"
-                          style={{ gridTemplateColumns: DEPLOYMENT_TABLE_GRID }}
-                        >
-                          <div className={`absolute inset-0 transition-colors pointer-events-none ${
-                            selectedRule?.id === rule.id ? 'bg-accent/10' : 'group-hover:bg-muted/20'
-                          }`} />
-                          <div className="relative min-w-0">
-                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold ${
-                              rule.active ? 'bg-success/10 text-success' : 'bg-muted/60 text-muted-foreground'
-                            }`}>
-                              <span className={`h-1.5 w-1.5 rounded-full ${rule.active ? 'bg-success' : 'bg-muted-foreground/50'}`} />
-                              {rule.active ? 'Active' : 'Inactive'}
-                            </span>
-                          </div>
-
-                          <div className="relative min-w-0">
-                            <p className="text-xs font-medium text-foreground truncate">{PIPELINE_EVENT_TYPE_LABELS[rule.eventType]}</p>
-                          </div>
-
-                          <div className="relative min-w-0">
-                            <p className="font-mono text-[10px] text-muted-foreground truncate">{rule.sourceQueue}</p>
-                          </div>
-
-                          <div className="relative flex gap-1.5 overflow-hidden">
-                            {conditions.length === 0 ? (
-                              <span className="rounded bg-muted/55 px-1.5 py-0.5 text-[10px] text-muted-foreground">All conditions</span>
-                            ) : conditions.map((condition) => (
-                              <span key={condition} className="rounded bg-muted/55 px-1.5 py-0.5 text-[10px] text-foreground truncate shrink-0 max-w-[88px]">
-                                {condition}
-                              </span>
-                            ))}
-                          </div>
-
-                          <span className="relative px-1.5 py-0.5 text-[10px] text-accent truncate max-w-[140px]">
-                            {TRIGGER_SOURCE_LABELS[rule.triggerSource]}
-                          </span>
-
-                          <div className="relative min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="text-xs font-medium text-foreground truncate">{pipeline?.name ?? rule.pipelineId}</p>
-                              {expanded ? <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-                            </div>
-                          </div>
-
-                          <div className="relative flex justify-end gap-1.5">
-                            {canManage && (
-                              <button
-                                type="button"
-                                disabled={savingPipelineId === rule.pipelineId || hasActiveEventQueueDuplicate}
-                                title={hasActiveEventQueueDuplicate ? 'An active rule already uses this event and source queue.' : undefined}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleToggleRuleActive(rule);
-                                }}
-                                className={`flex items-center gap-1 rounded-md border px-2 py-1.5 text-[11px] transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed ${
-                                  rule.active
-                                    ? 'border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
-                                    : 'border-accent/25 bg-accent/10 text-accent hover:bg-accent/15'
-                                }`}
-                              >
-                                {rule.active ? 'Deactivate' : 'Activate'}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        {expanded && pipeline && (
-                          <div className="border-t border-border bg-muted/15 px-4 py-4">
-                            <div className="mb-3 flex items-center justify-between gap-3">
-                              <div>
-                                <div className="text-sm font-semibold text-foreground">Linked Pipeline UI</div>
-                                <div className="mt-1 text-[11px] text-muted-foreground">{pipeline.name}</div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleOpenPipeline(pipeline.id);
-                                }}
-                                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-foreground transition-colors hover:bg-muted/40"
-                              >
-                                <ExternalLink className="h-3.5 w-3.5" />
-                                Open pipeline
-                              </button>
-                            </div>
-                            <div className="deployed-preview-flow h-64 overflow-hidden rounded-lg border border-border bg-card">
-                              <CanvasGraph
-                                pipelineId={`deployed-preview-${pipeline.id}`}
-                                steps={previewSteps}
-                                pipelineEdges={pipeline.edges}
-                                editable={false}
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </section>
+            </div>
+          )}
         </div>
 
         <ExecutionLogPanel
@@ -794,6 +1287,69 @@ export default function DeployedPipelinesPage() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {swapConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-5 py-4"
+          onClick={() => !swapping && setSwapConfirm(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-lg border border-border bg-card shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="border-b border-border px-5 py-4">
+              <h2 className="text-sm font-semibold text-foreground">
+                활성 자동화 룰을 교체하시겠습니까?
+              </h2>
+              <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">
+                같은 이벤트·큐에 활성 룰이 이미 존재합니다. 진행하면 이전 룰이 비활성화되고 선택한 룰이 활성화됩니다.
+              </p>
+            </div>
+            <div className="space-y-2 px-5 py-4">
+              <div className="rounded-md border border-border bg-muted/15 px-3 py-2.5">
+                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
+                  Deactivate (이전 활성)
+                </div>
+                <p className="mt-1 text-xs font-medium text-foreground">
+                  {pipelineById.get(swapConfirm.from.pipelineId)?.name ?? swapConfirm.from.pipelineId}
+                </p>
+              </div>
+              <div className="flex justify-center text-muted-foreground">
+                <ArrowRight className="h-3.5 w-3.5 rotate-90" />
+              </div>
+              <div className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2.5">
+                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-accent">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
+                  Activate (신규)
+                </div>
+                <p className="mt-1 text-xs font-medium text-foreground">
+                  {pipelineById.get(swapConfirm.to.pipelineId)?.name ?? swapConfirm.to.pipelineId}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-4">
+              <button
+                type="button"
+                disabled={swapping}
+                onClick={() => setSwapConfirm(null)}
+                className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/45 hover:text-foreground disabled:opacity-45"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={swapping}
+                onClick={handleConfirmSwap}
+                className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-foreground transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {swapping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                {swapping ? 'Swapping' : '예, 교체'}
+              </button>
             </div>
           </div>
         </div>

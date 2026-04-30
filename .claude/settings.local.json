@@ -59,7 +59,8 @@
       "Bash(grep -E \"plan/|^C:\\\\\\\\\\\\\\\\\")",
       "Bash(grep -A1 \"AuditPage.tsx$\")",
       "Bash(python -c ' *)",
-      "Bash(cd /tmp)"
+      "Bash(cd /tmp)",
+      "WebFetch(domain:api.anthropic.com)"
     ],
     "deny": [
       "Bash(curl:*)",

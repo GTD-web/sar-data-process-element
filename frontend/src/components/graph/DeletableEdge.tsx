@@ -5,6 +5,19 @@ import { Plus, Trash2 } from 'lucide-react';
 import { useEdgeHover } from './EdgeHoverContext';
 import * as t from '@/styles/design-tokens';
 
+function strokeToRgba(stroke: string, alpha: number): string {
+  if (stroke.startsWith('#') && (stroke.length === 7 || stroke.length === 4)) {
+    const hex = stroke.length === 4
+      ? '#' + stroke.slice(1).split('').map((c) => c + c).join('')
+      : stroke;
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return `rgba(52, 211, 153, ${alpha})`;
+}
+
 export type DeletableEdgeData = {
   stroke: string;
   strokeWidth: number;
@@ -121,10 +134,10 @@ export function DeletableEdge({
           strokeWidth: showActions ? 3 : strokeWidth,
           transition: 'stroke 0.3s ease, stroke-width 0.3s ease, filter 0.3s ease',
           filter: showActions
-            ? 'drop-shadow(0 0 8px rgba(52, 211, 153, 0.6))'
+            ? `drop-shadow(0 0 8px ${strokeToRgba(t.edgeActive, 0.6)})`
             : stroke === t.edgeSuccess
-              ? 'drop-shadow(0 0 6px rgba(52, 211, 153, 0.5)) drop-shadow(0 0 14px rgba(52, 211, 153, 0.25))'
-              : undefined,
+              ? `drop-shadow(0 0 6px ${strokeToRgba(stroke, 0.5)}) drop-shadow(0 0 14px ${strokeToRgba(stroke, 0.25)})`
+              : `drop-shadow(0 0 4px ${strokeToRgba(stroke, 0.3)})`,
           pointerEvents: 'none',
         }}
       />
