@@ -480,13 +480,9 @@ function generateJobs(rawData: RawDataSummary[], pipelines: PipelineDefinition[]
   const nextJobId = () => `JOB-${String(++jobSeq).padStart(4, '0')}`;
 
   rawData.forEach((raw, rawIdx) => {
-    // 각 RAW의 primary 실행 개수. 일부 RAW는 운영 부하 케이스를 표현하기 위해 최대 ~7개까지 부풀린다.
-    // 7번째 RAW마다 "고볼륨 RAW" → primary 6~7개 + partial 3~4개 → 총 9~11개 노선
-    // 그 외 RAW: primary 1~3개 + partial 0~2개 (기존 동작 유지)
-    const isHighVolume = rawIdx % 7 === 0;
-    const primaryCount = isHighVolume
-      ? 6 + (rawIdx % 2)
-      : 1 + ((rawIdx + Math.floor(Math.random() * 3)) % 3);
+    // 각 RAW 당 총 20~30개의 노선이 생성되도록 primary / partial 개수를 부풀린다.
+    // primary 18~25개 + partial 2~5개 → 총 20~30개
+    const primaryCount = 18 + (rawIdx % 8);
     let primaryDone = 0;
 
     // 한 RAW 내부에서는 primary가 partial 보다 시각적으로 먼저(=startedAt 더 이른) 표시되도록
@@ -499,20 +495,18 @@ function generateJobs(rawData: RawDataSummary[], pipelines: PipelineDefinition[]
       const status: JobStatus = p === 0 ? 'COMPLETED' : pickStatus();
       const startedAt = new Date(cursorMs).toISOString();
       jobs.push(buildJob({ raw, rawIdx, pipeline, status, jobId: nextJobId(), startedAt, profileForPipeline }));
-      cursorMs += 30 * 60_000;
+      cursorMs += 15 * 60_000;
       if (status === 'COMPLETED') primaryDone++;
     }
 
     if (primaryDone > 0 && partialPipelines.length > 0) {
-      const partialCount = isHighVolume
-        ? 3 + (rawIdx % 2)
-        : (rawIdx % 3 === 0) ? 2 : (rawIdx % 2 === 0) ? 1 : 0;
+      const partialCount = 2 + (rawIdx % 4);
       for (let p = 0; p < partialCount; p++) {
         const pipeline = partialPipelines[(rawIdx + p) % partialPipelines.length];
         const status: JobStatus = pickStatus();
         const startedAt = new Date(cursorMs).toISOString();
         jobs.push(buildJob({ raw, rawIdx, pipeline, status, jobId: nextJobId(), startedAt, profileForPipeline }));
-        cursorMs += 60 * 60_000;
+        cursorMs += 30 * 60_000;
       }
     }
   });
