@@ -2,7 +2,7 @@
 
 import type { SarStage, PipelineNodeKind } from '@/types/pipeline';
 import { SAR_STAGE_LABELS, SAR_STAGE_TASKS, SAR_STAGE_TO_LEVEL, SAR_STAGE_DESCRIPTIONS, NODE_KIND_INFO, PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
-import { HardDrive, Cpu, Layers, Compass, Map, Crosshair, Package, Database, SlidersHorizontal } from 'lucide-react';
+import { HardDrive, Cpu, Layers, Compass, Map, Crosshair, Package, Database, SlidersHorizontal, Image as ImageIcon } from 'lucide-react';
 
 interface SarStageOption {
   kind: 'SAR';
@@ -11,7 +11,7 @@ interface SarStageOption {
 }
 
 interface FixedKindOption {
-  kind: 'CATALOG' | 'JOB_INIT';
+  kind: 'CATALOG' | 'JOB_INIT' | 'THUMBNAIL';
   icon: React.ElementType;
   label: string;
   csc: string;
@@ -28,6 +28,7 @@ const STEP_OPTIONS: StepOption[] = [
   { kind: 'SAR', sarStage: 'L2A', icon: Map },
   { kind: 'SAR', sarStage: 'L2B', icon: Crosshair },
   { kind: 'SAR', sarStage: 'L3', icon: Package },
+  { kind: 'THUMBNAIL', icon: ImageIcon, label: 'Quick-look Generation', csc: 'CSU-07.06' },
   { kind: 'CATALOG', icon: Database, label: 'Catalog Registration', csc: 'CSC-07' },
 ];
 

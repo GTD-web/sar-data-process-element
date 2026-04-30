@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { X, Play, Loader, CheckCircle, ChevronRight, Antenna, SlidersHorizontal, HardDrive, Cpu, Layers, Compass, Map as MapIcon, Crosshair, Package, Database, FileInput as FileInputIcon, Image as ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { PipelineStepDefinition, SarStage, TargetCsc, ProcessingProfile } from '@/types/pipeline';
@@ -10,6 +10,9 @@ import {
 } from '@/types/pipeline';
 import JobInitEditPanel from './JobInitEditPanel';
 import NodeCodeEditorPanel from './NodeCodeEditorPanel';
+import CatalogConfigPanel from './CatalogConfigPanel';
+import NodeExecutionTerminal, { type RenderedLogLine } from './NodeExecutionTerminal';
+import { getStageLogScript } from './node-execution-logs';
 import { getDefaultCode, isTaskActiveInCode, TASK_KEYWORDS_BY_STAGE } from './node-code-defaults';
 import type { PipelineNodeKind, ProductLevel } from '@/types/pipeline';
 
@@ -30,7 +33,7 @@ const SAR_STAGE_OUTPUT_TYPE: Record<SarStage, string> = {
   L0:  'HDF5 (L0 formatted)',
   L1A: 'GeoTIFF · SLC',
   L1B: 'GeoTIFF · GRD',
-  L1C: 'GeoTIFF · RTC/GEC',
+  L1C: 'GeoTIFF · GTC/GEC',
   L2A: 'GeoTIFF · MAP layers',
   L2B: 'GeoTIFF/GeoJSON · MSK, OBJ, CHG',
   L3:  'GeoTIFF · APP',
@@ -99,7 +102,7 @@ const MOCK_SAR_OUTPUT: Record<SarStage, MockRecord> = {
   L0:  { output_path: '/nas/sar/l0/LX3_STRIP_20240312_L0.h5',   tasks_completed: 4, duration_s: 42,  status: 'SUCCESS' },
   L1A: { output_path: '/nas/sar/l1a/LX3_STRIP_20240312_SLC.tif',tasks_completed: 5, duration_s: 382, resolution_m: 1.5, status: 'SUCCESS' },
   L1B: { output_path: '/nas/sar/l1b/LX3_STRIP_20240312_GRD.tif',tasks_completed: 4, duration_s: 118, looks: 4, status: 'SUCCESS' },
-  L1C: { output_path: '/nas/sar/l1c/LX3_STRIP_20240312_RTC.tif',tasks_completed: 4, duration_s: 213, dem_used: 'SRTM-30m', epsg: 32652, status: 'SUCCESS' },
+  L1C: { output_path: '/nas/sar/l1c/LX3_STRIP_20240312_GTC.tif',tasks_completed: 4, duration_s: 213, dem_used: 'SRTM-30m', epsg: 32652, status: 'SUCCESS' },
   L2A: { output_path: '/nas/sar/l2a/LX3_STRIP_20240312_MAPS.tif',tasks_completed: 4, duration_s: 97, layers: ['incidence_angle', 'nesz', 'nlooks', 'layover_shadow'], status: 'SUCCESS' },
   L2B: { output_path: '/nas/sar/l2b/LX3_STRIP_20240312_ANALYSIS.tif', detections: 12, change_ratio: 0.03, duration_s: 177, status: 'SUCCESS' },
   L3:  { output_path: '/nas/sar/l3/LX3_STRIP_20240312_APP.tif', product_type: 'application', duration_s: 58, status: 'SUCCESS' },
@@ -195,7 +198,7 @@ function nodeLabel(step: PipelineStepDefinition): string {
 function nodeCsc(step: PipelineStepDefinition): string {
   if (step.kind === 'TRIGGER')    return 'EI-01';
   if (step.kind === 'FILE_INPUT') return 'SI-07';
-  if (step.kind === 'JOB_INIT')   return 'CSC-08.02';
+  if (step.kind === 'JOB_INIT')   return 'CSU-08.02';
   if (step.kind === 'CATALOG')    return 'CSC-07';
   if (step.kind === 'THUMBNAIL')  return 'CSU-07.06';
   if (step.kind === 'SAR' && step.sarStage) return SAR_STAGE_TO_CSC[step.sarStage];
@@ -242,11 +245,12 @@ const MODAL_TABS: { id: ModalTab; label: string }[] = [
   { id: 'parameters', label: 'Parameters' },
 ];
 
-/** L0 / L1x / L2x SAR 노드 사용자 코드 업로드/편집 가능 */
+/** L0 / L1x / L2x / L3 SAR 노드 사용자 코드 업로드/편집 가능 */
 function supportsCodeEditor(step: PipelineStepDefinition): boolean {
   if (step.kind !== 'SAR' || !step.sarStage) return false;
   return (
     step.sarStage === 'L0'
+    || step.sarStage === 'L3'
     || step.sarStage.startsWith('L1')
     || step.sarStage.startsWith('L2')
   );
@@ -271,6 +275,10 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
   const [execState, setExecState] = useState<ExecState>('idle');
   const [outputData, setOutputData] = useState<MockRecord | null>(null);
   const [activeTab, setActiveTab] = useState<ModalTab>('info');
+  const [logLines, setLogLines] = useState<RenderedLogLine[]>([]);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const execTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── SAR stage sub-function 사양 (readonly) ──
   // TASKS 활성/비활성 상태는 CODE 섹션의 코드 본문에서 자동 도출된다.
@@ -315,19 +323,87 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
     onSaveNode?.(updated);
   }, [onSaveNode]);
 
+  const handleSaveCatalog = useCallback((updated: PipelineStepDefinition) => {
+    onSaveNode?.(updated);
+  }, [onSaveNode]);
+
   const codeEditorEnabled = supportsCodeEditor(step);
 
   const description = step.kind === 'SAR' && step.sarStage
     ? SAR_STAGE_DESCRIPTIONS[step.sarStage]
     : NODE_KIND_INFO[step.kind]?.description ?? '';
 
+  /** 진행 중인 로그 스트리밍/타이머를 모두 정리 */
+  const cancelStreaming = useCallback(() => {
+    execTimeoutsRef.current.forEach((id) => clearTimeout(id));
+    execTimeoutsRef.current = [];
+    if (elapsedTimerRef.current) {
+      clearInterval(elapsedTimerRef.current);
+      elapsedTimerRef.current = null;
+    }
+  }, []);
+
   const handleExecute = useCallback(async () => {
+    cancelStreaming();
     setExecState('running');
     setOutputData(null);
-    await new Promise<void>((r) => setTimeout(r, 1400));
-    setExecState('done');
-    setOutputData(getMockOutput(step));
-  }, [step]);
+    setLogLines([]);
+    setElapsedMs(0);
+
+    const start = Date.now();
+    elapsedTimerRef.current = setInterval(() => {
+      setElapsedMs(Date.now() - start);
+    }, 50);
+
+    // SAR 노드면 stage별 mock 로그를 시간차를 두고 흘려보낸다.
+    const script = step.kind === 'SAR' ? getStageLogScript(step.sarStage) : [];
+
+    if (script.length === 0) {
+      // 비-SAR 노드는 기존대로 단일 mock 결과만 1.4초 뒤 표시
+      const tid = setTimeout(() => {
+        setExecState('done');
+        setOutputData(getMockOutput(step));
+        if (elapsedTimerRef.current) {
+          clearInterval(elapsedTimerRef.current);
+          elapsedTimerRef.current = null;
+        }
+      }, 1400);
+      execTimeoutsRef.current.push(tid);
+      return;
+    }
+
+    let cumulative = 0;
+    script.forEach((line) => {
+      cumulative += line.delayMs;
+      const tid = setTimeout(() => {
+        const ts = new Date();
+        const stamp = `${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')}:${String(ts.getSeconds()).padStart(2, '0')}`;
+        setLogLines((prev) => [...prev, { ...line, timestamp: stamp }]);
+      }, cumulative);
+      execTimeoutsRef.current.push(tid);
+    });
+
+    // 마지막 라인 출력 후 약간의 여유를 두고 done 처리
+    const finishId = setTimeout(() => {
+      setExecState('done');
+      setOutputData(getMockOutput(step));
+      if (elapsedTimerRef.current) {
+        clearInterval(elapsedTimerRef.current);
+        elapsedTimerRef.current = null;
+      }
+    }, cumulative + 200);
+    execTimeoutsRef.current.push(finishId);
+  }, [step, cancelStreaming]);
+
+  // 모달 unmount / step 교체 시 진행 중 스트림 정리
+  useEffect(() => () => cancelStreaming(), [cancelStreaming]);
+  useEffect(() => {
+    cancelStreaming();
+    setExecState('idle');
+    setOutputData(null);
+    setLogLines([]);
+    setElapsedMs(0);
+  }, [step.order, step.kind, step.sarStage, cancelStreaming]);
 
   // ESC 키로 닫기
   useEffect(() => {
@@ -362,24 +438,26 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
 
         <div className="flex-1" />
 
-        {/* Execute step */}
-        <button
-          type="button"
-          disabled={isRunning}
-          onClick={handleExecute}
-          className={cn(
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all',
-            'bg-destructive text-white hover:brightness-110 active:brightness-90',
-            'disabled:opacity-60 disabled:cursor-not-allowed',
-          )}
-        >
-          {isRunning
-            ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Running…</>
-            : isDone
-              ? <><CheckCircle className="w-3.5 h-3.5" /> Re-run</>
-              : <><Play className="w-3.5 h-3.5" fill="currentColor" strokeWidth={0} /> Execute step</>
-          }
-        </button>
+        {/* Execute step — SAR 노드는 OUTPUT 헤더에 위치하므로 모달 헤더에서 제외 */}
+        {step.kind !== 'SAR' && (
+          <button
+            type="button"
+            disabled={isRunning}
+            onClick={handleExecute}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all',
+              'bg-destructive text-white hover:brightness-110 active:brightness-90',
+              'disabled:opacity-60 disabled:cursor-not-allowed',
+            )}
+          >
+            {isRunning
+              ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Running…</>
+              : isDone
+                ? <><CheckCircle className="w-3.5 h-3.5" /> Re-run</>
+                : <><Play className="w-3.5 h-3.5" fill="currentColor" strokeWidth={0} /> Execute step</>
+            }
+          </button>
+        )}
 
         <button
           type="button"
@@ -396,7 +474,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
 
         {/* ── Left: INPUT — 이전 노드 참조 ── */}
         <div className="w-[30%] flex flex-col border-r border-border bg-background">
-          <div className="shrink-0 h-9 flex items-center px-4 border-b border-border">
+          <div className="shrink-0 h-10 flex items-center px-4 border-b border-border">
             <span className="text-[10px] font-semibold tracking-widest text-muted-foreground">INPUT</span>
           </div>
           <div className="flex-1 overflow-y-auto min-h-0">
@@ -444,7 +522,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  'flex-1 h-9 text-[11px] font-medium border-b-2 transition-colors',
+                  'flex-1 h-10 text-[11px] font-medium border-b-2 transition-colors',
                   activeTab === tab.id
                     ? 'text-accent border-accent'
                     : 'border-transparent text-muted-foreground hover:text-foreground',
@@ -493,18 +571,27 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
               )}
 
               {/* JOB_INIT info */}
-              {step.kind === 'JOB_INIT' && (
-                <>
-                  <div className="h-px bg-border" />
-                  <div className="text-[11px] font-medium text-muted-foreground">Processing Profile Settings</div>
-                  <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-1.5 text-[11px]">
-                    <InfoRow label="Profile" value={step.jobInitConfig?.profileId ?? 'Unassigned'} />
-                    <InfoRow label="Polarization" value={step.jobInitConfig?.polarization || '—'} />
-                    <InfoRow label="Priority" value={`${step.jobInitConfig?.priority ?? 5}`} />
-                    <InfoRow label="Retry Strategy" value={step.jobInitConfig?.retryInterval ? RETRY_INTERVAL_LABELS[step.jobInitConfig.retryInterval] : '—'} />
-                  </div>
-                </>
-              )}
+              {step.kind === 'JOB_INIT' && (() => {
+                const selectedProfile = step.jobInitConfig?.profileId
+                  ? availableProfiles?.find((p) => p.id === step.jobInitConfig?.profileId) ?? null
+                  : null;
+                const profileName = selectedProfile?.name ?? step.jobInitConfig?.profileId ?? 'Unassigned';
+                const profileHasPolarizationTags = (selectedProfile?.polarizationTags?.length ?? 0) > 0;
+                return (
+                  <>
+                    <div className="h-px bg-border" />
+                    <div className="text-[11px] font-medium text-muted-foreground">Processing Profile Settings</div>
+                    <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-1.5 text-[11px]">
+                      <InfoRow label="Profile" value={profileName} />
+                      {profileHasPolarizationTags && (
+                        <InfoRow label="Polarization" value={step.jobInitConfig?.polarization || '—'} />
+                      )}
+                      <InfoRow label="Priority" value={`${step.jobInitConfig?.priority ?? 5}`} />
+                      <InfoRow label="Retry Strategy" value={step.jobInitConfig?.retryInterval ? RETRY_INTERVAL_LABELS[step.jobInitConfig.retryInterval] : '—'} />
+                    </div>
+                  </>
+                );
+              })()}
 
               {/* SAR stage overview */}
               {step.kind === 'SAR' && step.sarStage && (
@@ -702,15 +789,18 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                     <span className="text-muted-foreground">Priority</span>
                     <span className="text-foreground">{step.jobInitConfig?.priority ?? 5}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Retry Strategy</span>
-                    <span className="text-foreground">{step.jobInitConfig?.retryInterval ? RETRY_INTERVAL_LABELS[step.jobInitConfig.retryInterval] : '—'}</span>
-                  </div>
                 </div>
               )}
 
-              {/* Non-SAR, Non-JOB_INIT: process list */}
-              {step.kind !== 'SAR' && step.kind !== 'JOB_INIT' && NODE_KIND_INFO[step.kind]?.processes && (
+              {/* CATALOG: STAC 엔드포인트 / 매핑 규칙 등 폼 기반 설정 */}
+              {step.kind === 'CATALOG' && onSaveNode && (
+                <div className="flex-1 min-h-0 overflow-y-auto">
+                  <CatalogConfigPanel step={step} onSave={handleSaveCatalog} />
+                </div>
+              )}
+
+              {/* Non-SAR, Non-JOB_INIT, Non-CATALOG: process list */}
+              {step.kind !== 'SAR' && step.kind !== 'JOB_INIT' && step.kind !== 'CATALOG' && NODE_KIND_INFO[step.kind]?.processes && (
                 <div className="px-5 py-4">
                   <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Processes</div>
                   <div className="space-y-1.5">
@@ -725,7 +815,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
               )}
 
               {/* 파라미터가 없는 노드 */}
-              {step.kind !== 'SAR' && step.kind !== 'JOB_INIT' && !NODE_KIND_INFO[step.kind]?.processes && (
+              {step.kind !== 'SAR' && step.kind !== 'JOB_INIT' && step.kind !== 'CATALOG' && !NODE_KIND_INFO[step.kind]?.processes && (
                 <div className="flex flex-col items-center justify-center py-10 text-muted-foreground/60">
                   <span className="text-[12px]">This node has no additional parameters</span>
                 </div>
@@ -737,38 +827,73 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
 
         {/* ── Right: OUTPUT ── */}
         <div className="w-[30%] flex flex-col border-l border-border bg-background">
-          <div className="shrink-0 h-9 flex items-center px-4 border-b border-border">
+          <div className="shrink-0 h-10 flex items-center justify-between gap-2 pl-4 pr-2 border-b border-border">
             <span className="text-[10px] font-semibold tracking-widest text-muted-foreground">OUTPUT</span>
+            {step.kind === 'SAR' && (
+              <button
+                type="button"
+                disabled={isRunning}
+                onClick={handleExecute}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[10px] font-semibold transition-colors',
+                  'bg-emerald-500 text-white hover:bg-emerald-400 active:bg-emerald-600',
+                  'disabled:opacity-60 disabled:cursor-not-allowed',
+                )}
+              >
+                {isRunning
+                  ? <><Loader className="w-3 h-3 animate-spin" /> Running…</>
+                  : isDone
+                    ? <><CheckCircle className="w-3 h-3" /> Re-run</>
+                    : <><Play className="w-3 h-3" fill="currentColor" strokeWidth={0} /> Execute step</>
+                }
+              </button>
+            )}
           </div>
-          <div className="flex-1 overflow-y-auto min-h-0">
-            {isRunning && (
-              <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-                <Loader className="w-6 h-6 animate-spin text-accent" />
-                <span className="text-[12px]">Running…</span>
+          <div className="flex-1 min-h-0 flex flex-col">
+            {step.kind === 'SAR' ? (
+              // SAR 노드: 항상 CLI 스타일 로그 터미널을 띄워둔다
+              <div className="flex-1 min-h-0">
+                <NodeExecutionTerminal
+                  lines={logLines}
+                  isRunning={isRunning}
+                  isDone={isDone}
+                  elapsedMs={elapsedMs}
+                  title={step.sarStage ? `${step.sarStage.toLowerCase()}-step` : 'sar-step'}
+                />
               </div>
-            )}
-            {isDone && outputData && (
-              <div>
-                <div className="flex items-center gap-1.5 px-3 pt-3 pb-1 text-[11px] text-success font-medium">
-                  <CheckCircle className="w-3.5 h-3.5" />
-                  Execution complete
-                </div>
-                <DataView data={outputData} />
-              </div>
-            )}
-            {!isRunning && !isDone && (
-              <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground/60 px-6 text-center">
-                <ChevronRight className="w-6 h-6 opacity-30 -scale-x-100" />
-                <span className="text-[12px]">No output data</span>
-                <button
-                  type="button"
-                  onClick={handleExecute}
-                  className="mt-1 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-destructive text-white hover:brightness-110 transition-all flex items-center gap-1.5"
-                >
-                  <Play className="w-3 h-3" fill="currentColor" strokeWidth={0} />
-                  Execute step
-                </button>
-                <span className="text-[10px] text-muted-foreground/40">or configure mock data</span>
+            ) : (
+              // 비-SAR 노드: 기존 mock 데이터 뷰
+              <div className="flex-1 overflow-y-auto min-h-0">
+                {isRunning && (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+                    <Loader className="w-6 h-6 animate-spin text-accent" />
+                    <span className="text-[12px]">Running…</span>
+                  </div>
+                )}
+                {isDone && outputData && (
+                  <div>
+                    <div className="flex items-center gap-1.5 px-3 pt-3 pb-1 text-[11px] text-success font-medium">
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      Execution complete
+                    </div>
+                    <DataView data={outputData} />
+                  </div>
+                )}
+                {!isRunning && !isDone && (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground/60 px-6 text-center">
+                    <ChevronRight className="w-6 h-6 opacity-30 -scale-x-100" />
+                    <span className="text-[12px]">No output data</span>
+                    <button
+                      type="button"
+                      onClick={handleExecute}
+                      className="mt-1 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-destructive text-white hover:brightness-110 transition-all flex items-center gap-1.5"
+                    >
+                      <Play className="w-3 h-3" fill="currentColor" strokeWidth={0} />
+                      Execute step
+                    </button>
+                    <span className="text-[10px] text-muted-foreground/40">or configure mock data</span>
+                  </div>
+                )}
               </div>
             )}
           </div>

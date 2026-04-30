@@ -2,6 +2,13 @@
 @import "tailwindcss";
 @import "ol/ol.css";
 
+/*
+ * Tailwind v4의 dark variant를 class 기반으로 강제한다.
+ * 기본값(prefers-color-scheme)을 두면 OS 다크모드 + 앱 라이트모드 조합에서
+ * dark:* 유틸이 라이트 테마 위에 함께 적용되어 색이 어긋난다.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Light theme (default) */
 :root {
   --background: #ffffff;

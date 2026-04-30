@@ -598,6 +598,8 @@ export default function ConsolePage() {
           : toStepUpdate(s),
       );
       updatePipeline({ steps: newSteps });
+      setNodeDetailStep((prev) => (prev && prev.order === updated.order ? updated : prev));
+      toast.success('Settings applied successfully.');
     },
     [selectedPipeline, updatePipeline, toStepUpdate],
   );
@@ -772,7 +774,7 @@ export default function ConsolePage() {
       let csc: string;
       if (s.kind === 'TRIGGER') { label = 'Raw Data Receive Trigger'; csc = 'EI-01'; }
       else if (s.kind === 'FILE_INPUT') { label = 'Result File Input'; csc = 'SI-07'; }
-      else if (s.kind === 'JOB_INIT') { label = 'Job Initialization'; csc = 'CSC-08.02'; }
+      else if (s.kind === 'JOB_INIT') { label = 'Job Initialization'; csc = 'CSU-08.02'; }
       else if (s.kind === 'CATALOG') { label = 'Catalog Registration'; csc = 'CSC-07'; }
       else if (s.kind === 'SAR' && s.sarStage) { label = SAR_STAGE_LABELS[s.sarStage]; csc = SAR_STAGE_TO_CSC[s.sarStage]; }
       else { label = 'Node'; csc = '—'; }

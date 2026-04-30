@@ -1,16 +1,14 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import type { PipelineStepDefinition, ProcessingProfile, JobInitConfig, RetryInterval } from '@/types/pipeline';
+import type { PipelineStepDefinition, ProcessingProfile, JobInitConfig } from '@/types/pipeline';
 import {
-  MAX_RETRY_COUNT,
   DEADLINE_HOUR_OPTIONS,
-  RETRY_INTERVAL_LABELS,
   JOB_INIT_PROFILE_MISSING_MESSAGE,
 } from '@/types/pipeline';
 import {
   SlidersHorizontal, Save, ChevronDown, ChevronRight,
-  Shield, Zap, UserCog, AlertTriangle,
+  Zap, UserCog, AlertTriangle,
   Satellite, Radio, Activity, Pencil,
 } from 'lucide-react';
 import CustomSelect, { type CustomSelectOption } from '@/components/ui/CustomSelect';
@@ -30,14 +28,6 @@ const DEFAULT_CONFIG: JobInitConfig = {
   retryInterval: 'IMMEDIATE',
   deadlineHours: 4,
 };
-
-function ConfirmedBadge({ note }: { note?: string }) {
-  return (
-    <span className="inline-flex items-center text-[9px] bg-accent/10 text-accent rounded px-1.5 py-0.5 shrink-0">
-      Confirmed{note ? ` · ${note}` : ''}
-    </span>
-  );
-}
 
 function TbcBadge({ note }: { note?: string }) {
   return (
@@ -71,7 +61,6 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
   const [polarization, setPolarization] = useState(initial.polarization);
   const [priority, setPriority] = useState(initial.priority);
   const [deadlineHours, setDeadlineHours] = useState<number | undefined>(initial.deadlineHours);
-  const [retryInterval, setRetryInterval] = useState<RetryInterval>(initial.retryInterval);
   const [overrideOpen, setOverrideOpen] = useState(false);
 
   const matchingProfiles = useMemo(
@@ -116,18 +105,19 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
       polarization !== orig.polarization ||
       (profileId || undefined) !== orig.profileId ||
       priority !== orig.priority ||
-      deadlineHours !== orig.deadlineHours ||
-      retryInterval !== orig.retryInterval
+      deadlineHours !== orig.deadlineHours
     );
-  }, [step, polarization, profileId, priority, deadlineHours, retryInterval]);
+  }, [step, polarization, profileId, priority, deadlineHours]);
 
   const handleSave = () => {
+    // retryInterval은 ICD 3.5에서 시스템 차원으로 결정되는 값이라 본 패널에서는 편집하지 않는다.
+    // 기존 값이 있으면 보존, 없으면 DEFAULT_CONFIG.retryInterval로 채운다.
     const config: JobInitConfig = {
       polarization,
       profileId: profileId || undefined,
       priority,
       deadlineHours,
-      retryInterval,
+      retryInterval: initial.retryInterval ?? DEFAULT_CONFIG.retryInterval,
     };
     onSave({ ...step, jobInitConfig: config });
   };
@@ -148,8 +138,8 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
       </div>
 
       {profileMissingInDefinition && (
-        <div className="flex gap-2 rounded-lg border border-amber-500/35 bg-amber-500/10 p-3 text-[10px] leading-relaxed text-amber-100/95">
-          <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500 mt-0.5" strokeWidth={2.25} aria-hidden />
+        <div className="flex gap-2 rounded-lg border border-amber-500/35 bg-amber-500/10 p-3 text-[10px] leading-relaxed text-amber-800 dark:text-amber-100/95">
+          <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-500 mt-0.5" strokeWidth={2.25} aria-hidden />
           <p className="min-w-0">{JOB_INIT_PROFILE_MISSING_MESSAGE}</p>
         </div>
       )}
@@ -312,46 +302,6 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
                 ...DEADLINE_HOUR_OPTIONS.map((h) => ({ value: String(h), label: `${h} hours` })),
               ]}
             />
-          </div>
-        </div>
-      </div>
-
-      {/* Section 3: Retry Policy */}
-      <div className="space-y-2.5">
-        <div className="flex items-center gap-1.5 text-[11px] font-medium text-foreground">
-          <Shield className="w-3.5 h-3.5 text-accent" />
-          Retry Policy
-        </div>
-
-        <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
-          <div className="flex items-center justify-between text-[10px]">
-            <span className="text-muted-foreground">Max retries</span>
-            <div className="flex items-center gap-2">
-              <span className="text-foreground font-medium">{MAX_RETRY_COUNT} fixed</span>
-              <ConfirmedBadge note="ICD 3.5" />
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-[10px] text-muted-foreground">Retry interval</label>
-              <TbcBadge note="ICD 3.5" />
-            </div>
-            <div className="flex gap-1.5">
-              {(Object.entries(RETRY_INTERVAL_LABELS) as [RetryInterval, string][]).map(([key, label]) => (
-                <button
-                  key={key}
-                  onClick={() => setRetryInterval(key)}
-                  className={`flex-1 py-1.5 rounded-md text-[10px] font-medium transition-colors ${
-                    retryInterval === key
-                      ? 'bg-accent/15 border border-accent/50 text-accent'
-                      : 'bg-card border border-border text-muted-foreground hover:bg-muted/50'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       </div>

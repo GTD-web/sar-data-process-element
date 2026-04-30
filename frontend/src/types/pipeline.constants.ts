@@ -14,28 +14,28 @@ export const SAR_STAGE_LABELS: Record<SarStage, string> = {
   L0:  'Raw Data Processing',
   L1A: 'SAR Focusing (SLC)',
   L1B: 'Multi-look (MLC/GRD)',
-  L1C: 'Terrain Correction (RTC)',
+  L1C: 'Geometric Terrain Correction (GTC)',
   L2A: 'Map Products',
   L2B: 'Scene Analysis',
   L3:  'Application Products',
 };
 
 export const SAR_STAGE_TASKS: Record<SarStage, string[]> = {
-  L0:  ['Time Ordering & Synchronization', 'Metadata Extraction', 'Range Line Formatting', 'Calibration'],
+  L0:  ['De-packetizer', 'BAQ De-compression', 'Range Line Reconstructor', 'Auxiliary Data Extractor', 'Calibration', 'HDF5 Converter'],
   L1A: ['Range Compression', 'Azimuth Compression', 'Autofocusing', 'Multi-mode Support', 'SLC Product'],
   L1B: ['Multi-look Processing', 'Speckle Filtering', 'Ground-range Projection', 'Amplitude/phase Product'],
-  L1C: ['DEM Integration', 'Geometric Correction', 'Radiometric Terrain Correction', 'Map Projection'],
+  L1C: ['DEM Integration', 'Geometric Correction', 'Geometric Terrain Correction', 'Map Projection'],
   L2A: ['Incidence Angle Map', 'NESZ Map', 'Number-of-looks Map', 'Layover and Shadow Masks'],
-  L2B: ['Object Detection', 'Change Detection'],
-  L3:  ['Application-specific Products'],
+  L2B: ['Incidence Angle Map', 'Shadow Mask', 'Layover Mask', 'Co-registration', 'Object Detection', 'Change Detection'],
+  L3:  ['Application Product Generation', 'Quality Validation', 'Customer Metadata Annotation', 'Output Packaging'],
 };
 
 /** SAR stage descriptions */
 export const SAR_STAGE_DESCRIPTIONS: Record<SarStage, string> = {
-  L0:  'Sorts raw data in time order and applies basic calibration',
+  L0:  'Converts raw downlink frames to a calibrated Level-0 HDF5 product (CCSDS → BAQ → range lines → calibration)',
   L1A: 'Focuses SAR signals to generate SLC (Single Look Complex) images',
   L1B: 'Reduces speckle noise via multi-look processing and produces GRD images',
-  L1C: 'Generates orthorectified imagery (RTC) via DEM-based terrain correction',
+  L1C: 'Generates orthorectified imagery (GTC) via DEM-based geometric terrain correction',
   L2A: 'Produces auxiliary maps such as incidence angle, NESZ, and number of looks',
   L2B: 'Performs object detection and time-series change detection',
   L3:  'Generates final application products tailored to user requirements',
@@ -83,9 +83,9 @@ export const SAR_STAGE_TO_CSC: Record<SarStage, TargetCsc> = {
   L0:  'CSC-03',
   L1A: 'CSC-04',
   L1B: 'CSC-04',
-  L1C: 'CSC-05',
+  L1C: 'CSC-04',
   L2A: 'CSC-05',
-  L2B: 'CSC-06',
+  L2B: 'CSC-05',
   L3:  'CSC-06',
 };
 
@@ -122,6 +122,77 @@ export const RETRY_INTERVAL_LABELS: Record<RetryInterval, string> = {
   EXPONENTIAL_BACKOFF: 'Exponential backoff',
 };
 
+/** CATALOG 노드 외부 publish 인증 모드 라벨 */
+export const CATALOG_AUTH_MODE_LABELS: Record<'NONE' | 'BEARER' | 'API_KEY', string> = {
+  NONE:    'No auth',
+  BEARER:  'Bearer token',
+  API_KEY: 'API key',
+};
+
+/** 동일 product key 충돌 시 정책 라벨 (ICD OPS-04 확정 동작은 NEW_VERSION_ARCHIVE_PREVIOUS) */
+export const CATALOG_DUPLICATE_POLICY_LABELS: Record<
+  'NEW_VERSION_ARCHIVE_PREVIOUS' | 'REPLACE_IN_PLACE' | 'REJECT_DUPLICATE',
+  string
+> = {
+  NEW_VERSION_ARCHIVE_PREVIOUS: 'New version + archive previous',
+  REPLACE_IN_PLACE:             'Replace in place',
+  REJECT_DUPLICATE:             'Reject duplicate',
+};
+
+/** sar_products.status 초기값 라벨 */
+export const CATALOG_INITIAL_STATUS_LABELS: Record<'REGISTERED' | 'PUBLISHED', string> = {
+  REGISTERED: 'REGISTERED',
+  PUBLISHED:  'PUBLISHED',
+};
+
+/** 품질 검증 실패 시 처리 정책 라벨 */
+export const CATALOG_QUALITY_FAILURE_POLICY_LABELS: Record<
+  'BLOCK_REGISTRATION' | 'REGISTER_WITH_FLAG' | 'ALERT_ONLY',
+  string
+> = {
+  BLOCK_REGISTRATION: 'Block registration & alert',
+  REGISTER_WITH_FLAG: 'Register with quality_passed=false',
+  ALERT_ONLY:         'Alert only',
+};
+
+/**
+ * Layer (a): 처리 결과 메타 → sar_products 컬럼.
+ * ICD §6.8 sar_products 테이블 핵심 스켈레톤(확정) + SI-05 메시지(§6.7) 매핑.
+ * read-only 표시용.
+ */
+export const SAR_PRODUCTS_INGEST_MAPPING: ReadonlyArray<{
+  source: string;
+  target: string;
+  origin: 'SI-05' | 'SI-05 (TBC)' | 'EI-01';
+  note?: string;
+}> = [
+  { source: 'satellite_id',      target: 'satellite_id',     origin: 'SI-05 (TBC)', note: '위성팀 코드 체계' },
+  { source: 'product_level',     target: 'product_level',    origin: 'SI-05' },
+  { source: 'product_type',      target: 'product_type',     origin: 'SI-05 (TBC)' },
+  { source: 'acquisition_start', target: 'acquisition_start', origin: 'SI-05' },
+  { source: 'acquisition_end',   target: 'acquisition_end',   origin: 'SI-05' },
+  { source: 'footprint_wkt',     target: 'footprint',         origin: 'SI-05 (TBC)', note: 'POLYGON, EPSG:4326' },
+  { source: 'product_path',      target: 'file_path',         origin: 'SI-05' },
+];
+
+/**
+ * Layer (b): sar_products 컬럼 → STAC Item properties.
+ * STAC SAR/EO Extension 표준 기반(확정) — 자물쇠로 잠근 채 표시.
+ */
+export const STAC_STANDARD_MAPPING: ReadonlyArray<{
+  source: string;
+  target: string;
+  extension: 'core' | 'sar' | 'eo' | 'processing';
+}> = [
+  { source: 'satellite_id',      target: 'platform',           extension: 'core' },
+  { source: 'acquisition_start', target: 'start_datetime',     extension: 'core' },
+  { source: 'acquisition_end',   target: 'end_datetime',       extension: 'core' },
+  { source: 'footprint',         target: 'geometry',           extension: 'core' },
+  { source: 'product_level',     target: 'processing:level',   extension: 'processing' },
+  { source: 'mode',              target: 'sar:instrument_mode', extension: 'sar' },
+  { source: 'polarization',      target: 'sar:polarizations',  extension: 'sar' },
+];
+
 export const TRIGGER_SOURCE_LABELS: Record<TriggerSource, string> = {
   PIPELINE_AUTO:    'Auto on raw reception',
   MANUAL_REQUEST:   'Manual request',
@@ -132,6 +203,20 @@ export const PIPELINE_EVENT_TYPE_LABELS: Record<PipelineEventType, string> = {
   RAW_DATA_RECEIVED: 'Raw data received',
   PARTIAL_REPROCESS_REQUESTED: 'Partial reprocess requested',
   PRODUCT_REPROCESS_REQUESTED: 'Product reprocess requested',
+};
+
+/**
+ * PGMQ 이벤트 → 발행 큐 매핑.
+ * - RAW_DATA_RECEIVED: SI-01, `sdpe.reception.events` (확정, ICD 6.6)
+ * - PARTIAL/PRODUCT_REPROCESS_REQUESTED: SI-07. 전달 매체(REST vs pgmq) 미확정 — TBD 표기
+ *   (출처: interfaces/csc-8/README.md:66, interfaces/csc-9/README.md:60)
+ */
+export const PGMQ_EVENT_TBD_QUEUE = 'TBD' as const;
+
+export const PIPELINE_EVENT_SOURCE_QUEUE: Record<PipelineEventType, string> = {
+  RAW_DATA_RECEIVED: 'sdpe.reception.events',
+  PARTIAL_REPROCESS_REQUESTED: PGMQ_EVENT_TBD_QUEUE,
+  PRODUCT_REPROCESS_REQUESTED: PGMQ_EVENT_TBD_QUEUE,
 };
 
 // --- ICD Operational Constants ---

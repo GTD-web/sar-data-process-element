@@ -95,363 +95,351 @@ def range_compress(s: np.ndarray, replica_dec: np.ndarray, az_batch: int = 64) -
 __all__ = ["range_compress"]
 `;
 
-const L1B_RDA_AZIMUTH = String.raw`"""CSU-04.02 RDA azimuth processing.
+const L1B_MULTILOOK_GRD = String.raw`"""CSC-04 L1B Multi-look / GRD pipeline.
 
-Preserved from the original V4 processor:
+Implements the L1B portion of the CSC-04 ICD interface:
 
-Per azimuth block after range compression:
-  1. Doppler centroid: per-line cross-correlation, Savitzky-Golay smoothed.
-  2. Deramping       : exp(-j * 2*pi * cumsum(fdc) / PRF).
-  3. RCMC            : time-domain interpolation per azimuth column.
-                       R(n,R0) = sqrt(R0^2 + (Vr*n/PRF)^2)
-  4. Azimuth compress: time-domain quadratic chirp, range-chunked FFT conv.
-                       h(t) = exp(-j*pi*Ka*t^2), Ka = -2Vr^2/(lambda R)
+  CSU-04.05 Multi-look Processor — range/azimuth boxcar averaging
+                                   (Multi-look Processing)
+  (sub-step) Speckle Filtering   — Lee / Frost / refined-Lee filtering
+  CSU-04.06 GRD Converter        — Ground-range Projection (slant→ground)
+  CSU-04.06 Amplitude/phase      — Amplitude/phase Product extraction
+
+OPS-02 (ICD §3.2). Produces a Cloud Optimized GeoTIFF at L1B (sigma0 GRD).
+
+Inputs:
+  slc_path : Level-1A SLC GeoTIFF (complex64)
+  out_path : output L1B GRD GeoTIFF
 """
 
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Tuple
+
 import numpy as np
-from scipy.ndimage import map_coordinates as _map_coords
-from scipy.signal import savgol_filter
-
-from csu_04_01_range_compression import _fft, _ifft
-from shared.metadata import C
+import rasterio
+from scipy.ndimage import uniform_filter
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 3.  Doppler centroid profile  (per-line, SG-smoothed)
+# CSU-04.05  Multi-look Processing
+# Range·Azimuth 방향으로 박스 평균(boxcar)을 적용해 픽셀 수를 줄이고 ENL을 늘려
+# 스페클을 1차로 완화한다.
 # ════════════════════════════════════════════════════════════════════════════
-def estimate_fdc_profile(src_rc: np.ndarray, prf: float, smooth_len: int = 101) -> np.ndarray:
-    """Estimate Doppler centroid by adjacent-line phase correlation."""
-    n_range, n_az = src_rc.shape
-    if n_az < 2:
-        return np.zeros(n_az)
-    corr = np.sum(src_rc[:, 1:] * np.conj(src_rc[:, :-1]), axis=0)  # (Naz-1,)
-    fdc = (prf / (2.0 * np.pi)) * np.angle(corr)
-    fdc = np.concatenate([fdc[:1], fdc])                            # (Naz,)
-    window_length = min(smooth_len | 1, (len(fdc) // 2) * 2 + 1)
-    if window_length >= 3:
-        polyorder = min(5, window_length - 1)
-        fdc = savgol_filter(fdc, window_length=window_length, polyorder=polyorder, mode="nearest")
-    return fdc.astype(np.float64)
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# 4.  Time-varying Doppler deramping
-# ════════════════════════════════════════════════════════════════════════════
-def remove_time_varying_fdc(src_rc: np.ndarray, fdc_profile: np.ndarray, prf: float):
-    """Deramp the range-compressed block using the cumulative FDC phase."""
-    phi = 2.0 * np.pi * np.cumsum(fdc_profile) / prf
-    demod = np.exp(-1j * phi).astype(np.complex64)
-    return (src_rc * demod[np.newaxis, :]), float(np.mean(fdc_profile))
+def multilook_processing(
+    slc: np.ndarray, range_looks: int = 4, azimuth_looks: int = 1,
+) -> np.ndarray:
+    """Apply multi-look boxcar averaging to a complex SLC input."""
+    if range_looks < 1 or azimuth_looks < 1:
+        raise ValueError("multi-look factors must be >= 1")
+    intensity = (slc.real ** 2 + slc.imag ** 2).astype(np.float32)
+    h, w = intensity.shape
+    h_out = h // azimuth_looks
+    w_out = w // range_looks
+    intensity = intensity[: h_out * azimuth_looks, : w_out * range_looks]
+    looked = intensity.reshape(h_out, azimuth_looks, w_out, range_looks).mean(axis=(1, 3))
+    return looked.astype(np.float32)
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 5.  RCMC  (scipy.ndimage.map_coordinates — C backend, range-strip chunked)
+# Speckle Filtering
+# Multi-look 후에도 남는 스페클을 통계 기반 필터로 추가 억제한다.
+# 기본은 Lee filter (variance-aware), Frost filter는 옵션으로 선택 가능.
 # ════════════════════════════════════════════════════════════════════════════
-def rcmc_time_domain(src: np.ndarray, SR: np.ndarray, Vr: float, fs: float, prf: float, rng_strip: int = 4096):
-    """Apply range cell migration correction by interpolating slant-range shifts."""
-    n_range, n_az = src.shape
-    t_az = np.arange(n_az, dtype=np.float64) / prf   # (Naz,) seconds
-    t_end = (n_az - 1) / prf
-    delta_r_max = float(np.sqrt(SR.min() ** 2 + (Vr * t_end) ** 2) - SR.min())
-    r_guard = int(np.ceil(2.0 * delta_r_max / C * fs)) + 8
+def lee_filter(image: np.ndarray, window: int = 5, cu: float = 0.523) -> np.ndarray:
+    """Variance-aware speckle smoothing (refined Lee)."""
+    mean = uniform_filter(image, size=window)
+    sqr = uniform_filter(image ** 2, size=window)
+    var = np.maximum(sqr - mean ** 2, 0.0)
+    weight = (var / (var + (mean ** 2) * (cu ** 2) + 1e-9)).astype(np.float32)
+    return (mean + weight * (image - mean)).astype(np.float32)
 
-    col_idx = np.arange(n_az, dtype=np.float64)
-    out = np.empty_like(src)
 
-    for r0 in range(0, n_range, rng_strip):
-        r1 = min(r0 + rng_strip, n_range)
-        r0e = max(0, r0 - r_guard)
-        r1e = min(n_range, r1 + r_guard)
+def frost_filter(image: np.ndarray, window: int = 5, damping: float = 2.0) -> np.ndarray:
+    """Frost-style exponential decay speckle filter."""
+    mean = uniform_filter(image, size=window)
+    sqr = uniform_filter(image ** 2, size=window)
+    var = np.maximum(sqr - mean ** 2, 0.0)
+    cv2 = var / np.maximum(mean ** 2, 1e-9)
+    blend = np.exp(-damping * cv2).astype(np.float32)
+    return (blend * mean + (1.0 - blend) * image).astype(np.float32)
 
-        strip_r = np.ascontiguousarray(src[r0e:r1e].real, dtype=np.float32)
-        strip_i = np.ascontiguousarray(src[r0e:r1e].imag, dtype=np.float32)
 
-        sr_out = SR[r0:r1]
-        r_t = np.sqrt(sr_out[:, None] ** 2 + (Vr * t_az[None, :]) ** 2)
-        shift = (2.0 * (r_t - sr_out[:, None]) / C) * fs
-        row = np.arange(r0, r1, dtype=np.float64)[:, None] - r0e + shift
-        col = np.broadcast_to(col_idx[None, :], row.shape).copy()
-        coords = [row.ravel(), col.ravel()]
-        rp = _map_coords(strip_r, coords, order=1, mode="nearest", prefilter=False)
-        ip = _map_coords(strip_i, coords, order=1, mode="nearest", prefilter=False)
-
-        out[r0:r1] = (rp + 1j * ip).reshape(r1 - r0, n_az).astype(np.complex64)
-        del strip_r, strip_i, r_t, shift, row, col, rp, ip
-
-    return out
+def apply_speckle_filter(image: np.ndarray, kind: str = "lee", window: int = 5) -> np.ndarray:
+    """Dispatch to the selected speckle reducer (lee / frost / none)."""
+    if kind == "lee":
+        return lee_filter(image, window=window)
+    if kind == "frost":
+        return frost_filter(image, window=window)
+    return image.astype(np.float32)
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 6.  Azimuth compression  (time-domain quadratic chirp, range-chunked)
+# CSU-04.06  GRD Converter — Ground-range Projection
+# Slant range → ground range 투영. 평균 표고와 look angle을 이용해 픽셀 스페이싱
+# (gr_projection)을 재계산하고 등간격 그라운드 그리드로 리샘플.
 # ════════════════════════════════════════════════════════════════════════════
-def azimuth_compress(src: np.ndarray, prf: float, Vr: float, wavelength: float, SR: np.ndarray, rng_chunk: int = 512):
-    """Apply range-dependent azimuth matched filtering in range chunks."""
-    n_range, n_az = src.shape
-    t = np.arange(n_az, dtype=np.float64) / prf
-    fft_len = 1 << int(np.ceil(np.log2(2 * n_az)))
-    ka_neg = -2.0 * Vr**2 / (wavelength * SR)
-    out = np.empty((n_range, n_az), dtype=np.complex64)
+def project_to_ground_range(
+    slant_image: np.ndarray, slant_spacing_m: float, look_angle_deg: float = 30.0,
+) -> Tuple[np.ndarray, float]:
+    """Slant→ground-range resample on the reference ellipsoid (gr_projection)."""
+    sin_look = max(np.sin(np.deg2rad(look_angle_deg)), 1e-3)
+    ground_spacing = slant_spacing_m / sin_look
 
-    for r0 in range(0, n_range, rng_chunk):
-        r1 = min(r0 + rng_chunk, n_range)
-        ka_chunk = ka_neg[r0:r1, np.newaxis]
-        h0 = np.exp(-1j * np.pi * ka_chunk * t[np.newaxis, :] ** 2)
-        h_fft = _fft(h0, n=fft_len, axis=1)
-        x_chunk = _fft(src[r0:r1], n=fft_len, axis=1)
-        y = _ifft(x_chunk * h_fft, axis=1)
-        out[r0:r1] = y[:, :n_az].astype(np.complex64)
-        del h0, h_fft, x_chunk, y
+    h, w = slant_image.shape
+    gr_w = max(2, int(round(w * (slant_spacing_m / ground_spacing))))
+    src_x = np.linspace(0.0, w - 1.0, num=gr_w)
+    cols = np.clip(np.round(src_x).astype(np.int32), 0, w - 1)
+    return slant_image[:, cols].astype(np.float32), ground_spacing
 
-    return out
+
+# ════════════════════════════════════════════════════════════════════════════
+# CSU-04.06  Amplitude/phase Product
+# Multi-look + speckle 처리된 결과에서 σ⁰ amplitude(진폭)와 phase(위상) 정보를
+# 추출하고, GRD GeoTIFF 두 채널로 패키징한다.
+# ════════════════════════════════════════════════════════════════════════════
+def compute_amplitude(slc: np.ndarray) -> np.ndarray:
+    """Compute amplitude (sqrt of intensity) from the complex SLC."""
+    return np.sqrt(slc.real ** 2 + slc.imag ** 2).astype(np.float32)
+
+
+def compute_phase(slc: np.ndarray) -> np.ndarray:
+    """Compute interferometric phase (radians) from the complex SLC."""
+    return np.angle(slc).astype(np.float32)
+
+
+def write_grd_geotiff(
+    amplitude: np.ndarray, phase: np.ndarray, profile: dict, out_path: str,
+) -> str:
+    """Write the amplitude/phase pair as a 2-band GRD COG."""
+    out_profile = {
+        **profile,
+        "count": 2, "dtype": "float32",
+        "driver": "COG", "compress": "deflate",
+        "blockxsize": 512, "blockysize": 512,
+    }
+    with rasterio.open(out_path, "w", **out_profile) as dst:
+        dst.write(amplitude, 1)
+        dst.write(phase, 2)
+    return out_path
+
+
+# ── Pipeline orchestrator (OPS-02 / L1B) ────────────────────────────────────
+def run_l1b_grd(slc_path: str, out_path: str) -> dict:
+    with rasterio.open(slc_path) as src:
+        slc = src.read(1)  # complex64 SLC
+        profile = src.profile
+        slant_spacing_m = abs(profile["transform"].a)
+
+    looked = multilook_processing(slc, range_looks=4, azimuth_looks=1)
+    smoothed = apply_speckle_filter(looked, kind="lee", window=5)
+    grd, ground_spacing = project_to_ground_range(smoothed, slant_spacing_m)
+
+    amplitude = np.sqrt(grd).astype(np.float32)
+    h_out, w_out = amplitude.shape
+    if slc.dtype == np.complex64:
+        phase = compute_phase(slc[:h_out, :w_out])
+    else:
+        phase = np.zeros_like(amplitude, dtype=np.float32)
+
+    write_grd_geotiff(amplitude, phase, profile, out_path)
+    return {
+        "out_path": out_path,
+        "ground_spacing_m": ground_spacing,
+        "shape": list(amplitude.shape),
+    }
 
 
 __all__ = [
-    "azimuth_compress",
-    "estimate_fdc_profile",
-    "rcmc_time_domain",
-    "remove_time_varying_fdc",
+    "apply_speckle_filter",
+    "compute_amplitude",
+    "compute_phase",
+    "frost_filter",
+    "lee_filter",
+    "multilook_processing",
+    "project_to_ground_range",
+    "run_l1b_grd",
+    "write_grd_geotiff",
 ]
 `;
 
-const L1C_SLC_FORMATION = String.raw`"""CSU-04.04 SLC formation and block orchestration.
+const L1C_GEOMETRIC_TERRAIN_CORRECTION = String.raw`"""CSC-04 L1C Geometric Terrain Correction (GTC) pipeline.
 
-Preserved from the original V4 processor.
+Implements the four CSU stages that produce a terrain-corrected, map-projected
+Level-1C product from a Level-1B GRD input:
 
-Block layout (sliding-window overlap-add, identical to reference code)
-----------------------------------------------------------------------
-  na_syn   = PRF x beamwidth_rad x R_far / Vr_eff
-  overlap  = na_syn
-  step     = na_valid  (default = 1000, user-overridable via --step)
-  na_block = overlap + step
+  CSU-04.09 DEM Integration              — load + reproject NAS DEM (EI-02)
+  CSU-04.07 GEC Processor                — slant range → ground range geocode
+                                           on the reference ellipsoid (no DEM)
+  CSU-04.10 Geometric Terrain Correction — DEM-based ortho rectification
+                                           (Range-Doppler model)
+  CSU-04.11 Map Projection               — reproject to target CRS, write COG
 
-Per azimuth block:
-  1. Read HDF5 raw lines -> transpose to (Nrg, Naz)
-  2. Optional range decimation
-  3. CSU-04.01 range compression
-  4. Doppler centroid estimate and deramping
-  5. RCMC
-  6. Azimuth compression
-  7. Overlap-add into the output SLC
+OPS-02 (ICD §3.2). DEM 소스 (SRTM1/DTED-2)와 COG 타일 크기는 ICD에서 TBC.
+
+Inputs:
+  l1b_path : Level-1B GRD GeoTIFF (sigma0, slant- or ground-range)
+  dem_path : NAS DEM tile path (EI-02)
+  out_path : output L1C GTC GeoTIFF (Cloud Optimized)
 """
 
-import math
-import os
-import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Tuple
 
 import numpy as np
-from scipy.signal import resample_poly
-from scipy.signal.windows import tukey
-
-from csu_04_01_range_compression import range_compress
-from csu_04_02_rda_azimuth import (
-    azimuth_compress,
-    estimate_fdc_profile,
-    rcmc_time_domain,
-    remove_time_varying_fdc,
-)
-from shared.io import _TiffStripWriter, _write_quicklook_from_slc, write_metadata_xml
-from shared.metadata import HAS_H5PY, Meta, Re, h5py, load_metadata, log
+import rasterio
+from rasterio.enums import Resampling
+from rasterio.transform import array_bounds, from_bounds, xy
+from rasterio.warp import reproject, transform_bounds
 
 
-def _build_block_schedule(na_total: int, na_block: int, step: int) -> List[dict]:
-    n_runs = math.ceil((na_total - na_block) / step) + 1
-    blocks = []
-    for k in range(n_runs):
-        az0 = k * step
-        az1 = az0 + na_block
-        if az1 > na_total:
-            az0 = max(0, na_total - na_block)
-            az1 = na_total
-        blocks.append(dict(block_idx=k, az0=az0, az1=az1))
-        if az1 >= na_total:
-            break
-    return blocks
+# ════════════════════════════════════════════════════════════════════════════
+# CSU-04.09  DEM Integration  (EI-02)
+# NAS에 사전 배치된 SRTM-30m / DTED-2 타일을 읽어 SAR 영상 격자로 재투영한다.
+# DEM 소스는 ICD §6.3 TBC — 알고리즘 팀 + 라이선스 협의에 따라 결정.
+# ════════════════════════════════════════════════════════════════════════════
+def load_dem_tile(dem_path: str | Path) -> Tuple[np.ndarray, dict]:
+    """Read a DEM tile (digital_elevation model, e.g. SRTM-30m or DTED-2)."""
+    with rasterio.open(dem_path) as src:
+        dem = src.read(1).astype(np.float32)
+        profile = src.profile
+    # NaN sentinel handling for SRTM voids
+    dem = np.where(dem < -1e4, np.nan, dem)
+    return dem, profile
 
 
-def _process_block(args: dict) -> Tuple[int, int, np.ndarray, float]:
-    """Process one azimuth block and return focused complex data plus mean FDC."""
-    h5_path = args["h5_path"]
-    az0 = args["az0"]
-    az1 = args["az1"]
-    nr_dec = args["nr_dec"]
-    prf = args["prf"]
-    r_near = args["r_near"]
-    dr_dec = args["dr_dec"]
-    fs_dec = args["fs_dec"]
-    wavelength = args["wavelength"]
-    vr_eff = args["Vr_eff"]
-    ht = args["platform_height"]
-    v_mag = args["v_mag"]
-    decimate_range = args["decimate_range"]
-    replica_dec = args["replica_dec"]
-    smooth_len = args["smooth_len"]
-    rng_chunk = args["rng_chunk"]
-
-    with h5py.File(h5_path, "r") as f:
-        chunk = f["ST0/Raw data"][az0:az1, :, :]
-
-    na_actual = chunk.shape[0]
-    s = chunk[:, :, 0].astype(np.float32) + 1j * chunk[:, :, 1].astype(np.float32)
-    del chunk
-    s = s.T
-
-    if decimate_range > 1:
-        s = resample_poly(s, up=1, down=decimate_range, axis=0).astype(np.complex64)
-
-    rc = range_compress(s, replica_dec, az_batch=args["az_batch"])
-    del s
-
-    v_block = float(np.mean(v_mag[az0:az1])) if na_actual > 0 else vr_eff
-    vr = v_block * np.sqrt(Re / (Re + ht))
-
-    fdc_profile = estimate_fdc_profile(rc, prf, smooth_len=smooth_len)
-    rc_deramp, fdc_mean = remove_time_varying_fdc(rc, fdc_profile, prf)
-    del rc
-
-    sr = r_near + np.arange(nr_dec) * dr_dec
-    rc_rcmc = rcmc_time_domain(rc_deramp, sr, vr, fs_dec, prf)
-    del rc_deramp
-
-    focused = azimuth_compress(rc_rcmc, prf, vr, wavelength, sr, rng_chunk=rng_chunk)
-    del rc_rcmc
-    return args["block_idx"], az0, focused, fdc_mean
+def reproject_dem_to_image_grid(
+    dem: np.ndarray, dem_profile: dict, image_profile: dict,
+) -> np.ndarray:
+    """Resample the DEM into the SAR image grid via bilinear reprojection."""
+    out = np.zeros((image_profile["height"], image_profile["width"]), dtype=np.float32)
+    reproject(
+        source=dem, destination=out,
+        src_transform=dem_profile["transform"], src_crs=dem_profile["crs"],
+        dst_transform=image_profile["transform"], dst_crs=image_profile["crs"],
+        resampling=Resampling.bilinear,
+    )
+    return out
 
 
-class SARProcessor:
-    def __init__(
-        self,
-        h5_path: str,
-        output_dir: str,
-        workers: int = 1,
-        decimate_range: int = 1,
-        valid_lines: Optional[int] = None,
-        na_block_override: Optional[int] = None,
-        na_overlap_override: Optional[int] = None,
-        rng_chunk: int = 512,
-        az_batch: int = 64,
-        vmin_db: float = -60.0,
-        vmax_db: float = -5.0,
-    ):
-        self.workers = workers
-        self.rng_chunk = rng_chunk
-        self.az_batch = az_batch
-        self.vmin_db = vmin_db
-        self.vmax_db = vmax_db
-        self.out_dir = Path(output_dir)
-        os.makedirs(self.out_dir, exist_ok=True)
-
-        self.meta = load_metadata(
-            h5_path,
-            decimate_range=decimate_range,
-            valid_lines=valid_lines,
-            na_block_override=na_block_override,
-            na_overlap_override=na_overlap_override,
-        )
-        m = self.meta
-        self.schedule = _build_block_schedule(m.na_total, m.na_block, m.na_valid)
-        log.info(
-            "Schedule: %d blocks  na_overlap=%d  step=%d  na_block=%d",
-            len(self.schedule), m.na_overlap, m.na_valid, m.na_block,
-        )
-
-    def run(self) -> dict:
-        m = self.meta
-        out_slc = self.out_dir / "SLC_complex_w10dec16.tif"
-        out_ql = self.out_dir / "QuickLook.png"
-        out_xml = self.out_dir / "SLC_metadata_w10dec16.xml"
-
-        n_blk = len(self.schedule)
-        alpha = 1
-        win = tukey(m.na_block, alpha=min(alpha, 1.5)).astype(np.float32)
-        t0 = time.time()
-        fdc_log: Dict[int, float] = {}
-
-        buf = np.zeros((m.na_block, m.nr_dec, 2), dtype=np.float32)
-        wt = np.zeros(m.na_block, dtype=np.float32)
-        buf_az0 = 0
-        written = 0
-
-        base = dict(
-            h5_path=m.h5_path, nr=m.nr, nr_dec=m.nr_dec, prf=m.prf,
-            r_near=m.r_near, dr_dec=m.dr_dec, fs_dec=m.fs_dec,
-            wavelength=m.wavelength, Vr_eff=m.Vr_eff,
-            platform_height=m.platform_height, v_mag=m.v_mag,
-            decimate_range=m.decimate_range, replica_dec=m.replica_dec,
-            smooth_len=101, rng_chunk=self.rng_chunk, az_batch=self.az_batch,
-        )
-
-        tif_writer = _TiffStripWriter(str(out_slc), m.na_total, m.nr_dec, m.dr_dec, m.prf)
-
-        def _accumulate_and_flush(k, az0, focused, fdc):
-            nonlocal buf_az0, written
-            fdc_log[k] = fdc
-            na_actual = focused.shape[1]
-            lo = az0 - buf_az0
-            w = win[:na_actual]
-            slab = focused.T.astype(np.complex64)
-            buf[lo : lo + na_actual, :, 0] += slab.real * w[:, np.newaxis]
-            buf[lo : lo + na_actual, :, 1] += slab.imag * w[:, np.newaxis]
-            wt[lo : lo + na_actual] += w
-
-            flush_end = (
-                min(self.schedule[k + 1]["az0"], m.na_total)
-                if k + 1 < n_blk else m.na_total
-            )
-            if flush_end <= written:
-                return
-
-            n_flush = flush_end - written
-            lo_f = written - buf_az0
-            slab_f = buf[lo_f : lo_f + n_flush].copy()
-            safe_wt = np.maximum(wt[lo_f : lo_f + n_flush], 1e-6)
-            slab_f /= safe_wt[:, np.newaxis, np.newaxis]
-            tif_writer.write_strip(slab_f, written)
-
-            remain = m.na_block - n_flush
-            if remain > 0:
-                buf[:remain] = buf[n_flush : m.na_block].copy()
-                wt[:remain] = wt[n_flush : m.na_block].copy()
-            buf[remain:] = 0.0
-            wt[remain:] = 0.0
-            buf_az0 = flush_end
-            written = flush_end
-
-            done = k + 1
-            eta = (time.time() - t0) / done * (n_blk - done) if done < n_blk else 0
-            log.info("[%d/%d] az %d-%d fdc=%.1f Hz written=%d ETA %.0fs",
-                     done, n_blk, az0, az0 + na_actual, fdc, written, eta)
-
-        if self.workers == 1:
-            for k, blk in enumerate(self.schedule):
-                _, az0, focused, fdc = _process_block({**base, **blk})
-                _accumulate_and_flush(k, az0, focused, fdc)
-        else:
-            pending: Dict[int, tuple] = {}
-            next_k = 0
-            with ProcessPoolExecutor(max_workers=self.workers) as pool:
-                futures = {pool.submit(_process_block, {**base, **blk}): blk["block_idx"] for blk in self.schedule}
-                for fut in as_completed(futures):
-                    bidx, az0, focused, fdc = fut.result()
-                    pending[bidx] = (az0, focused, fdc)
-                    while next_k in pending:
-                        az0_p, foc_p, fdc_p = pending.pop(next_k)
-                        _accumulate_and_flush(next_k, az0_p, foc_p, fdc_p)
-                        next_k += 1
-
-        tif_writer.close()
-        fdc_mean = float(np.mean(list(fdc_log.values()))) if fdc_log else 0.0
-        ql_written = _write_quicklook_from_slc(str(out_slc), str(out_ql), vmin_db=self.vmin_db, vmax_db=self.vmax_db)
-        write_metadata_xml(m, fdc_mean, fdc_log, n_blk, str(out_xml))
-        result = {"slc": str(out_slc), "xml": str(out_xml)}
-        if ql_written:
-            result["quicklook"] = str(out_ql)
-        return result
+# ════════════════════════════════════════════════════════════════════════════
+# CSU-04.07  Geometric Correction  (GEC Processor)
+# 센서 기하모델 + 평균 표고만 반영한 ellipsoid_corrected 지오코딩.
+# 슬랜트→그라운드 보정의 1차 단계로, DEM이 적용되기 전의 baseline 영상이다.
+# ════════════════════════════════════════════════════════════════════════════
+def build_lat_lon_grid(profile: dict) -> Tuple[np.ndarray, np.ndarray]:
+    """Build per-pixel lat/lon grids from the image transform & CRS."""
+    h, w = profile["height"], profile["width"]
+    cols, rows = np.meshgrid(np.arange(w), np.arange(h))
+    xs, ys = xy(profile["transform"], rows, cols)
+    return np.array(ys, dtype=np.float64), np.array(xs, dtype=np.float64)
 
 
-__all__ = ["SARProcessor", "_build_block_schedule", "_process_block", "load_metadata", "Meta", "HAS_H5PY"]
+def gec_geocode_to_ground_range(
+    sigma0_slant: np.ndarray, profile: dict, look_angle_deg: float = 30.0,
+) -> np.ndarray:
+    """Slant→ground range geocoding on the reference ellipsoid (no DEM)."""
+    cos_look = max(np.cos(np.deg2rad(look_angle_deg)), 1e-3)
+    return (sigma0_slant / cos_look).astype(np.float32)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CSU-04.10  Geometric Terrain Correction  (GTC)
+# DEM 기반 지형보정으로 orthorectified 영상을 생성한다 (Range-Doppler 모델).
+# DEM 기울기에 의한 픽셀 변위를 계산해 픽셀 위치를 재배치한다.
+# ════════════════════════════════════════════════════════════════════════════
+def apply_geometric_terrain_correction(
+    image: np.ndarray, dem_aligned: np.ndarray, look_angle_deg: float = 30.0,
+) -> np.ndarray:
+    """Apply Range-Doppler terrain_correction using the aligned DEM."""
+    look_rad = np.deg2rad(look_angle_deg)
+    dh_dy = np.gradient(np.nan_to_num(dem_aligned, nan=0.0), axis=0)
+    pixel_shift = (dh_dy / np.tan(look_rad)).astype(np.float32)
+
+    h, w = image.shape
+    rows = np.arange(h)[:, None] - pixel_shift
+    rows = np.clip(np.round(rows).astype(np.int32), 0, h - 1)
+    cols = np.broadcast_to(np.arange(w), (h, w))
+    return image[rows, cols]
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CSU-04.11  Map Projection
+# 목표 CRS(UTM 50/52 N, WGS84 등)로 reproject하여 Cloud Optimized GeoTIFF 저장.
+# COG 타일 크기·오버뷰 레벨은 ICD에서 TBC.
+# ════════════════════════════════════════════════════════════════════════════
+def reproject_to_map_projection(
+    src_array: np.ndarray, src_profile: dict,
+    dst_crs: str = "EPSG:32652", pixel_size_m: float = 10.0,
+) -> Tuple[np.ndarray, dict]:
+    """Reproject the GTC array to the target map_projection."""
+    src_bounds = array_bounds(
+        src_profile["height"], src_profile["width"], src_profile["transform"],
+    )
+    dst_bounds = transform_bounds(src_profile["crs"], dst_crs, *src_bounds, densify_pts=21)
+
+    width = int(round((dst_bounds[2] - dst_bounds[0]) / pixel_size_m))
+    height = int(round((dst_bounds[3] - dst_bounds[1]) / pixel_size_m))
+    dst_transform = from_bounds(*dst_bounds, width=width, height=height)
+
+    dst = np.zeros((height, width), dtype=np.float32)
+    reproject(
+        source=src_array, destination=dst,
+        src_transform=src_profile["transform"], src_crs=src_profile["crs"],
+        dst_transform=dst_transform, dst_crs=dst_crs,
+        resampling=Resampling.bilinear,
+    )
+
+    dst_profile = {
+        **src_profile,
+        "crs": dst_crs,
+        "transform": dst_transform,
+        "width": width,
+        "height": height,
+        "driver": "COG",
+        "compress": "deflate",
+        "blockxsize": 512,
+        "blockysize": 512,
+    }
+    return dst, dst_profile
+
+
+# ── Pipeline orchestrator (OPS-02 / L1C) ────────────────────────────────────
+def run_l1c_gtc(l1b_path: str, dem_path: str, out_path: str) -> dict:
+    with rasterio.open(l1b_path) as src:
+        sigma0 = src.read(1).astype(np.float32)
+        img_profile = src.profile
+
+    dem, dem_profile = load_dem_tile(dem_path)
+    dem_aligned = reproject_dem_to_image_grid(dem, dem_profile, img_profile)
+
+    geocoded = gec_geocode_to_ground_range(sigma0, img_profile)
+    gtc = apply_geometric_terrain_correction(geocoded, dem_aligned)
+
+    final, final_profile = reproject_to_map_projection(gtc, img_profile, dst_crs="EPSG:32652")
+
+    with rasterio.open(out_path, "w", **final_profile) as dst:
+        dst.write(final, 1)
+
+    return {
+        "out_path": out_path,
+        "shape": list(final.shape),
+        "dst_crs": str(final_profile["crs"]),
+    }
+
+
+__all__ = [
+    "apply_geometric_terrain_correction",
+    "build_lat_lon_grid",
+    "gec_geocode_to_ground_range",
+    "load_dem_tile",
+    "reproject_dem_to_image_grid",
+    "reproject_to_map_projection",
+    "run_l1c_gtc",
+]
 `;
 
 const L2A_MAP_PRODUCTS = String.raw`"""CSU-05.01 L2A map-product generation.
@@ -463,7 +451,7 @@ Generates per-pixel ancillary map layers from a focused L1C product:
   - layover_shadow          : 0/1/2 mask (none / layover / shadow)
 
 Inputs:
-    slc_geo_path : geocoded SLC (or RTC sigma0) GeoTIFF from L1C
+    slc_geo_path : geocoded SLC (or GTC sigma0) GeoTIFF from L1C
     dem_path     : DEM aligned to the same grid (bilinear up-sampled if needed)
     orbit_state  : per-line satellite ECEF position+velocity (npz)
 Outputs:
@@ -605,34 +593,45 @@ __all__ = [
 ]
 `;
 
-const L2B_SCENE_ANALYSIS = String.raw`"""CSU-05.02 L2B scene analysis (MSK / OBJ / CHG).
+const L2B_SCENE_ANALYSIS = String.raw`"""CSU-05.02 L2B scene analysis (preprocessing + MSK / OBJ / CHG).
 
-Produces three derived L2B layers from L2A inputs and a registered reference
-acquisition:
+Co-registers the current acquisition to a reference, derives per-scene
+geometry layers, and then runs detection + change analysis:
+  - incidence_angle_map : per-pixel local incidence (deg)
+  - shadow_mask         : binary radar shadow mask (1 = in shadow)
+  - layover_mask        : binary layover mask (1 = layover)
+  - co-registration     : sub-pixel align current acquisition to reference
   - MSK : water/land/urban segmentation mask (uint8 class ids)
   - OBJ : ship/structure detections as a GeoJSON FeatureCollection
   - CHG : pixel-wise change-detection ratio (sigma0 ratio in dB)
 
 Algorithms:
-  - Segmentation : K-means on (sigma0_VV, NESZ, incidence_angle) with morphological
-                   opening to suppress speckle.
-  - Detection    : CFAR (CA-CFAR, 31x31 reference, 3x3 guard) followed by
-                   connected-component analysis; objects below min_area_m2 dropped.
-  - Change       : 10*log10(sigma0_now / sigma0_ref), with bias correction using
-                   stable land pixels (water masked out).
+  - Co-registration : phase-cross-correlation on log-amplitude tiles, then
+                      sub-pixel shift via scipy.ndimage.shift.
+  - Geometry        : DEM-derived slope/aspect → local incidence; shadow when
+                      incidence > 90°; layover when range slope > look angle.
+  - Segmentation    : K-means on (sigma0_VV, NESZ, incidence_angle) with
+                      morphological opening to suppress speckle.
+  - Detection       : CFAR (CA-CFAR, 31x31 reference, 3x3 guard) followed by
+                      connected-component analysis; objects below min_area_m2 dropped.
+  - Change          : 10*log10(sigma0_now / sigma0_ref), with bias correction
+                      using stable land pixels (water masked out).
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, Tuple
 
 import numpy as np
 import rasterio
 from rasterio.features import shapes
 from scipy import ndimage as ndi
+from scipy.ndimage import shift as ndi_shift
+from scipy.ndimage import sobel
 from scipy.signal import fftconvolve
+from skimage.registration import phase_cross_correlation
 from sklearn.cluster import MiniBatchKMeans
 
 
@@ -640,6 +639,52 @@ from sklearn.cluster import MiniBatchKMeans
 CLASS_WATER = 1
 CLASS_LAND = 2
 CLASS_URBAN = 3
+
+
+# ── Co-registration ──────────────────────────────────────────────────────────
+def coregister_to_reference(
+    sigma0_now: np.ndarray, sigma0_ref: np.ndarray, upsample: int = 10,
+) -> Tuple[np.ndarray, Tuple[float, float]]:
+    """Sub-pixel align current acquisition to reference via phase correlation.
+
+    Returns the shifted current acquisition and the (row, col) offset applied.
+    """
+    ref_log = np.log1p(np.maximum(sigma0_ref, 0.0)).astype(np.float32)
+    now_log = np.log1p(np.maximum(sigma0_now, 0.0)).astype(np.float32)
+    shift_vec, _, _ = phase_cross_correlation(ref_log, now_log, upsample_factor=upsample)
+    aligned = ndi_shift(sigma0_now, shift=shift_vec, order=1, mode="nearest")
+    return aligned.astype(sigma0_now.dtype), (float(shift_vec[0]), float(shift_vec[1]))
+
+
+# ── Incidence Angle Map ──────────────────────────────────────────────────────
+def compute_incidence_angle_map(
+    dem: np.ndarray, look_vector: np.ndarray, pixel_m: float,
+) -> np.ndarray:
+    """Per-pixel local incidence angle (deg) from DEM gradients and look vector."""
+    gx = sobel(dem, axis=1, mode="reflect") / (8.0 * pixel_m)
+    gy = sobel(dem, axis=0, mode="reflect") / (8.0 * pixel_m)
+    nx, ny, nz = -gx, -gy, np.ones_like(dem, dtype=np.float32)
+    norm = np.sqrt(nx * nx + ny * ny + nz * nz)
+    normals = np.stack([nx / norm, ny / norm, nz / norm], axis=-1).astype(np.float32)
+    cos_inc = np.einsum("...i,...i->...", -look_vector, normals)
+    inc_deg = np.degrees(np.arccos(np.clip(cos_inc, -1.0, 1.0)))
+    return inc_deg.astype(np.float32)
+
+
+# ── Shadow Mask ──────────────────────────────────────────────────────────────
+def compute_shadow_mask(incidence_angle: np.ndarray, threshold_deg: float = 90.0) -> np.ndarray:
+    """Binary shadow mask: 1 where local incidence exceeds the look horizon."""
+    shadow = (incidence_angle >= threshold_deg).astype(np.uint8)
+    return ndi.binary_closing(shadow, iterations=1).astype(np.uint8)
+
+
+# ── Layover Mask ─────────────────────────────────────────────────────────────
+def compute_layover_mask(
+    slope_along_range: np.ndarray, look_angle: np.ndarray,
+) -> np.ndarray:
+    """Binary layover mask: 1 where range slope exceeds the radar look angle."""
+    layover = (slope_along_range > look_angle).astype(np.uint8)
+    return ndi.binary_opening(layover, iterations=1).astype(np.uint8)
 
 
 def segment_scene(sigma0_db: np.ndarray, nesz_db: np.ndarray, incidence: np.ndarray) -> np.ndarray:
@@ -711,7 +756,8 @@ def run_l2b_scene_analysis(
     sigma0_now_path: str,
     sigma0_ref_path: str,
     nesz_path: str,
-    incidence_path: str,
+    dem_path: str,
+    orbit_npz: str,
     out_dir: str,
     pixel_m: float = 10.0,
     min_object_area_m2: float = 60.0,
@@ -722,31 +768,50 @@ def run_l2b_scene_analysis(
     with rasterio.open(sigma0_now_path) as s_now, \
          rasterio.open(sigma0_ref_path) as s_ref, \
          rasterio.open(nesz_path) as nesz_src, \
-         rasterio.open(incidence_path) as inc_src:
+         rasterio.open(dem_path) as dem_src:
         sigma0_now_db = s_now.read(1).astype(np.float32)
         sigma0_ref_db = s_ref.read(1).astype(np.float32)
         nesz = nesz_src.read(1).astype(np.float32)
-        inc = inc_src.read(1).astype(np.float32)
+        dem = dem_src.read(1).astype(np.float32)
         profile = s_now.profile
         transform = s_now.transform
+
+    orbit = np.load(orbit_npz)
+    look_vector = orbit["look_vector"]            # (rows, cols, 3)
+    look_angle = orbit["look_angle"]              # (rows, cols)
+    slope_along_range = orbit["slope_along_range"]  # (rows, cols)
+
+    # Co-registration: align current sigma0 to the reference grid before analysis.
+    sigma0_now_db, applied_shift = coregister_to_reference(sigma0_now_db, sigma0_ref_db)
+
+    # Incidence Angle Map: per-pixel local incidence from DEM + look vector.
+    inc = compute_incidence_angle_map(dem, look_vector, pixel_m)
+    # Shadow Mask: pixels whose local incidence exceeds the look horizon.
+    shadow = compute_shadow_mask(inc)
+    # Layover Mask: pixels whose range slope exceeds the radar look angle.
+    layover = compute_layover_mask(slope_along_range, look_angle)
 
     msk = segment_scene(sigma0_now_db, nesz, inc)
 
     sigma0_lin = 10.0 ** (sigma0_now_db / 10.0)
     det_mask = cfar_detect(sigma0_lin, ref_size=31, guard_size=3, pfa=1e-6)
+    # Suppress detections inside shadow / layover.
+    det_mask = (det_mask & (shadow == 0) & (layover == 0)).astype(np.uint8)
     objects = vectorize_detections(det_mask, transform, min_object_area_m2, pixel_m)
 
     sigma0_now_lin = 10.0 ** (sigma0_now_db / 10.0)
     sigma0_ref_lin = 10.0 ** (sigma0_ref_db / 10.0)
     chg = change_ratio_db(sigma0_now_lin, sigma0_ref_lin, msk)
 
-    profile.update(dtype="uint8", count=1)
-    with rasterio.open(out / "MSK.tif", "w", **profile) as dst:
-        dst.write(msk, 1)
+    profile.update(dtype="float32", count=1)
+    for name, arr in (("incidence_angle.tif", inc), ("CHG.tif", chg)):
+        with rasterio.open(out / name, "w", **profile) as dst:
+            dst.write(arr, 1)
 
-    profile.update(dtype="float32")
-    with rasterio.open(out / "CHG.tif", "w", **profile) as dst:
-        dst.write(chg, 1)
+    profile.update(dtype="uint8")
+    for name, arr in (("MSK.tif", msk), ("shadow_mask.tif", shadow), ("layover_mask.tif", layover)):
+        with rasterio.open(out / name, "w", **profile) as dst:
+            dst.write(arr, 1)
 
     obj_path = out / "OBJ.geojson"
     obj_path.write_text(json.dumps(
@@ -754,104 +819,194 @@ def run_l2b_scene_analysis(
     ))
 
     return {
+        "incidence_angle": str(out / "incidence_angle.tif"),
+        "shadow_mask": str(out / "shadow_mask.tif"),
+        "layover_mask": str(out / "layover_mask.tif"),
         "msk": str(out / "MSK.tif"),
         "chg": str(out / "CHG.tif"),
         "obj": str(obj_path),
         "n_objects": len(objects),
+        "coregistration_shift_px": list(applied_shift),
     }
 
 
 __all__ = [
     "cfar_detect",
     "change_ratio_db",
+    "compute_incidence_angle_map",
+    "compute_layover_mask",
+    "compute_shadow_mask",
+    "coregister_to_reference",
     "run_l2b_scene_analysis",
     "segment_scene",
     "vectorize_detections",
 ]
 `;
 
-const L0_RAW_DATA_FORMATTING = String.raw`"""CSU-03.01 raw data formatting (L0).
+const L0_LEVEL_0_PROCESSING = String.raw`"""CSC-03 Level-0 processing pipeline.
 
-Reads the raw downlink frames written by the ground station (CSC-02), sorts
-the pulses into chronological order, extracts per-pulse metadata, formats the
-range lines into a (Naz, Nrg, 2) HDF5 layout used by the L1A SAR focuser, and
-applies the per-channel calibration factors recorded with the bitstream.
+Implements the six CSUs defined in the CSC-03 ICD interface document:
+
+  CSU-03.01 De-packetizer            — CCSDS Source Packet / CADU framing
+  CSU-03.02 BAQ De-compression       — calls FI-01 baq_decompress()
+  CSU-03.03 Range Line Reconstructor — chronological pulse ordering & cube
+  CSU-03.04 Auxiliary Data Extractor — per-pulse PRF / orbit / attitude
+  CSU-03.05 Calibration              — per-channel gain & phase correction
+  CSU-03.06 HDF5 Converter           — writes the L0 HDF5 product (CI-01)
+
+OPS-02 (ICD §3.2) — target latency 2,880 s.
 
 Input:
-  raw_path : downlink bitstream (binary)
-  cal_path : calibration table CSV exported by the radiometric lab
+  raw_path : downlink bitstream from CSC-02 (CADU/VCDU framed)
+  cal_path : calibration table CSV (per-channel gain/phase/noise)
 Output:
-  out_h5   : HDF5 file with /ST0/Raw data, /ST0/Replica, attribute metadata
+  out_h5   : Level-0 HDF5 file written under
+             /sdpe/products/{satellite_id}/L0/{filename}
 """
 
 from __future__ import annotations
 
 import csv
 import struct
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List
+from typing import List
 
 import h5py
 import numpy as np
 
 
-# ── Time Ordering & Synchronization ─────────────────────────────────────────
-def time_order_pulses(frames: List[dict]) -> List[dict]:
-    """Sort raw frames by satellite UTC and drop duplicates from PRF-jitter."""
-    frames_sorted = sorted(frames, key=lambda fr: (fr["pri_count"], fr["pulse_idx"]))
-    deduped: List[dict] = []
-    last_key = None
-    for fr in frames_sorted:
-        key = (fr["pri_count"], fr["pulse_idx"])
-        if key == last_key:
+# ════════════════════════════════════════════════════════════════════════════
+# CSU-03.01  De-packetizer
+# CCSDS / CADU 패킷 파싱. VCDU primary header를 벗기고 Source Packet 헤더에서
+# APID·sequence·length를 꺼내, raw I/Q 페이로드와 64-byte aux 헤더로 분리한다.
+# ════════════════════════════════════════════════════════════════════════════
+_CADU_LEN = 1024
+_VCDU_HEADER = 6
+_SP_HEADER = struct.Struct(">HHH")  # version|apid, seq, length
+_AUX_HEADER_LEN = 64
+
+
+@dataclass
+class SourcePacket:
+    apid: int
+    seq_count: int
+    aux_header: bytes
+    payload: bytes
+
+
+def depacketize_ccsds(raw: bytes) -> List[SourcePacket]:
+    """Split a CADU bitstream into CCSDS Source Packets."""
+    packets: List[SourcePacket] = []
+    cursor = 0
+    while cursor + _CADU_LEN <= len(raw):
+        cadu = raw[cursor : cursor + _CADU_LEN]
+        cursor += _CADU_LEN
+        sp = cadu[_VCDU_HEADER:]
+        ver_apid, seq, length = _SP_HEADER.unpack_from(sp)
+        body_len = length + 1
+        body = sp[_SP_HEADER.size : _SP_HEADER.size + body_len]
+        packets.append(SourcePacket(
+            apid=ver_apid & 0x7FF,
+            seq_count=seq & 0x3FFF,
+            aux_header=body[:_AUX_HEADER_LEN],
+            payload=body[_AUX_HEADER_LEN:],
+        ))
+    return packets
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CSU-03.02  BAQ De-compression  (calls FI-01 baq_decompress)
+# 위성 OBP에서 BAQ로 압축된 echo를 원래 샘플 폭으로 복원한다. 알고리즘 자체는
+# FI-01 인터페이스로 제공되는 외부 함수에 위임하며, 여기서는 호출 컨트랙트만
+# 책임진다. bits_per_sample 허용값과 C++ 포팅 여부는 ICD에서 TBC 상태.
+# ════════════════════════════════════════════════════════════════════════════
+try:
+    from sdpe.algorithms.fi01 import baq_decompress as _fi01_baq_decompress
+except ImportError:
+    def _fi01_baq_decompress(compressed: bytes, bits_per_sample: int) -> np.ndarray:
+        """Reference decompression (slow Python). Replace with FI-01 build."""
+        words = np.frombuffer(compressed, dtype=np.uint8)
+        scale = 1 << (16 - bits_per_sample)
+        return (words.astype(np.int16) - (1 << (bits_per_sample - 1))) * scale
+
+
+def baq_decompress(packets: List[SourcePacket], bits_per_sample: int) -> List[np.ndarray]:
+    """Apply BAQ decompression per pulse via FI-01."""
+    return [_fi01_baq_decompress(pkt.payload, bits_per_sample) for pkt in packets]
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CSU-03.03  Range Line Reconstructor
+# PRI 카운터·시각으로 펄스를 시간 정렬하고 PRF-jitter 중복을 제거한 뒤,
+# (Naz, Nrg, 2) int16 큐브로 재구성한다.
+# ════════════════════════════════════════════════════════════════════════════
+def time_order_pulses(packets: List[SourcePacket], aux: List[dict]) -> List[int]:
+    """Return packet indices in chronological PRI order, dropping duplicates."""
+    keyed = sorted(range(len(packets)), key=lambda i: (aux[i]["pri_count"], aux[i]["t_utc"]))
+    out: List[int] = []
+    last = None
+    for i in keyed:
+        key = (aux[i]["pri_count"], aux[i]["t_utc"])
+        if key == last:
             continue
-        deduped.append(fr)
-        last_key = key
-    return deduped
+        out.append(i)
+        last = key
+    return out
 
 
-# ── Metadata Extraction ─────────────────────────────────────────────────────
-_HEADER_FMT = "<IIddffffff"  # pri_count, pulse_idx, t_utc, t_sat, prf, fc, fs, pw, look, sq
-
-def extract_metadata(header_bytes: bytes) -> dict:
-    """Parse the fixed CADU/VCDU pulse header into a structured dict."""
-    fields = struct.unpack(_HEADER_FMT, header_bytes[: struct.calcsize(_HEADER_FMT)])
-    keys = (
-        "pri_count", "pulse_idx", "t_utc", "t_sat",
-        "prf", "fc", "fs", "pw", "look_angle", "squint_angle",
-    )
-    return dict(zip(keys, fields))
-
-
-def aggregate_acquisition_metadata(frames: Iterable[dict]) -> dict:
-    """Collapse per-pulse metadata into per-acquisition attributes."""
-    frames = list(frames)
-    if not frames:
-        return {}
-    return {
-        "PRF": float(np.mean([fr["prf"] for fr in frames])),
-        "Carrier Frequency": float(frames[0]["fc"]),
-        "Sampling Frequency": float(frames[0]["fs"]),
-        "Pulse Width": float(frames[0]["pw"]),
-        "Look Angle": float(frames[0]["look_angle"]),
-        "Squint Angle": float(frames[0]["squint_angle"]),
-        "Acquisition Start UTC": float(frames[0]["t_utc"]),
-        "Acquisition End UTC": float(frames[-1]["t_utc"]),
-    }
-
-
-# ── Range Line Formatting ───────────────────────────────────────────────────
-def format_range_lines(frames: List[dict], n_rg: int) -> np.ndarray:
-    """Assemble (Naz, Nrg, 2) int16 raw cube from per-pulse I/Q payloads."""
-    n_az = len(frames)
-    cube = np.empty((n_az, n_rg, 2), dtype=np.int16)
-    for k, fr in enumerate(frames):
-        iq = np.frombuffer(fr["iq"], dtype=np.int16).reshape(n_rg, 2)
+def reconstruct_range_lines(echoes: List[np.ndarray], order: List[int], n_rg: int) -> np.ndarray:
+    """Assemble a (Naz, Nrg, 2) int16 raw cube from time-ordered echoes."""
+    cube = np.empty((len(order), n_rg, 2), dtype=np.int16)
+    for k, idx in enumerate(order):
+        iq = echoes[idx].view(np.int16).reshape(n_rg, 2)
         cube[k] = iq
     return cube
 
 
-# ── Calibration ─────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+# CSU-03.04  Auxiliary Data Extractor
+# 펄스별 64B aux header에서 PRF, 주파수, look angle, 궤도/자세 메타를 뽑고
+# 장면 단위 메타로 집약한다. 파일명 규칙(satellite_id 등)에 영향.
+# ════════════════════════════════════════════════════════════════════════════
+_AUX_FMT = struct.Struct("<IIddffffffff")
+_AUX_KEYS = (
+    "pri_count", "pulse_idx", "t_utc", "t_sat",
+    "prf", "fc", "fs", "pw", "look_angle", "squint_angle",
+    "orbit_alt_km", "orbit_inc_deg",
+)
+
+
+def extract_aux_data(packets: List[SourcePacket]) -> List[dict]:
+    """Parse the 64-byte auxiliary header of every Source Packet."""
+    return [
+        dict(zip(_AUX_KEYS, _AUX_FMT.unpack_from(pkt.aux_header)))
+        for pkt in packets
+    ]
+
+
+def aggregate_metadata(aux: List[dict]) -> dict:
+    """Collapse per-pulse aux into per-acquisition attributes."""
+    if not aux:
+        return {}
+    return {
+        "PRF": float(np.mean([a["prf"] for a in aux])),
+        "Carrier Frequency": float(aux[0]["fc"]),
+        "Sampling Frequency": float(aux[0]["fs"]),
+        "Pulse Width": float(aux[0]["pw"]),
+        "Look Angle": float(aux[0]["look_angle"]),
+        "Squint Angle": float(aux[0]["squint_angle"]),
+        "Orbit Altitude (km)": float(aux[0]["orbit_alt_km"]),
+        "Orbit Inclination (deg)": float(aux[0]["orbit_inc_deg"]),
+        "Acquisition Start UTC": float(aux[0]["t_utc"]),
+        "Acquisition End UTC": float(aux[-1]["t_utc"]),
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CSU-03.05  Calibration
+# 채널별 gain/phase/noise floor를 적용한다. CSV는 방사 보정 랩에서 export.
+# ════════════════════════════════════════════════════════════════════════════
 def load_calibration(cal_path: str | Path) -> dict:
     """Load (gain_db, phase_deg, noise_floor_db) per channel from CSV."""
     table: dict = {}
@@ -866,11 +1021,10 @@ def load_calibration(cal_path: str | Path) -> dict:
 
 
 def apply_calibration(cube: np.ndarray, cal: dict, channel: str = "VV") -> np.ndarray:
-    """Apply linear gain and phase correction to the raw cube in place."""
+    """Apply linear gain and phase rotation to the int16 raw cube."""
     g_lin = 10.0 ** (cal[channel]["gain_db"] / 20.0)
-    phi_rad = np.deg2rad(cal[channel]["phase_deg"])
-    cos_p = np.cos(phi_rad)
-    sin_p = np.sin(phi_rad)
+    phi = np.deg2rad(cal[channel]["phase_deg"])
+    cos_p, sin_p = np.cos(phi), np.sin(phi)
 
     re = cube[..., 0].astype(np.float32) * g_lin
     im = cube[..., 1].astype(np.float32) * g_lin
@@ -883,49 +1037,267 @@ def apply_calibration(cube: np.ndarray, cal: dict, channel: str = "VV") -> np.nd
     return out
 
 
-# ── Pipeline orchestrator ───────────────────────────────────────────────────
-def build_l0_h5(raw_path: str, cal_path: str, out_h5: str, n_rg: int) -> dict:
-    raw = Path(raw_path).read_bytes()
-    frames: List[dict] = []
-    cursor = 0
-    header_size = struct.calcsize(_HEADER_FMT)
-    payload_size = n_rg * 2 * 2  # int16 I + int16 Q
-    while cursor + header_size + payload_size <= len(raw):
-        meta = extract_metadata(raw[cursor : cursor + header_size])
-        meta["iq"] = raw[cursor + header_size : cursor + header_size + payload_size]
-        frames.append(meta)
-        cursor += header_size + payload_size
+# ════════════════════════════════════════════════════════════════════════════
+# CSU-03.06  HDF5 Converter  (CI-01)
+# /sdpe/products/{satellite_id}/L0/{파일명} 경로에 HDF5로 저장한다.
+# 저장 경로 규칙은 ICD에서 satellite_id 형식 의존으로 TBC.
+# ════════════════════════════════════════════════════════════════════════════
+def convert_to_hdf5(cube: np.ndarray, attrs: dict, out_h5: str) -> str:
+    """Write the calibrated raw cube and per-acquisition attrs to an HDF5 file."""
+    with h5py.File(out_h5, "w") as h5:
+        grp = h5.create_group("ST0")
+        grp.create_dataset(
+            "Raw data", data=cube,
+            chunks=True, compression="gzip", compression_opts=4,
+        )
+        for k, v in attrs.items():
+            grp.attrs[k] = v
+    return out_h5
 
-    frames = time_order_pulses(frames)
-    cube = format_range_lines(frames, n_rg)
+
+# ── Pipeline orchestrator (OPS-02) ──────────────────────────────────────────
+def run_l0_processing(
+    raw_path: str, cal_path: str, out_h5: str,
+    bits_per_sample: int = 4, n_rg: int = 8192,
+) -> dict:
+    raw = Path(raw_path).read_bytes()
+
+    packets = depacketize_ccsds(raw)
+    echoes = baq_decompress(packets, bits_per_sample)
+    aux = extract_aux_data(packets)
+    order = time_order_pulses(packets, aux)
+    cube = reconstruct_range_lines(echoes, order, n_rg)
+
     cal = load_calibration(cal_path)
     cube = apply_calibration(cube, cal, channel="VV")
 
-    attrs = aggregate_acquisition_metadata(frames)
-    with h5py.File(out_h5, "w") as h5:
-        grp = h5.create_group("ST0")
-        grp.create_dataset("Raw data", data=cube, chunks=True, compression="gzip", compression_opts=4)
-        for k, v in attrs.items():
-            grp.attrs[k] = v
-    return {"out_h5": out_h5, "n_pulses": len(frames), "n_range_bins": n_rg}
+    attrs = aggregate_metadata([aux[i] for i in order])
+    convert_to_hdf5(cube, attrs, out_h5)
+    return {"out_h5": out_h5, "n_pulses": len(order), "n_range_bins": n_rg}
 
 
 __all__ = [
-    "aggregate_acquisition_metadata",
+    "aggregate_metadata",
     "apply_calibration",
-    "build_l0_h5",
-    "extract_metadata",
-    "format_range_lines",
+    "baq_decompress",
+    "convert_to_hdf5",
+    "depacketize_ccsds",
+    "extract_aux_data",
     "load_calibration",
+    "reconstruct_range_lines",
+    "run_l0_processing",
     "time_order_pulses",
+]
+`;
+
+const L3_APPLICATION_PRODUCT = String.raw`"""CSU-06.01 L3 application product generation.
+
+Turns L2A/L2B inputs into a customer-facing application product. This is the
+most domain-specific stage of the pipeline; the example below implements a
+simple vegetation index (NDI-style) workflow with quality validation,
+customer-tagged metadata, and a packaged GeoTIFF + STAC item output.
+
+Replace 'compute_index' with whatever application logic the customer needs
+— flood extent, urban change ratio, ship density grid, etc. Other functions
+(quality check, metadata annotation, packaging) are reusable as-is.
+
+Inputs:
+    sigma0_path     : L1C/L2A radiometric backscatter (sigma0, dB)
+    incidence_path  : L2A incidence angle map (deg)
+    mask_path       : L2B segmentation mask (water/land/urban)
+    customer_id     : tag stamped onto product metadata
+Outputs:
+    application_product.tif  : float32 GeoTIFF
+    product_metadata.json    : STAC-style item metadata
+    quality_report.json      : per-product QA metrics
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, asdict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict
+
+import numpy as np
+import rasterio
+
+
+# ── 1. Application Product Generation ───────────────────────────────────────
+def compute_index(sigma0_db: np.ndarray, mask: np.ndarray, valid_class: int = 2) -> np.ndarray:
+    """
+    Vegetation-style normalized difference index from a single-channel sigma0.
+    NDI = (sigma0 - mean_land) / (sigma0 + |mean_land|), clamped to [-1, 1].
+    Replace with your real application logic (flood, urban change, etc.).
+    """
+    land = mask == valid_class
+    if not land.any():
+        return np.zeros_like(sigma0_db, dtype=np.float32)
+    mean_land = float(np.mean(sigma0_db[land]))
+    eps = 1e-6
+    ndi = (sigma0_db - mean_land) / (np.abs(sigma0_db) + np.abs(mean_land) + eps)
+    return np.clip(ndi, -1.0, 1.0).astype(np.float32)
+
+
+def generate_application_product(
+    sigma0_db: np.ndarray, incidence: np.ndarray, mask: np.ndarray,
+) -> np.ndarray:
+    """Apply incidence-angle correction and produce the final product layer."""
+    ndi = compute_index(sigma0_db, mask)
+    cos_inc = np.cos(np.deg2rad(incidence)).astype(np.float32)
+    cos_inc = np.where(cos_inc > 0.05, cos_inc, 1.0)
+    return (ndi / cos_inc).astype(np.float32)
+
+
+# ── 2. Quality Validation ───────────────────────────────────────────────────
+@dataclass
+class QualityReport:
+    valid_pixel_ratio: float
+    nan_pixel_ratio: float
+    mean: float
+    std: float
+    pct_low: float    # 5th percentile
+    pct_high: float   # 95th percentile
+    passed: bool
+    failure_reasons: list
+
+
+def validate_product(arr: np.ndarray, mask: np.ndarray, valid_class: int = 2) -> QualityReport:
+    valid = mask == valid_class
+    valid_count = int(valid.sum())
+    total = int(arr.size)
+    nan_ratio = float(np.isnan(arr).sum() / max(total, 1))
+    valid_ratio = float(valid_count / max(total, 1))
+
+    sub = arr[valid]
+    if sub.size == 0:
+        sub = arr
+    mean = float(np.nanmean(sub))
+    std = float(np.nanstd(sub))
+    pct_low = float(np.nanpercentile(sub, 5))
+    pct_high = float(np.nanpercentile(sub, 95))
+
+    failures = []
+    if nan_ratio > 0.02:
+        failures.append(f"NaN ratio {nan_ratio:.2%} exceeds 2%")
+    if valid_ratio < 0.05:
+        failures.append(f"Valid pixel ratio {valid_ratio:.2%} below 5%")
+    if std < 1e-4:
+        failures.append("Product is effectively flat (std≈0)")
+
+    return QualityReport(
+        valid_pixel_ratio=valid_ratio,
+        nan_pixel_ratio=nan_ratio,
+        mean=mean,
+        std=std,
+        pct_low=pct_low,
+        pct_high=pct_high,
+        passed=len(failures) == 0,
+        failure_reasons=failures,
+    )
+
+
+# ── 3. Customer Metadata Annotation ─────────────────────────────────────────
+def annotate_metadata(
+    product_path: str, customer_id: str, qa: QualityReport, transform, crs: str,
+) -> Dict:
+    """Assemble STAC-style item metadata stamped with the customer tag."""
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return {
+        "type": "Feature",
+        "stac_version": "1.0.0",
+        "id": Path(product_path).stem,
+        "properties": {
+            "datetime": now,
+            "customer_id": customer_id,
+            "product:type": "L3_APPLICATION",
+            "product:level": "L3",
+            "qa:passed": qa.passed,
+            "qa:mean": qa.mean,
+            "qa:std": qa.std,
+            "qa:valid_pixel_ratio": qa.valid_pixel_ratio,
+        },
+        "assets": {
+            "product": {"href": product_path, "type": "image/tiff; application=geotiff"},
+        },
+        "geometry": None,
+        "bbox": list(rasterio.transform.array_bounds(*[1, 1], transform=transform)),
+        "crs": crs,
+    }
+
+
+# ── 4. Output Packaging ─────────────────────────────────────────────────────
+def package_product(arr: np.ndarray, profile: dict, out_dir: str) -> str:
+    """Write the product as a single-band float32 GeoTIFF."""
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    profile = {**profile, "dtype": "float32", "count": 1, "compress": "deflate"}
+    out_path = out / "application_product.tif"
+    with rasterio.open(out_path, "w", **profile) as dst:
+        dst.write(arr, 1)
+    return str(out_path)
+
+
+def write_metadata(metadata: dict, out_dir: str, filename: str = "product_metadata.json") -> str:
+    out_path = Path(out_dir) / filename
+    out_path.write_text(json.dumps(metadata, indent=2))
+    return str(out_path)
+
+
+def write_quality_report(qa: QualityReport, out_dir: str) -> str:
+    out_path = Path(out_dir) / "quality_report.json"
+    out_path.write_text(json.dumps(asdict(qa), indent=2))
+    return str(out_path)
+
+
+# ── Pipeline orchestrator ───────────────────────────────────────────────────
+def run_l3_application(
+    sigma0_path: str, incidence_path: str, mask_path: str,
+    customer_id: str, out_dir: str,
+) -> Dict[str, str]:
+    with rasterio.open(sigma0_path) as src:
+        sigma0_db = src.read(1).astype(np.float32)
+        profile = src.profile
+        transform = src.transform
+        crs = src.crs.to_string()
+    with rasterio.open(incidence_path) as src:
+        incidence = src.read(1).astype(np.float32)
+    with rasterio.open(mask_path) as src:
+        mask = src.read(1)
+
+    product = generate_application_product(sigma0_db, incidence, mask)
+    qa = validate_product(product, mask)
+    product_tif = package_product(product, profile, out_dir)
+    metadata = annotate_metadata(product_tif, customer_id, qa, transform, crs)
+    metadata_path = write_metadata(metadata, out_dir)
+    qa_path = write_quality_report(qa, out_dir)
+
+    return {
+        "application_product": product_tif,
+        "product_metadata": metadata_path,
+        "quality_report": qa_path,
+        "qa_passed": str(qa.passed),
+    }
+
+
+__all__ = [
+    "annotate_metadata",
+    "compute_index",
+    "generate_application_product",
+    "package_product",
+    "run_l3_application",
+    "validate_product",
+    "write_metadata",
+    "write_quality_report",
 ]
 `;
 
 export const NODE_CODE_DEFAULTS_BY_STAGE: Partial<Record<SarStage, NodeCodeDefault>> = {
   L0: {
-    code: L0_RAW_DATA_FORMATTING,
+    code: L0_LEVEL_0_PROCESSING,
     language: 'python',
-    filename: 'csu_03_01_raw_data_formatting.py',
+    filename: 'csc_03_level_0_processing.py',
   },
   L1A: {
     code: L1A_RANGE_COMPRESSION,
@@ -933,14 +1305,14 @@ export const NODE_CODE_DEFAULTS_BY_STAGE: Partial<Record<SarStage, NodeCodeDefau
     filename: 'csu_04_01_range_compression.py',
   },
   L1B: {
-    code: L1B_RDA_AZIMUTH,
+    code: L1B_MULTILOOK_GRD,
     language: 'python',
-    filename: 'csu_04_02_rda_azimuth.py',
+    filename: 'csc_04_l1b_multilook_grd.py',
   },
   L1C: {
-    code: L1C_SLC_FORMATION,
+    code: L1C_GEOMETRIC_TERRAIN_CORRECTION,
     language: 'python',
-    filename: 'csu_04_04_slc_formation.py',
+    filename: 'csc_04_l1c_geometric_terrain_correction.py',
   },
   L2A: {
     code: L2A_MAP_PRODUCTS,
@@ -951,6 +1323,11 @@ export const NODE_CODE_DEFAULTS_BY_STAGE: Partial<Record<SarStage, NodeCodeDefau
     code: L2B_SCENE_ANALYSIS,
     language: 'python',
     filename: 'csu_05_02_scene_analysis.py',
+  },
+  L3: {
+    code: L3_APPLICATION_PRODUCT,
+    language: 'python',
+    filename: 'csu_06_01_application_product.py',
   },
 };
 
@@ -966,10 +1343,12 @@ export function getDefaultCode(stage: SarStage | undefined): NodeCodeDefault | n
  */
 export const TASK_KEYWORDS_BY_STAGE: Partial<Record<SarStage, Record<string, string[]>>> = {
   L0: {
-    'Time Ordering & Synchronization': ['time_order', 'sort_by_time', 'time ordering', 'sync', 'synchroniz'],
-    'Metadata Extraction': ['metadata', 'extract_meta', 'parse_header'],
-    'Range Line Formatting': ['range_line', 'format_range', 'range line', 'reshape'],
-    'Calibration': ['calibrat', 'calib_factor', 'apply_cal'],
+    'De-packetizer':              ['depacketize', 'ccsds', 'cadu', 'source_packet', 'sourcepacket', 'de-packet'],
+    'BAQ De-compression':         ['baq_decompress', 'baq', 'bits_per_sample', 'fi01'],
+    'Range Line Reconstructor':   ['reconstruct_range_lines', 'range_line', 'time_order_pulses', 'range line'],
+    'Auxiliary Data Extractor':   ['extract_aux_data', 'aux_data', 'auxiliary', 'aggregate_metadata', 'aux_header'],
+    'Calibration':                ['calibrat', 'apply_cal', 'load_calibration', 'gain_db', 'phase_deg'],
+    'HDF5 Converter':             ['convert_to_hdf5', 'h5py', 'h5.create', 'hdf5'],
   },
   L1A: {
     'Range Compression': ['range_compress', 'range compression'],
@@ -979,16 +1358,16 @@ export const TASK_KEYWORDS_BY_STAGE: Partial<Record<SarStage, Record<string, str
     'SLC Product': ['slc', 'sarprocessor', 'slc product'],
   },
   L1B: {
-    'Multi-look Processing': ['multilook', 'multi_look', 'multi-look'],
-    'Speckle Filtering': ['speckle', 'lee_filter', 'frost_filter'],
-    'Ground-range Projection': ['ground_range', 'gr_projection', 'ground-range'],
-    'Amplitude/phase Product': ['amplitude', 'phase'],
+    'Multi-look Processing':   ['multilook', 'multi_look', 'multi-look'],
+    'Speckle Filtering':       ['speckle', 'lee_filter', 'frost_filter', 'apply_speckle_filter'],
+    'Ground-range Projection': ['ground_range', 'gr_projection', 'ground-range', 'project_to_ground'],
+    'Amplitude/phase Product': ['compute_amplitude', 'compute_phase', 'amplitude', 'np.angle'],
   },
   L1C: {
-    'DEM Integration': ['dem', 'digital_elevation'],
-    'Geometric Correction': ['geometric', 'geocoding', 'geocode'],
-    'Radiometric Terrain Correction': ['rtc', 'radiometric', 'terrain_correction'],
-    'Map Projection': ['map_projection', 'reproject', 'projection'],
+    'DEM Integration':              ['dem', 'digital_elevation', 'srtm', 'dted', 'load_dem', 'reproject_dem'],
+    'Geometric Correction':         ['gec_geocode', 'slant_to_ground', 'geocoding', 'geocode', 'gec_processor', 'ellipsoid_corrected'],
+    'Geometric Terrain Correction': ['gtc', 'geometric_terrain', 'terrain_correction', 'orthorectif'],
+    'Map Projection':               ['map_projection', 'reproject_to_map', 'reproject_to_utm', 'dst_crs'],
   },
   L2A: {
     'Incidence Angle Map': ['incidence_angle', 'incidence'],
@@ -997,8 +1376,18 @@ export const TASK_KEYWORDS_BY_STAGE: Partial<Record<SarStage, Record<string, str
     'Layover and Shadow Masks': ['layover', 'shadow'],
   },
   L2B: {
-    'Object Detection': ['cfar', 'detect', 'vectorize_detections', 'object_detection'],
+    'Incidence Angle Map': ['incidence_angle', 'incidence'],
+    'Shadow Mask': ['shadow_mask', 'shadow'],
+    'Layover Mask': ['layover_mask', 'layover'],
+    'Co-registration': ['coregister', 'co_register', 'coregistration', 'align_to_reference'],
+    'Object Detection': ['cfar', 'vectorize_detections', 'object_detection'],
     'Change Detection': ['change_detection', 'change_ratio', 'segment_scene'],
+  },
+  L3: {
+    'Application Product Generation': ['application_product', 'generate_product', 'compute_index', 'ndi', 'vegetation', 'flood', 'urban'],
+    'Quality Validation': ['quality_check', 'validate_product', 'qa_metrics', 'validation'],
+    'Customer Metadata Annotation': ['customer_metadata', 'annotate_metadata', 'product_metadata', 'stac'],
+    'Output Packaging': ['package_product', 'write_geotiff', 'output_zip', 'package_outputs'],
   },
 };
 

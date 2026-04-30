@@ -72,6 +72,103 @@ export interface FileInputConfig {
 }
 
 /**
+ * CATALOG 노드 외부 STAC publish용 인증 모드.
+ * 기본 동작은 ICD §6.8 SI-06(PostgreSQL 직접 쓰기)이라 인증이 불필요하지만,
+ * 옵션으로 외부 STAC 브라우저/카탈로그에 추가 publish 할 때만 사용한다.
+ */
+export type CatalogAuthMode = 'NONE' | 'BEARER' | 'API_KEY';
+
+/**
+ * 동일 product key (job_id × product_level × product_type) 재등장 시 처리 정책.
+ * - NEW_VERSION_ARCHIVE_PREVIOUS: 신규 버전 등록 + 이전 버전 아카이빙 (ICD OPS-04 확정)
+ * - REPLACE_IN_PLACE: 기존 레코드 in-place 갱신 (운영자 정정용)
+ * - REJECT_DUPLICATE: 중복 등록 거부, CSC-08에 실패 통보
+ */
+export type CatalogDuplicatePolicy =
+  | 'NEW_VERSION_ARCHIVE_PREVIOUS'
+  | 'REPLACE_IN_PLACE'
+  | 'REJECT_DUPLICATE';
+
+/** sar_products.status 초기값 (ICD §6.8 sar_products 테이블 컬럼) */
+export type CatalogInitialStatus = 'REGISTERED' | 'PUBLISHED';
+
+/** 품질 검증 실패 시 처리 정책 (SAD CSC-07.02 결과 → CSC-08.07 경로) */
+export type CatalogQualityFailurePolicy =
+  | 'BLOCK_REGISTRATION'
+  | 'REGISTER_WITH_FLAG'
+  | 'ALERT_ONLY';
+
+/**
+ * STAC Collection 매핑 규칙.
+ * SAD 12.3 "STAC Collection: 위성별, 처리 레벨별 제품군" 정의에 따라
+ * (satellite_id × product_level) → collection_id 로 결정한다.
+ * '*' 는 와일드카드이며, 가장 구체적인 규칙이 우선한다.
+ */
+export interface CollectionMappingRule {
+  satelliteId: string;
+  productLevel: ProductLevel | '*';
+  collectionId: string;
+}
+
+/**
+ * CSC-07: CATALOG 노드 전용 설정.
+ *
+ * ICD/SAD 모델 기준:
+ * - SI-06(PostgreSQL/PostGIS 직접 쓰기) 가 카탈로그 등록의 1차 경로이며,
+ *   외부 HTTP STAC publish 는 옵션이다.
+ * - sar_products / stac_items / stac_collections 테이블에 INSERT.
+ * - CSU-07.02 품질 검증, CSU-07.05 생명주기, CSU-07.06 Thumbnail 생성을 함께 제어한다.
+ */
+export interface CatalogConfig {
+  /** Section 1: Storage Target */
+  storage: {
+    /** Thumbnail / 부가 산출물 NAS 루트 경로 (CI-03 NAS Manager 경유) */
+    nasRootPath: string;
+    /** 외부 STAC 브라우저/카탈로그에 추가 publish 할지 여부 (옵션) */
+    externalPublish: {
+      enabled: boolean;
+      endpoint?: string;
+      authMode?: CatalogAuthMode;
+      authSecretRef?: string;
+    };
+  };
+
+  /** Section 2: Collection Mapping (SAD 12.3) */
+  collectionMapping: CollectionMappingRule[];
+
+  /** Section 3: Quality Validation (CSU-07.02) */
+  quality: {
+    /** SI-05 quality_run 토글 */
+    runValidation: boolean;
+    /** NESZ 임계값 (dB). 임계값 자체는 ICD TBC. */
+    neszThresholdDb: number;
+    /** PSLR 임계값 (dB). 임계값 자체는 ICD TBC. */
+    pslrThresholdDb: number;
+    failurePolicy: CatalogQualityFailurePolicy;
+  };
+
+  /** Section 4: Versioning & Lifecycle (OPS-04 재처리 흐름) */
+  versioning: {
+    duplicatePolicy: CatalogDuplicatePolicy;
+    initialStatus: CatalogInitialStatus;
+    /** CSU-07.06 Thumbnail 생성 여부 */
+    generateThumbnail: boolean;
+    /** Thumbnail 최대 변 길이 (px). undefined 면 기본값 사용. */
+    thumbnailMaxPx?: number;
+  };
+
+  /**
+   * Section 5: STAC Item Mapping.
+   * 표준 매핑(SAR/EO Extension)은 코드 상수에서 read-only 로 표시하고,
+   * 여기서는 사용자 정의 추가 매핑만 보관한다.
+   * key = sar_products 컬럼명, value = STAC property 명
+   */
+  stacMapping: {
+    customProperties: Record<string, string>;
+  };
+}
+
+/**
  * CSU-08.02: JOB_INIT 노드 전용 설정.
  * 파이프라인 정의(template)에서 프로파일 선택 규칙과 작업 기본값을 정의.
  */
@@ -286,6 +383,8 @@ export interface PipelineStepDefinition {
   jobInitConfig?: JobInitConfig;
   /** FILE_INPUT 노드 전용. 입력 파일 선택 설정. */
   fileInputConfig?: FileInputConfig;
+  /** CATALOG 노드 전용. STAC 엔드포인트/매핑 규칙 등. */
+  catalogConfig?: CatalogConfig;
   /** UC13: 실행 시 건너뛰도록 비활성화된 노드. 진입 노드는 비활성화하지 않습니다. */
   disabled?: boolean;
   /** L1/L2 SAR 노드 전용. 사용자 업로드 처리 코드 (Mock — 사용자 정의 알고리즘). */

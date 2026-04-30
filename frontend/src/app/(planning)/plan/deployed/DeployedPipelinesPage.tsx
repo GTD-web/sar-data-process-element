@@ -35,10 +35,11 @@ import type {
   TriggerSource,
 } from '@/types/pipeline';
 import {
+  PGMQ_EVENT_TBD_QUEUE,
+  PIPELINE_EVENT_SOURCE_QUEUE,
   PIPELINE_EVENT_TYPE_LABELS,
   POLARIZATION_OPTIONS,
   PRODUCT_LEVEL_LABELS,
-  QUEUE_NAME,
   SATELLITE_OPTIONS,
   MODE_OPTIONS,
   SAR_STAGE_TO_CSC,
@@ -59,7 +60,6 @@ const DEPLOYMENT_TABLE_WIDTH = 1380;
 const DEPLOYMENT_TABLE_GRID = '92px 220px 220px 250px 150px minmax(220px,1fr) 116px';
 const EVENT_TYPE_OPTIONS: PipelineEventType[] = ['RAW_DATA_RECEIVED', 'PARTIAL_REPROCESS_REQUESTED', 'PRODUCT_REPROCESS_REQUESTED'];
 const PRODUCT_LEVEL_OPTIONS: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
-const QUEUE_OPTIONS = Object.values(QUEUE_NAME);
 
 type RuleFormState = {
   id: string | null;
@@ -76,12 +76,13 @@ type RuleFormState = {
 };
 
 function makeEmptyRuleForm(): RuleFormState {
+  const eventType: PipelineEventType = 'RAW_DATA_RECEIVED';
   return {
     id: null,
     pipelineId: '',
     active: true,
-    eventType: 'RAW_DATA_RECEIVED',
-    sourceQueue: QUEUE_NAME.RECEPTION_EVENTS,
+    eventType,
+    sourceQueue: PIPELINE_EVENT_SOURCE_QUEUE[eventType],
     satelliteId: '',
     mode: '',
     polarization: '',
@@ -97,7 +98,7 @@ function ruleToForm(rule: PipelineActivationRule): RuleFormState {
     pipelineId: rule.pipelineId,
     active: rule.active,
     eventType: rule.eventType,
-    sourceQueue: rule.sourceQueue,
+    sourceQueue: PIPELINE_EVENT_SOURCE_QUEUE[rule.eventType],
     satelliteId: rule.match.satelliteIds?.[0] ?? '',
     mode: rule.match.modes?.[0] ?? '',
     polarization: rule.match.polarizations?.[0] ?? '',
@@ -566,27 +567,28 @@ export default function DeployedPipelinesPage() {
                             key={eventType}
                             active={ruleForm.eventType === eventType}
                             disabled={automating}
-                            onClick={() => setRuleForm((prev) => ({ ...prev, eventType }))}
+                            onClick={() => setRuleForm((prev) => ({
+                              ...prev,
+                              eventType,
+                              sourceQueue: PIPELINE_EVENT_SOURCE_QUEUE[eventType],
+                            }))}
                           >
                             {PIPELINE_EVENT_TYPE_LABELS[eventType]}
                           </BadgeButton>
                         ))}
                       </div>
-                    </div>
-
-                    <div>
-                      <p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">Source Queue</p>
-                      <div className="flex flex-wrap gap-2">
-                        {QUEUE_OPTIONS.map((queue) => (
-                          <BadgeButton
-                            key={queue}
-                            active={ruleForm.sourceQueue === queue}
-                            disabled={automating}
-                            onClick={() => setRuleForm((prev) => ({ ...prev, sourceQueue: queue }))}
-                          >
-                            <span className="font-mono">{queue}</span>
-                          </BadgeButton>
-                        ))}
+                      <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground">
+                        <span className="font-semibold uppercase">Source Queue</span>
+                        <span className={`rounded-full border px-2 py-0.5 font-mono ${
+                          ruleForm.sourceQueue === PGMQ_EVENT_TBD_QUEUE
+                            ? 'border-dashed border-muted-foreground/40 text-muted-foreground'
+                            : 'border-border bg-muted/40 text-foreground'
+                        }`}>
+                          {ruleForm.sourceQueue}
+                        </span>
+                        {ruleForm.sourceQueue === PGMQ_EVENT_TBD_QUEUE && (
+                          <span className="text-[10px] text-muted-foreground/80">SI-07 transport TBC</span>
+                        )}
                       </div>
                     </div>
 

@@ -42,7 +42,7 @@ import type {
   JobInitConfig,
 } from '@/types/pipeline';
 import {
-  QUEUE_NAME,
+  PIPELINE_EVENT_SOURCE_QUEUE,
   SAR_STAGE_TO_CSC,
   SAR_STAGE_TO_LEVEL,
   SATELLITE_OPTIONS,
@@ -1402,7 +1402,7 @@ function buildActivationRuleForPipeline(
     pipelineId: pipeline.id,
     active,
     eventType: isPartial ? 'PRODUCT_REPROCESS_REQUESTED' : 'RAW_DATA_RECEIVED',
-    sourceQueue: isPartial ? QUEUE_NAME.PROCESSING_EVENTS : QUEUE_NAME.RECEPTION_EVENTS,
+    sourceQueue: PIPELINE_EVENT_SOURCE_QUEUE[isPartial ? 'PRODUCT_REPROCESS_REQUESTED' : 'RAW_DATA_RECEIVED'],
     match: {
       satelliteIds: tags.satelliteTags.length > 0 ? [...tags.satelliteTags] : undefined,
       modes: tags.modeTags.length > 0 ? [...tags.modeTags] : undefined,
