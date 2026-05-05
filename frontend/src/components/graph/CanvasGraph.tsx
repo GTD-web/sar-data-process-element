@@ -210,7 +210,9 @@ function buildEdges(
     const srcDisabled = disabledNodeOrders?.has(source) ?? false;
     const tgtDisabled = disabledNodeOrders?.has(target) ?? false;
     const dimmed = srcFailed || tgtCanceled || tgtPendingInJob || srcDisabled || tgtDisabled;
-    const kindToneStroke = kindToneHex(srcStep?.kind);
+    // 엣지 색상은 처리 흐름(SAR 그린)으로 통일 — 노드 색은 단계 의미(회색=경계, 파랑=설정, 그린=처리)를 담당하고
+    // 엣지는 "데이터가 다음 단계로 흐른다"는 일관된 시각 신호만 전달한다.
+    const kindToneStroke = kindToneHex('SAR');
     const stroke = dimmed
       ? t.edgeMuted
       : kindToneStroke ?? (completed ? t.edgeSuccess : running ? t.accent : t.edge);

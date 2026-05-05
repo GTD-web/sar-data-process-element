@@ -99,18 +99,20 @@ const JOB_PENDING_GLOW = 'none';
 
 /**
  * 노드 종류별 베이스 톤.
- * - JOB_INIT 만 별도 컬러(파랑) — 설정 단계 강조
- * - SAR/THUMBNAIL: 기본 accent(mint) — 처리 단계
+ * - JOB_INIT: 파랑 (#029FE7) — 설정 단계
+ * - SAR/THUMBNAIL: 순수 그린 (#22C55E) — 처리 단계, JOB_INIT 파랑과 색조 거리 확보
  * - TRIGGER/FILE_INPUT/CATALOG: 컬러 톤 대신 회색 배경 + 흰색 아이콘 (NEUTRAL_FILLED 처리)
  * `rgb` 는 CSS 변수(--node-tone-rgb)로 노출돼 hover/selected/overlay 까지 색상이 따라옴.
  */
 export const KIND_TONE: Partial<Record<NonNullable<PipelineNodeKind>, { hex: string; rgb: string }>> = {
   JOB_INIT: { hex: '#029FE7', rgb: '2, 159, 231' },
+  SAR: { hex: '#22C55E', rgb: '34, 197, 94' },
+  THUMBNAIL: { hex: '#22C55E', rgb: '34, 197, 94' },
 };
 const DEFAULT_TONE_RGB = '52, 211, 153';
 
-const NEUTRAL_FILL_BG = '#6A7282';
-const NEUTRAL_FILL_RGB = '106, 114, 130';
+const NEUTRAL_FILL_BG = '#737373';
+const NEUTRAL_FILL_RGB = '115, 115, 115';
 const NEUTRAL_ICON_COLOR = '#FFFFFF';
 
 export function kindToneHex(kind: PipelineNodeKind | undefined): string | undefined {

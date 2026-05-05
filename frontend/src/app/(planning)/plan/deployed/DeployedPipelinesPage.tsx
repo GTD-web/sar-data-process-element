@@ -79,9 +79,26 @@ const EVENT_TONE: Record<PipelineEventType, EventTone> = {
   PRODUCT_REPROCESS_REQUESTED: EVENT_TONE_BASE,
 };
 
-const PIPELINE_NODE_COLOR_NEUTRAL = '#6A7282';
-const PIPELINE_NODE_COLOR_PROCESS = '#04B58B';
+const PIPELINE_NODE_COLOR_NEUTRAL = '#737373';
+const PIPELINE_NODE_COLOR_PROCESS = '#22C55E';
 const PIPELINE_NODE_COLOR_CONFIG  = '#029FE7';
+
+function isNeutralKind(kind: PipelineStepDefinition['kind']): boolean {
+  return kind === 'TRIGGER' || kind === 'FILE_INPUT' || kind === 'CATALOG';
+}
+
+/** 미니 스트립 배경 채움 강도 위계: NEUTRAL(시작/종료) > JOB_INIT(설정) > 처리(SAR/THUMBNAIL) */
+function miniStripFillOpacity(kind: PipelineStepDefinition['kind']): number {
+  if (isNeutralKind(kind)) return 1;
+  if (kind === 'JOB_INIT') return 0.55;
+  return 0.18;
+}
+
+function miniStripStrokeOpacity(kind: PipelineStepDefinition['kind']): number {
+  if (isNeutralKind(kind)) return 1;
+  if (kind === 'JOB_INIT') return 0.85;
+  return 0.4;
+}
 
 function colorForStep(step: PipelineStepDefinition): string {
   switch (step.kind) {
@@ -193,10 +210,10 @@ function MiniPipelineStrip({ pipeline }: { pipeline: PipelineDefinition }) {
             height={nodeSize}
             rx={4}
             fill={c}
-            fillOpacity={0.18}
+            fillOpacity={miniStripFillOpacity(s.kind)}
             stroke={c}
             strokeWidth={1}
-            strokeOpacity={0.4}
+            strokeOpacity={miniStripStrokeOpacity(s.kind)}
           />
         );
       })}
@@ -360,7 +377,7 @@ function RuleRow({
             <button
               type="button"
               disabled={activateDisabled}
-              title={hasActiveDuplicate && !expanded ? '같은 이벤트·큐에 이미 활성 룰이 있습니다. 행을 펼쳐 교체하세요.' : undefined}
+              title={hasActiveDuplicate && !expanded ? 'Another active rule already exists for this event · queue. Expand the row to swap.' : undefined}
               onClick={() => {
                 if (swapMode && duplicateActiveRule) {
                   onRequestSwap(duplicateActiveRule, rule);
@@ -834,9 +851,6 @@ export default function DeployedPipelinesPage() {
   const selectedRule = selectedRuleId ? rules.find((rule) => rule.id === selectedRuleId) ?? null : null;
   const selectedFormPipeline = ruleForm.pipelineId ? pipelineById.get(ruleForm.pipelineId) ?? null : null;
   const selectedFormPreviewSteps = selectedFormPipeline ? toPreviewSteps(selectedFormPipeline) : [];
-  const duplicateFormRule = useMemo(() => (
-    rules.find((rule) => rule.active && rule.id !== ruleForm.id && ruleEventQueueKey(rule) === formEventQueueKey(ruleForm)) ?? null
-  ), [ruleForm, rules]);
   const missingAutomationSelections = useMemo(() => [
     !ruleForm.inputLevel ? 'Input Level' : null,
     !ruleForm.pipelineId ? 'Active Pipeline' : null,
@@ -885,7 +899,7 @@ export default function DeployedPipelinesPage() {
       ? rules.find((rule) => rule.active && rule.id !== payload.id && ruleEventQueueKey(rule) === payloadEventQueueKey)
       : undefined;
     if (duplicateRule) {
-      toast.error('동일한 이벤트와 큐가 이미 활성화되어 있습니다.');
+      toast.error('The same event and source queue is already active.');
       return null;
     }
 
@@ -907,11 +921,13 @@ export default function DeployedPipelinesPage() {
   const handleAutomate = useCallback(async () => {
     setAutomating(true);
     await new Promise((resolve) => setTimeout(resolve, 720));
-    const result = await handleSaveRule({ ...ruleForm, active: true }, { requireInputLevel: true });
+    // 신규 룰은 항상 비활성 상태로 등록 — 활성/비활성 토글은 목록 화면에서 수행한다.
+    // 같은 이벤트·큐에 활성 룰이 있어도 신규는 비활성이라 충돌하지 않으므로 모달 단계 중복 검증은 제거.
+    const result = await handleSaveRule({ ...ruleForm, active: false }, { requireInputLevel: true });
     setAutomating(false);
     if (!result) return;
     setMappingModalOpen(false);
-    toast.success('Automation pipeline added');
+    toast.success('Automation pipeline added (inactive)');
   }, [handleSaveRule, ruleForm]);
 
   const handleToggleRuleActive = useCallback((rule: PipelineActivationRule) => {
@@ -1263,9 +1279,6 @@ export default function DeployedPipelinesPage() {
                       ? `Additional selections required: ${missingAutomationSelections.join(', ')}`
                       : 'Ready to automate'}
                   </p>
-                  {duplicateFormRule && (
-                    <p className="mt-1 text-xs font-medium text-destructive">The selected event and source queue are already active.</p>
-                  )}
                 </div>
                 <div className="flex shrink-0 items-center justify-end gap-2">
                   <button
@@ -1278,7 +1291,7 @@ export default function DeployedPipelinesPage() {
                   </button>
                   <button
                     type="button"
-                    disabled={automating || missingAutomationSelections.length > 0 || Boolean(duplicateFormRule)}
+                    disabled={automating || missingAutomationSelections.length > 0}
                     onClick={handleAutomate}
                     className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-foreground transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
                   >
@@ -1303,17 +1316,17 @@ export default function DeployedPipelinesPage() {
           >
             <div className="border-b border-border px-5 py-4">
               <h2 className="text-sm font-semibold text-foreground">
-                활성 자동화 룰을 교체하시겠습니까?
+                Swap the active automation rule?
               </h2>
               <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">
-                같은 이벤트·큐에 활성 룰이 이미 존재합니다. 진행하면 이전 룰이 비활성화되고 선택한 룰이 활성화됩니다.
+                Another active rule already exists for this event · queue. Continuing will deactivate the previous rule and activate the selected one.
               </p>
             </div>
             <div className="space-y-2 px-5 py-4">
               <div className="rounded-md border border-border bg-muted/15 px-3 py-2.5">
                 <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
-                  Deactivate (이전 활성)
+                  Deactivate (current active)
                 </div>
                 <p className="mt-1 text-xs font-medium text-foreground">
                   {pipelineById.get(swapConfirm.from.pipelineId)?.name ?? swapConfirm.from.pipelineId}
@@ -1325,7 +1338,7 @@ export default function DeployedPipelinesPage() {
               <div className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2.5">
                 <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-accent">
                   <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
-                  Activate (신규)
+                  Activate (new)
                 </div>
                 <p className="mt-1 text-xs font-medium text-foreground">
                   {pipelineById.get(swapConfirm.to.pipelineId)?.name ?? swapConfirm.to.pipelineId}
@@ -1348,7 +1361,7 @@ export default function DeployedPipelinesPage() {
                 className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-foreground transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {swapping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                {swapping ? 'Swapping' : '예, 교체'}
+                {swapping ? 'Swapping' : 'Yes, swap'}
               </button>
             </div>
           </div>
@@ -1363,7 +1376,7 @@ export default function DeployedPipelinesPage() {
           >
             <div className="border-b border-border px-5 py-4">
               <h2 className="text-sm font-semibold text-foreground">
-                {toggleConfirmRule.active ? '비활성화 하시겠습니까?' : '활성화 하시겠습니까?'}
+                {toggleConfirmRule.active ? 'Deactivate this rule?' : 'Activate this rule?'}
               </h2>
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
                 {pipelineById.get(toggleConfirmRule.pipelineId)?.name ?? toggleConfirmRule.pipelineId}

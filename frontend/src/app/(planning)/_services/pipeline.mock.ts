@@ -2311,8 +2311,10 @@ class MockPipelineUIService implements IPipelineUIService {
     let filtered = [...this.executionLogs];
     if (params?.jobId) filtered = filtered.filter((l) => l.jobId === params.jobId);
     if (params?.level) filtered = filtered.filter((l) => l.level === params.level);
+    // executionLogs 는 timestamp 오름차순 정렬 — limit 적용 시 끝에서 자르면 "최신 N건" 이 된다.
+    // 기존엔 slice(0, N) 으로 가장 오래된 N개만 반환해, 새 job 들의 로그가 잘려나가 패널이 비어 보였다.
     const limit = params?.limit ?? 200;
-    return { success: true, message: 'OK', data: filtered.slice(0, limit) };
+    return { success: true, message: 'OK', data: filtered.slice(-limit) };
   }
 
   // =========================================================================

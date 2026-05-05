@@ -212,6 +212,20 @@ export default function JobsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- searchParams는 초기 로드에만 사용
   }, [service]);
 
+  // 선택된 Job 이 바뀌면 그 Job 의 전체 로그를 다시 가져온다.
+  // (전역 limit 으로는 오래된 로그만 잡혀 새 Job 의 패널이 비어 보이는 것을 방지)
+  useEffect(() => {
+    if (!selectedJob) return;
+    let cancelled = false;
+    void (async () => {
+      const res = await service.실행_로그를_조회한다({ jobId: selectedJob.jobId, limit: 1000 });
+      if (!cancelled && res.data) setExecutionLogs(res.data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedJob, service]);
+
   // --- Poll active jobs ---
   useEffect(() => {
     if (!selectedJob) return;

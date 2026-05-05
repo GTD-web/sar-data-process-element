@@ -23,8 +23,6 @@ import {
   Binary,
   CheckCircle2,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Clock,
   Database,
   Download,
@@ -45,7 +43,6 @@ import {
   XCircle,
 } from 'lucide-react';
 
-const LEVELS: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
 type CatalogPageTab = 'lineage' | 'production';
 type InspectorTab = 'raw' | 'result';
 type InspectorSelection =
@@ -357,7 +354,6 @@ function LineageView({
   onSelect,
   activePipelineId,
   onPipelineClick,
-  pageSize,
 }: {
   item: LineageItem;
   selection: InspectorSelection;
@@ -365,7 +361,6 @@ function LineageView({
   onSelect: (selection: InspectorSelection) => void;
   activePipelineId: string | null;
   onPipelineClick: (pipelineId: string) => void;
-  pageSize: number;
 }) {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<LineageStatusFilter>('all');
@@ -418,7 +413,7 @@ function LineageView({
 
       {filteredRuns.length === 0 && allRuns.length > 0 ? (
         <div className="flex h-32 items-center justify-center rounded-md border border-dashed border-border bg-card text-[12px] text-muted-foreground">
-          필터에 맞는 실행이 없습니다.
+          No runs match the filters.
         </div>
       ) : (
         <RunsTable
@@ -427,7 +422,6 @@ function LineageView({
           onSelect={onSelect}
           activePipelineId={activePipelineId}
           onPipelineClick={onPipelineClick}
-          pageSize={pageSize}
           totals={{
             runs: allRuns.length,
             completed: completedCount,
@@ -467,7 +461,7 @@ function LineageFilterStrip({
         <input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="파이프라인 / Job / Product 검색"
+          placeholder="Search Pipeline / Job / Product"
           className="h-8 w-60 rounded-md border border-border bg-background pl-7 pr-2 text-xs outline-none focus:border-accent"
         />
       </div>
@@ -476,20 +470,20 @@ function LineageFilterStrip({
         onChange={(e) => onStatusChange(e.target.value as LineageStatusFilter)}
         className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-accent"
       >
-        <option value="all">상태 · 전체</option>
-        <option value="running">진행 중</option>
-        <option value="completed">완료</option>
-        <option value="failed">실패</option>
+        <option value="all">Status · All</option>
+        <option value="running">Running</option>
+        <option value="completed">Completed</option>
+        <option value="failed">Failed</option>
       </select>
       <select
         value={levelFilter}
         onChange={(e) => onLevelChange(e.target.value as LineageLevelFilter)}
         className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-accent"
       >
-        <option value="all">도달 레벨 · 전체</option>
+        <option value="all">Reached level · All</option>
         {LEVEL_ORDERED.map((level) => (
           <option key={level} value={level}>
-            {PRODUCT_LEVEL_LABELS[level]} 도달
+            Reached {PRODUCT_LEVEL_LABELS[level]}
           </option>
         ))}
       </select>
@@ -508,6 +502,8 @@ interface RunsTableTotals {
   failed: number;
 }
 
+const INFINITE_SCROLL_BATCH = 30;
+
 function RunsTable({
   runs,
   activeJobId,
@@ -515,7 +511,6 @@ function RunsTable({
   totals,
   activePipelineId,
   onPipelineClick,
-  pageSize,
 }: {
   runs: LineageRun[];
   activeJobId: string | undefined;
@@ -523,16 +518,34 @@ function RunsTable({
   totals: RunsTableTotals;
   activePipelineId: string | null;
   onPipelineClick: (pipelineId: string) => void;
-  pageSize: number;
 }) {
-  const [page, setPage] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(INFINITE_SCROLL_BATCH);
+  const sentinelRef = useRef<HTMLTableRowElement>(null);
 
-  const pageCount = Math.max(1, Math.ceil(runs.length / pageSize));
-  const safePage = Math.min(page, pageCount - 1);
-  const start = safePage * pageSize;
-  const visibleRuns = runs.slice(start, start + pageSize);
-  const rangeFrom = runs.length === 0 ? 0 : start + 1;
-  const rangeTo = Math.min(start + pageSize, runs.length);
+  // 필터/데이터 변경 시 처음 배치부터 다시 렌더한다.
+  useEffect(() => {
+    setVisibleCount(INFINITE_SCROLL_BATCH);
+  }, [runs]);
+
+  // 매트릭스 컨테이너가 스크롤되며 sentinel 이 viewport 에 들어오면 다음 배치 로드.
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    if (visibleCount >= runs.length) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((c) => Math.min(c + INFINITE_SCROLL_BATCH, runs.length));
+        }
+      },
+      { rootMargin: '0px 0px 200px 0px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [runs.length, visibleCount]);
+
+  const visibleRuns = runs.slice(0, visibleCount);
+  const hasMore = visibleCount < runs.length;
 
   // 부분 재처리 노선의 입력 도너(이전 JOB) 매핑.
   // 입력 레벨에서 COMPLETED 산출물을 가진 다른 실행 중 가장 최근 것을 도너로 본다.
@@ -562,20 +575,21 @@ function RunsTable({
   }, [runs]);
 
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-card">
-      <table className="w-full text-xs">
-        <thead className="bg-muted/35 text-left text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+    <div className="rounded-md border border-border bg-card">
+      <table className="w-full border-separate border-spacing-0 text-xs">
+        <thead className="text-left text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
           <tr>
-            <th className="px-3 py-2 font-medium">Run</th>
-            <th className="px-3 py-2 font-medium">Pipeline</th>
-            <th className="px-3 py-2 font-medium">Status</th>
-            <th className="px-3 py-2 font-medium">Reach</th>
-            <th className="px-3 py-2 font-medium">Target</th>
-            <th className="px-3 py-2 text-center font-medium">L0</th>
-            <th className="px-3 py-2 text-center font-medium">L1</th>
-            <th className="px-3 py-2 text-center font-medium">L2</th>
-            <th className="px-3 py-2 text-center font-medium">L3</th>
-            <th className="px-3 py-2 font-medium">Started</th>
+            <th className="sticky top-0 z-10 border-b border-border bg-muted/95 px-3 py-2 font-medium backdrop-blur">Run</th>
+            <th className="sticky top-0 z-10 border-b border-border bg-muted/95 px-3 py-2 font-medium backdrop-blur">Pipeline</th>
+            <th className="sticky top-0 z-10 border-b border-border bg-muted/95 px-3 py-2 text-center font-medium backdrop-blur">L0</th>
+            <th className="sticky top-0 z-10 border-b border-border bg-muted/95 px-3 py-2 text-center font-medium backdrop-blur">L1</th>
+            <th className="sticky top-0 z-10 border-b border-border bg-muted/95 px-3 py-2 text-center font-medium backdrop-blur">L2</th>
+            <th className="sticky top-0 z-10 border-b border-border bg-muted/95 px-3 py-2 text-center font-medium backdrop-blur">L3</th>
+            <th className="sticky top-0 z-10 border-b border-border bg-muted/95 px-3 py-2 font-medium backdrop-blur">Start</th>
+            <th className="sticky top-0 z-10 border-b border-border bg-muted/95 px-3 py-2 font-medium backdrop-blur">Reach</th>
+            <th className="sticky top-0 z-10 border-b border-border bg-muted/95 px-3 py-2 font-medium backdrop-blur">Target</th>
+            <th className="sticky top-0 z-10 border-b border-border bg-muted/95 px-3 py-2 font-medium backdrop-blur">Started</th>
+            <th className="sticky top-0 z-10 border-b border-border bg-muted/95 px-3 py-2 font-medium backdrop-blur">Status</th>
           </tr>
         </thead>
         <tbody>
@@ -613,23 +627,10 @@ function RunsTable({
                       'rounded px-1.5 py-0.5 text-left text-foreground transition-colors hover:text-accent',
                       run.job.pipelineId === activePipelineId ? 'font-bold' : 'font-medium',
                     )}
-                    title="다이어그램에 이 파이프라인 표시"
+                    title="Show this pipeline in the diagram"
                   >
                     {run.pipelineName}
                   </button>
-                </td>
-                <td className="px-3 py-2">
-                  <RunStatusBadge status={run.status} />
-                </td>
-                <td className="px-3 py-2 font-mono text-[11px] text-foreground">
-                  {run.lastProducedIdx >= 0
-                    ? PRODUCT_LEVEL_LABELS[LEVEL_ORDERED[run.lastProducedIdx]]
-                    : '—'}
-                </td>
-                <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
-                  {run.pipelineTargetIdx >= 0
-                    ? PRODUCT_LEVEL_LABELS[LEVEL_ORDERED[run.pipelineTargetIdx]]
-                    : '—'}
                 </td>
                 {LEVEL_ORDERED.map((level) => {
                   const levelIdx = LEVEL_TO_IDX[level];
@@ -669,52 +670,65 @@ function RunsTable({
                     </td>
                   );
                 })}
+                <td className="px-3 py-2 font-mono text-[11px]">
+                  {run.isPartial && run.inputLevelIdx >= 0 ? (
+                    <span
+                      className="inline-flex items-center rounded border border-dashed px-1.5 py-0.5 text-[10px] font-semibold"
+                      style={{ color, borderColor: color, opacity: 0.85 }}
+                      title="Partial reprocess input level"
+                    >
+                      {PRODUCT_LEVEL_LABELS[LEVEL_ORDERED[run.inputLevelIdx]]}
+                    </span>
+                  ) : (
+                    <span
+                      className="inline-flex items-center rounded bg-muted/60 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                      title="Full pipeline from raw data"
+                    >
+                      RAW
+                    </span>
+                  )}
+                </td>
+                <td className="px-3 py-2 font-mono text-[11px] text-foreground">
+                  {run.lastProducedIdx >= 0
+                    ? PRODUCT_LEVEL_LABELS[LEVEL_ORDERED[run.lastProducedIdx]]
+                    : '—'}
+                </td>
+                <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
+                  {run.pipelineTargetIdx >= 0
+                    ? PRODUCT_LEVEL_LABELS[LEVEL_ORDERED[run.pipelineTargetIdx]]
+                    : '—'}
+                </td>
                 <td className="px-3 py-2 text-[11px] text-muted-foreground">
                   {formatRelativeTime(run.job.startedAt)}
+                </td>
+                <td className="px-3 py-2">
+                  <RunStatusBadge status={run.status} />
                 </td>
               </tr>
             );
           })}
+          {hasMore && (
+            <tr ref={sentinelRef} aria-hidden>
+              <td colSpan={11} className="px-3 py-3 text-center text-[10px] text-muted-foreground">
+                Loading more runs...
+              </td>
+            </tr>
+          )}
         </tbody>
-        <tfoot className="border-t-2 border-border bg-muted/40">
+        <tfoot>
           <tr>
-            <td colSpan={10} className="px-3 py-2">
+            <td colSpan={11} className="sticky bottom-0 z-10 border-t-2 border-border bg-muted/95 px-3 py-2 backdrop-blur">
               <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
-                <FooterStat num={totals.runs} label="실행 / 노선" />
-                <FooterStat num={totals.completed} label="완료 산출물" tone="text-success" />
-                <FooterStat num={totals.running} label="진행 중" tone="text-accent" />
-                <FooterStat num={totals.pending} label="대기" />
+                <FooterStat num={totals.runs} label="runs" />
+                <FooterStat num={totals.completed} label="completed" tone="text-success" />
+                <FooterStat num={totals.running} label="running" tone="text-accent" />
+                <FooterStat num={totals.pending} label="pending" />
                 {totals.failed > 0 && (
-                  <FooterStat num={totals.failed} label="실패" tone="text-destructive" />
+                  <FooterStat num={totals.failed} label="failed" tone="text-destructive" />
                 )}
-                <div className="ml-auto flex items-center gap-3">
-                  <span className="text-[10px] tabular-nums text-muted-foreground">
-                    {rangeFrom}-{rangeTo} / {runs.length}
-                  </span>
-                  <div className="flex items-center gap-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setPage((p) => Math.max(0, p - 1))}
-                      disabled={safePage === 0}
-                      className="inline-flex h-6 w-6 items-center justify-center rounded border border-border bg-background text-muted-foreground transition-colors hover:border-accent/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                      aria-label="이전 페이지"
-                    >
-                      <ChevronLeft className="h-3.5 w-3.5" />
-                    </button>
-                    <span className="px-1.5 text-[11px] tabular-nums text-foreground">
-                      {safePage + 1} / {pageCount}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-                      disabled={safePage >= pageCount - 1}
-                      className="inline-flex h-6 w-6 items-center justify-center rounded border border-border bg-background text-muted-foreground transition-colors hover:border-accent/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                      aria-label="다음 페이지"
-                    >
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
+                <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
+                  Showing {visibleRuns.length} / {runs.length}
+                </span>
               </div>
             </td>
           </tr>
@@ -767,8 +781,8 @@ function RunCellDot({
   }
   if (isInput) {
     const tooltip = donor
-      ? `${donor.jobId} (${donor.pipelineName}) 의 ${levelLabel ?? ''} 결과 사용\n→ ${donor.product.id}`
-      : '이전 실행 결과 입력';
+      ? `Reuses ${levelLabel ?? ''} result from ${donor.jobId} (${donor.pipelineName})\n→ ${donor.product.id}`
+      : 'Input from a previous run';
     return (
       <span
         className="mx-auto inline-block cursor-help rounded px-1 py-0.5 text-[8px] font-bold tracking-wider transition-shadow duration-300 ease-out group-hover:[box-shadow:0_0_8px_2px_currentColor]"
@@ -784,7 +798,7 @@ function RunCellDot({
       <span
         className="mx-auto inline-block h-3.5 w-3.5 rounded-full border border-dashed transition-shadow duration-300 ease-out group-hover:[box-shadow:0_0_8px_2px_hsl(var(--muted-foreground)/0.5)]"
         style={{ borderColor: 'hsl(var(--muted-foreground) / 0.6)' }}
-        title="미생성"
+        title="Not generated"
       />
     );
   }
@@ -793,7 +807,7 @@ function RunCellDot({
       <span
         className="mx-auto inline-block h-3.5 w-3.5 animate-pulse rounded-full transition-shadow duration-300 ease-out group-hover:[box-shadow:0_0_8px_2px_currentColor]"
         style={{ background: color, color, opacity: 0.85 }}
-        title="진행 중"
+        title="Processing"
       />
     );
   }
@@ -802,7 +816,7 @@ function RunCellDot({
       <span
         className="mx-auto inline-block h-3.5 w-3.5 rounded-full transition-shadow duration-300 ease-out group-hover:[box-shadow:0_0_8px_2px_currentColor]"
         style={{ background: '#EB5757', color: '#EB5757' }}
-        title="실패"
+        title="Failed"
       />
     );
   }
@@ -810,7 +824,7 @@ function RunCellDot({
     <span
       className="mx-auto inline-block h-3.5 w-3.5 rounded-full transition-shadow duration-300 ease-out group-hover:[box-shadow:0_0_8px_2px_currentColor]"
       style={{ background: color, color }}
-      title="완료"
+      title="Completed"
     />
   );
 }
@@ -1346,7 +1360,6 @@ export default function DataCatalogPage() {
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [pipelines, setPipelines] = useState<PipelineDefinition[]>([]);
   const [query, setQuery] = useState('');
-  const [levelFilter, setLevelFilter] = useState<ProductLevel | 'all'>('all');
   const [pageTab, setPageTab] = useState<CatalogPageTab>('lineage');
   const [inspectorMounted, setInspectorMounted] = useState(false);
   const [inspectorAnimating, setInspectorAnimating] = useState(false);
@@ -1355,26 +1368,6 @@ export default function DataCatalogPage() {
   const [selection, setSelection] = useState<InspectorSelection>({ type: 'raw' });
   const [diagramPipelineId, setDiagramPipelineId] = useState<string | null>(null);
   const [diagramCollapsed, setDiagramCollapsed] = useState(false);
-  const [matrixPageSize, setMatrixPageSize] = useState(10);
-  const matrixContainerRef = useRef<HTMLDivElement>(null);
-
-  // 매트릭스 컨테이너 높이를 실시간으로 측정해 보여줄 행 수를 자동 계산.
-  // 다이어그램 접기/펼치기 애니메이션 중에도 ResizeObserver 가 매 프레임 발화하므로
-  // pageSize 가 부드럽게 따라가 테이블이 컨테이너 크기에 맞춰 자연스럽게 늘어/줄어든다.
-  useEffect(() => {
-    const el = matrixContainerRef.current;
-    if (!el) return;
-    const ROW_HEIGHT = 33; // tbody tr 한 행 높이 추정치 (px-3 py-2)
-    const OVERHEAD = 160; // 섹션 헤더 + 필터 스트립 + thead + tfoot + 패딩
-    const update = () => {
-      const fits = Math.max(5, Math.floor((el.clientHeight - OVERHEAD) / ROW_HEIGHT));
-      setMatrixPageSize(fits);
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -1415,6 +1408,12 @@ export default function DataCatalogPage() {
     setSelection({ type: 'raw' });
     setInspectorTab('raw');
   }
+  // 행 클릭 등으로 인한 자동 닫힘 — selection(하이라이트) 은 보존한다.
+  function dismissInspector() {
+    if (!inspectorMounted) return;
+    setInspectorAnimating(false);
+    setTimeout(() => setInspectorMounted(false), 200);
+  }
   function selectInInspector(next: InspectorSelection) {
     setSelection(next);
     setInspectorTab(next.type === 'raw' ? 'raw' : 'result');
@@ -1424,7 +1423,8 @@ export default function DataCatalogPage() {
   const filteredLineage = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     const filtered = lineage.filter((item) => {
-      const matchesQuery = !normalized || [
+      if (!normalized) return true;
+      return [
         item.raw.id,
         item.raw.title,
         item.raw.rawDataPath,
@@ -1432,11 +1432,9 @@ export default function DataCatalogPage() {
         ...item.products.map((product) => product.id),
         ...item.jobs.map((job) => job.jobId),
       ].some((value) => value.toLowerCase().includes(normalized));
-      const matchesLevel = levelFilter === 'all' || item.products.some((product) => product.level === levelFilter);
-      return matchesQuery && matchesLevel;
     });
     return [...filtered].sort((a, b) => a.raw.capturedAt.localeCompare(b.raw.capturedAt));
-  }, [lineage, levelFilter, query]);
+  }, [lineage, query]);
 
   const selectedItem = useMemo(() => {
     return lineage.find((item) => item.raw.id === selectedRawId) ?? filteredLineage[0] ?? null;
@@ -1687,18 +1685,6 @@ export default function DataCatalogPage() {
                   className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-2 text-xs outline-none focus:border-accent"
                 />
               </div>
-              <select
-                value={levelFilter}
-                onChange={(event) => setLevelFilter(event.target.value as ProductLevel | 'all')}
-                className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-accent"
-              >
-                <option value="all">All levels reached</option>
-                {LEVELS.map((level) => (
-                  <option key={level} value={level}>
-                    Reached {PRODUCT_LEVEL_LABELS[level]}
-                  </option>
-                ))}
-              </select>
               <div className="text-[11px] font-semibold text-muted-foreground">
                 {loading ? 'loading' : `${filteredLineage.length} items`}
               </div>
@@ -1740,40 +1726,41 @@ export default function DataCatalogPage() {
           <section className="flex min-h-0 flex-col">
             {selectedItem ? (
               <>
-                <div
-                  ref={matrixContainerRef}
-                  className={cn(
-                    'min-h-0 overflow-y-auto border-b border-border bg-background px-4 py-3 transition-[flex-grow] duration-300 ease-out',
-                    diagramCollapsed ? 'grow' : 'grow-0',
-                  )}
-                >
-                  <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    파이프라인 실행 매트릭스
+                <div className="flex min-h-0 flex-1 flex-col border-b border-border bg-background px-4 py-3">
+                  <div className="mb-2 shrink-0 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Pipeline Execution Matrix
                   </div>
-                  <LineageView
-                    item={selectedItem}
-                    selection={selection}
-                    pipelines={pipelines}
-                    onSelect={(next) => {
-                      selectInInspector(next);
-                      openInspector();
-                    }}
-                    activePipelineId={selectedPipeline?.id ?? null}
-                    onPipelineClick={(pipelineId) => setDiagramPipelineId(pipelineId)}
-                    pageSize={matrixPageSize}
-                  />
+                  <div className="min-h-0 flex-1 overflow-y-auto">
+                    <LineageView
+                      item={selectedItem}
+                      selection={selection}
+                      pipelines={pipelines}
+                      onSelect={(next) => {
+                        selectInInspector(next);
+                        // 산출물 셀(L0~L3) 클릭 시에만 우측 상세 패널을 연다.
+                        // 행/잡 클릭은 하이라이트만 남기고, 이전에 열려 있던 패널은 닫는다.
+                        if (next.type === 'product') {
+                          openInspector();
+                        } else {
+                          dismissInspector();
+                        }
+                      }}
+                      activePipelineId={selectedPipeline?.id ?? null}
+                      onPipelineClick={(pipelineId) => setDiagramPipelineId(pipelineId)}
+                    />
+                  </div>
                 </div>
                 <div
                   className={cn(
                     'flex min-h-0 flex-col bg-background px-4 py-3 transition-[flex-grow] duration-300 ease-out',
-                    diagramCollapsed ? 'grow-0' : 'grow',
+                    diagramCollapsed ? 'grow-0' : 'flex-1',
                   )}
                 >
                   <button
                     type="button"
                     onClick={() => setDiagramCollapsed((v) => !v)}
                     className="-mx-1 flex w-full flex-wrap items-center gap-2 rounded px-1 py-1 text-left transition-colors hover:bg-muted/40"
-                    title={diagramCollapsed ? '다이어그램 펼치기' : '다이어그램 접기'}
+                    title={diagramCollapsed ? 'Expand diagram' : 'Collapse diagram'}
                     aria-expanded={!diagramCollapsed}
                   >
                     <ChevronDown
@@ -1792,7 +1779,7 @@ export default function DataCatalogPage() {
                     )}
                     {!diagramCollapsed && rawPipelineOptions.length > 1 && (
                       <span className="text-[10px] leading-none text-muted-foreground">
-                        테이블의 Pipeline 셀을 클릭해 전환
+                        Click a Pipeline cell to switch
                       </span>
                     )}
                   </button>

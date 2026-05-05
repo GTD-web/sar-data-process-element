@@ -52,7 +52,13 @@ GitHub Actions (`ci.yml`): Node 20 + Python 3.11
 - TS: build → lint → test → test:e2e
 - Python: ruff check → ruff format --check → mypy
 
-## 작업 종료 규칙
+## 작업 종료 규칙 (재배포 강제)
 
-- `frontend/` 아래 변경이 포함된 작업을 마치면, 최종 응답 전에 아래 명령으로 프론트엔드 Docker 이미지를 재빌드하고 컨테이너를 재배포한다. 사용자가 명시적으로 제외하라고 한 경우만 예외다.
-- `docker rm -f sdpe-frontend 2>nul & docker build -t sdpe-frontend:latest "C:\Users\USER\dev\sar-data-process-element\frontend" && docker run -d --name sdpe-frontend -p 3010:3000 sdpe-frontend:latest`
+- 코드 변경이 포함된 작업을 마치면, **최종 응답 전에 반드시** 아래 명령으로 프론트엔드 Docker 이미지를 재빌드하고 컨테이너를 재배포한다. 변경 범위가 `frontend/` 가 아니어도 실행한다 (정적 자원·설정 변경이 컨테이너 동작에 영향을 주는지 매번 판단하지 않기 위함).
+- 사용자가 같은 턴에서 명시적으로 "재배포하지 마" 라고 한 경우에만 생략한다.
+- 빌드 실패 시: 즉시 사용자에게 보고하고, 직전 컨테이너가 살아있는 상태에서 원인을 수정한다 (실패 상태로 응답을 마치지 않는다).
+- 명령 (Bash 툴 / git-bash 호환):
+  ```
+  docker rm -f sdpe-frontend 2>/dev/null; docker build -t sdpe-frontend:latest frontend && docker run -d --name sdpe-frontend -p 3010:3000 sdpe-frontend:latest
+  ```
+- 컨테이너는 `http://localhost:3010` 에 노출된다.
