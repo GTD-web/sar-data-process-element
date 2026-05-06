@@ -45,6 +45,8 @@ export interface PipelineNodeData {
   fileInputFilePath?: string;
   status: StepStatus;
   order: number;
+  /** RUNNING 상태일 때 경과 시간 계산용 시작 시각 */
+  startedAt?: string;
   durationMs?: number;
   errorMessage?: string;
   editable?: boolean;
@@ -304,7 +306,18 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
     if (hoverLeaveTimerRef.current != null) window.clearTimeout(hoverLeaveTimerRef.current);
   }, []);
 
-  const { kind, sarStage, inputLevel, fileInputSceneId, fileInputFilePath, status, order, durationMs, errorMessage, editable, isLeaf, enabledTasks, onDelete, onAddAfter, onTrigger, onExecuteStep, warningReason, enabled, onToggleActive, onReprocess, isJobMode } = nodeData;
+  const { kind, sarStage, inputLevel, fileInputSceneId, fileInputFilePath, status, order, startedAt, durationMs, errorMessage, editable, isLeaf, enabledTasks, onDelete, onAddAfter, onTrigger, onExecuteStep, warningReason, enabled, onToggleActive, onReprocess, isJobMode } = nodeData;
+
+  // RUNNING 상태일 때만 1초 간격 tick 으로 경과 시간을 다시 그린다.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (status !== 'RUNNING' || !startedAt) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [status, startedAt]);
+  const runningElapsedMs = status === 'RUNNING' && startedAt
+    ? Math.max(0, nowTick - new Date(startedAt).getTime())
+    : null;
 
   const isEnabled = enabled !== false;
   const isSelected = !!selected;
@@ -608,9 +621,11 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
               {hasPartialTasks ? `${activeTaskCount}/${taskCount} tasks` : `${taskCount} tasks`}
             </div>
           )}
-          {durationMs !== undefined && (
+          {runningElapsedMs !== null ? (
+            <div className="text-[9px] text-accent font-mono">{formatDuration(runningElapsedMs)}</div>
+          ) : durationMs !== undefined ? (
             <div className="text-[9px] text-success font-mono">{formatDuration(durationMs)}</div>
-          )}
+          ) : null}
           {errorMessage && (
             <div className="text-[9px] text-destructive truncate" title={errorMessage}>{errorMessage}</div>
           )}

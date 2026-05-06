@@ -169,7 +169,7 @@ function buildNodes(
         fileInputSceneId: step.fileInputSceneId,
         fileInputFilePath: step.fileInputFilePath,
         status: step.status,
-        order: step.order, durationMs: step.durationMs, errorMessage: step.errorMessage,
+        order: step.order, startedAt: step.startedAt, durationMs: step.durationMs, errorMessage: step.errorMessage,
         enabledTasks: step.enabledTasks,
         editable, isLeaf: !sources.has(step.order), isHead: !targets.has(step.order),
         onDelete: onDeleteNode, onAddAfter,

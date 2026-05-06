@@ -401,6 +401,8 @@ export default function JobsPage() {
           targetCsc,
           productLevel,
           status: jobStep?.status ?? 'PENDING',
+          startedAt: jobStep?.startedAt,
+          finishedAt: jobStep?.finishedAt,
           durationMs: jobStep?.durationMs,
           errorMessage: jobStep?.errorMessage,
           enabledTasks: s.enabledTasks,
@@ -755,15 +757,21 @@ export default function JobsPage() {
               </div>
             )}
           </div>
-          <button
-            type="button"
-            disabled={!runPipelineId}
-            onClick={handleRunPipeline}
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 text-[11px] font-semibold text-accent-foreground transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            <FlaskConical className="h-3.5 w-3.5" />
-            Run Pipeline
-          </button>
+          {(() => {
+            const isRunTargetActive = !!runTargetJob && (runTargetJob.status === 'ASSIGNED' || runTargetJob.status === 'CREATED');
+            return (
+              <button
+                type="button"
+                disabled={!runPipelineId || isRunTargetActive}
+                onClick={handleRunPipeline}
+                title={isRunTargetActive ? 'Selected job is still running' : undefined}
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 text-[11px] font-semibold text-accent-foreground transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <FlaskConical className="h-3.5 w-3.5" />
+                Run Pipeline
+              </button>
+            );
+          })()}
           </div>
         </div>
         {selectedPipeline && graphSteps.length > 0 ? (
