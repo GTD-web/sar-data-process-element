@@ -166,6 +166,8 @@ function buildNodes(
         kind: step.kind,
         sarStage: step.sarStage,
         inputLevel: step.inputLevel,
+        fileInputSceneId: step.fileInputSceneId,
+        fileInputFilePath: step.fileInputFilePath,
         status: step.status,
         order: step.order, durationMs: step.durationMs, errorMessage: step.errorMessage,
         enabledTasks: step.enabledTasks,

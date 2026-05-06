@@ -209,6 +209,10 @@ export interface PipelineStep {
   sarStage?: SarStage;
   /** FILE_INPUT 노드 전용. 파이프라인에 입력되는 기존 처리 결과의 레벨. */
   inputLevel?: ProductLevel;
+  /** TRIGGER/FILE_INPUT 노드 전용. 시작 노드에 들어가는 입력 파일의 씬 식별자 (UI 표시용). */
+  fileInputSceneId?: string;
+  /** TRIGGER/FILE_INPUT 노드 전용. 시작 노드에 들어가는 입력 파일 경로 (UI 표시용). */
+  fileInputFilePath?: string;
   /** 백엔드 호환용. sarStage에서 파생되거나 백엔드 응답에서 직접 수신. */
   targetCsc: TargetCsc;
   productLevel: ProductLevel;

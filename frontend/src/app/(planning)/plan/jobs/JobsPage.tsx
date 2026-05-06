@@ -13,6 +13,7 @@ import ReprocessConfirmDialog from '@/components/panels/ReprocessConfirmDialog';
 import CancelConfirmDialog from '@/components/panels/CancelConfirmDialog';
 import ExecutionLogPanel from '@/components/panels/ExecutionLogPanel';
 import StepDetailPopover from '@/components/panels/StepDetailPopover';
+import EntryNodePopover from '@/components/panels/EntryNodePopover';
 import { toast } from '@/components/ui/Toast';
 import { Check, ChevronDown, FlaskConical, GitBranch, PanelRightOpen, Archive, Search } from 'lucide-react';
 import type {
@@ -21,10 +22,31 @@ import type {
   JobSummary,
   JobDetail,
   PipelineStep,
+  PipelineStepDefinition,
+  Product,
+  RawDataSummary,
+  FileInputConfig,
   SarStage,
   JobStatus,
 } from '@/types/pipeline';
 import { SAR_STAGE_TO_CSC, SAR_STAGE_TO_LEVEL } from '@/types/pipeline';
+
+function stepToUpdatePayload(step: PipelineStepDefinition): Omit<PipelineStepDefinition, 'order'> {
+  return {
+    kind: step.kind,
+    sarStage: step.sarStage,
+    inputLevel: step.inputLevel,
+    parentOrder: step.parentOrder,
+    enabledTasks: step.enabledTasks,
+    jobInitConfig: step.jobInitConfig,
+    fileInputConfig: step.fileInputConfig,
+    catalogConfig: step.catalogConfig,
+    disabled: step.disabled,
+    code: step.code,
+    codeLanguage: step.codeLanguage,
+    codeFilename: step.codeFilename,
+  };
+}
 
 const JOB_PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 const JOB_ID_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -154,13 +176,23 @@ export default function JobsPage() {
   const [runPipelineId, setRunPipelineId] = useState('');
   const [runTargetType, setRunTargetType] = useState<RunTargetType>('job');
   const canvasRef = useRef<HTMLDivElement>(null);
+  const [entryPickerOpen, setEntryPickerOpen] = useState(false);
+  const [entrySaving, setEntrySaving] = useState(false);
+  const [rawDataItems, setRawDataItems] = useState<RawDataSummary[]>([]);
+  const [productItems, setProductItems] = useState<Product[]>([]);
   const jobSelectRef = useRef<HTMLDivElement>(null);
   const [jobSelectOpen, setJobSelectOpen] = useState(false);
   const [jobSelectSearch, setJobSelectSearch] = useState('');
+  const [jobSelectTab, setJobSelectTab] = useState<'jobs' | 'pipelines'>('jobs');
 
   useEffect(() => {
     if (!jobSelectOpen && jobSelectSearch) setJobSelectSearch('');
   }, [jobSelectOpen, jobSelectSearch]);
+
+  useEffect(() => {
+    if (!jobSelectOpen) return;
+    setJobSelectTab(runTargetType === 'pipeline' ? 'pipelines' : 'jobs');
+  }, [jobSelectOpen, runTargetType]);
 
   useEffect(() => {
     if (!jobSelectOpen) return;
@@ -176,15 +208,19 @@ export default function JobsPage() {
   // --- Initial load ---
   useEffect(() => {
     (async () => {
-      const [jobsRes, plRes, archivedRes, logRes, rulesRes] = await Promise.all([
+      const [jobsRes, plRes, archivedRes, logRes, rulesRes, rawRes, productRes] = await Promise.all([
         service.Job_목록을_조회한다({ limit: 100 }),
         service.파이프라인_목록을_조회한다(),
         service.아카이브_파이프라인_목록을_조회한다(),
         service.실행_로그를_조회한다({ limit: 300 }),
         service.파이프라인_자동실행규칙을_조회한다(),
+        service.원시데이터_목록을_조회한다({ limit: 200 }),
+        service.제품_목록을_조회한다({ limit: 500 }),
       ]);
       const loadedJobs = jobsRes.data?.items ?? [];
       if (jobsRes.data) setJobs(loadedJobs);
+      if (rawRes.data) setRawDataItems(rawRes.data.items);
+      if (productRes.data) setProductItems(productRes.data.items);
       if (rulesRes.data) {
         const activeRules = rulesRes.data.filter((rule) => rule.active);
         setAutoPipelineCount(activeRules.length);
@@ -318,8 +354,29 @@ export default function JobsPage() {
     ));
   }, [activeRunPipelines, jobSelectKeyword]);
 
+  // 시작 노드가 fileInputConfig 를 가지고 있지 않을 때 표시용 기본값 — RAW 면 첫 raw data, FILE_INPUT 이면 해당 레벨 첫 product.
+  const defaultEntrySource = useMemo(() => {
+    const entry = selectedPipeline?.steps[0];
+    if (!entry) return null;
+    if (entry.kind === 'TRIGGER') {
+      const raw = rawDataItems[0];
+      if (!raw) return null;
+      return { sceneId: raw.id, inputFilePath: raw.rawDataPath };
+    }
+    if (entry.kind === 'FILE_INPUT') {
+      const product = productItems.find((p) => p.level === entry.inputLevel);
+      if (!product) return null;
+      const lvl = entry.inputLevel === 'LEVEL_0' ? 'l0'
+        : entry.inputLevel === 'LEVEL_1' ? 'l1'
+        : entry.inputLevel === 'LEVEL_2' ? 'l2'
+        : 'lx';
+      return { sceneId: product.sceneId, inputFilePath: `/mnt/nas/sdpe/output/${lvl}/${product.sceneId}.h5` };
+    }
+    return null;
+  }, [selectedPipeline, rawDataItems, productItems]);
+
   const graphSteps: PipelineStep[] = selectedPipeline
-    ? selectedPipeline.steps.map((s) => {
+    ? selectedPipeline.steps.map((s, idx) => {
         const jobStep = selectedJob ? selectedJob.steps.find((js) => js.order === s.order) : undefined;
         const targetCsc = s.kind === 'SAR' && s.sarStage
           ? SAR_STAGE_TO_CSC[s.sarStage]
@@ -329,11 +386,18 @@ export default function JobsPage() {
         const productLevel = s.kind === 'SAR' && s.sarStage
           ? SAR_STAGE_TO_LEVEL[s.sarStage]
           : 'LEVEL_0';
+        const isEntry = idx === 0 && (s.kind === 'TRIGGER' || s.kind === 'FILE_INPUT');
+        const fileInputSceneId = s.fileInputConfig?.sceneId
+          ?? (isEntry ? defaultEntrySource?.sceneId : undefined);
+        const fileInputFilePath = s.fileInputConfig?.inputFilePath
+          ?? (isEntry ? defaultEntrySource?.inputFilePath : undefined);
         return {
           order: s.order,
           kind: s.kind,
           sarStage: s.sarStage,
           inputLevel: s.inputLevel,
+          fileInputSceneId,
+          fileInputFilePath,
           targetCsc,
           productLevel,
           status: jobStep?.status ?? 'PENDING',
@@ -468,10 +532,54 @@ export default function JobsPage() {
 
   // --- Canvas node interactions ---
   const handleNodeClick = useCallback((stepOrder: number, clickY: number) => {
+    const step = selectedPipeline?.steps.find((s) => s.order === stepOrder);
+    if (step && (step.kind === 'TRIGGER' || step.kind === 'FILE_INPUT')) {
+      setActiveStepOrder(null);
+      setEntryPickerOpen(true);
+      return;
+    }
+    setEntryPickerOpen(false);
     setActiveStepOrder(stepOrder);
     setPopoverClickY(clickY);
     setRightCollapsed(false);
-  }, []);
+  }, [selectedPipeline]);
+
+  const entryStep = selectedPipeline?.steps[0];
+
+  useEffect(() => {
+    setEntryPickerOpen(false);
+  }, [selectedPipeline?.id]);
+
+  const handleSelectEntryInputFile = useCallback(async (config: FileInputConfig) => {
+    if (!selectedPipeline || !entryStep) return;
+    if (entryStep.kind !== 'TRIGGER' && entryStep.kind !== 'FILE_INPUT') return;
+    const stepsForUpdate: Omit<PipelineStepDefinition, 'order'>[] = selectedPipeline.steps.map((step, idx) => {
+      const base = stepToUpdatePayload(step);
+      if (idx === 0) {
+        return { ...base, fileInputConfig: config };
+      }
+      return base;
+    });
+    setEntrySaving(true);
+    const res = await service.파이프라인을_수정한다(selectedPipeline.id, {
+      steps: stepsForUpdate,
+      edges: selectedPipeline.edges,
+    });
+    setEntrySaving(false);
+    if (!res.success || !res.data) {
+      toast.error(res.message || 'Failed to update input file');
+      return;
+    }
+    setEntryPickerOpen(false);
+    const [plRes, archivedRes] = await Promise.all([
+      service.파이프라인_목록을_조회한다(),
+      service.아카이브_파이프라인_목록을_조회한다(),
+    ]);
+    const active = plRes.data ?? [];
+    const archived = (archivedRes.data ?? []).map((p) => ({ ...p, archived: true }));
+    setPipelines([...active, ...archived]);
+    toast.success(`Input file set to ${config.sceneId}`);
+  }, [entryStep, selectedPipeline, service]);
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -535,24 +643,54 @@ export default function JobsPage() {
                 className="absolute right-0 top-full z-30 mt-1 flex max-h-80 w-[26rem] max-w-[48vw] flex-col overflow-hidden rounded-md border border-border bg-card shadow-xl"
               >
                 <div className="shrink-0 border-b border-border/70 bg-card px-2 pb-2 pt-1">
+                  <div role="tablist" aria-label="Run target type" className="mb-2 flex items-center gap-1 rounded-md bg-muted/40 p-0.5">
+                    {([
+                      { id: 'jobs' as const, label: 'Jobs', count: selectableJobs.length },
+                      { id: 'pipelines' as const, label: 'Active Pipelines', count: selectableActivePipelines.length },
+                    ]).map((tab) => {
+                      const active = jobSelectTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={active}
+                          onClick={() => setJobSelectTab(tab.id)}
+                          className={`flex flex-1 items-center justify-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+                            active
+                              ? 'bg-background text-foreground shadow-sm'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          <span>{tab.label}</span>
+                          <span
+                            className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] leading-none ${
+                              active ? 'bg-accent/15 text-accent' : 'bg-muted/60 text-muted-foreground'
+                            }`}
+                          >
+                            {tab.count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                     <input
                       value={jobSelectSearch}
                       onChange={(event) => setJobSelectSearch(event.target.value)}
-                      placeholder="Search job ID, scene, pipeline..."
+                      placeholder={
+                        jobSelectTab === 'jobs'
+                          ? 'Search job ID, scene, pipeline...'
+                          : 'Search active pipeline...'
+                      }
                       className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-2 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent/60 focus:ring-1 focus:ring-accent/30"
                       aria-label="Search job or active pipeline"
                     />
                   </div>
                 </div>
                 <div className="min-h-0 overflow-y-auto py-1">
-                  {selectableJobs.length > 0 && (
-                    <div className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">
-                      Jobs
-                    </div>
-                  )}
-                  {selectableJobs.map((job) => {
+                  {jobSelectTab === 'jobs' && selectableJobs.map((job) => {
                     const selected = runTargetType === 'job' && job.jobId === selectedJob?.jobId && runPipelineId === job.pipelineId;
                     const pipelineName = pipelineNameById.get(job.pipelineId) ?? job.pipelineId;
                     return (
@@ -578,12 +716,7 @@ export default function JobsPage() {
                       </button>
                     );
                   })}
-                  {selectableActivePipelines.length > 0 && (
-                    <div className="border-t border-border/70 px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">
-                      Active Pipelines
-                    </div>
-                  )}
-                  {selectableActivePipelines.map((pipeline) => {
+                  {jobSelectTab === 'pipelines' && selectableActivePipelines.map((pipeline) => {
                     const selected = runTargetType === 'pipeline' && runPipelineId === pipeline.id;
                     return (
                       <button
@@ -608,9 +741,14 @@ export default function JobsPage() {
                       </button>
                     );
                   })}
-                  {selectableJobs.length === 0 && selectableActivePipelines.length === 0 && (
+                  {jobSelectTab === 'jobs' && selectableJobs.length === 0 && (
                     <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                      No jobs or active pipelines match the search.
+                      {jobSelectKeyword ? 'No jobs match the search.' : 'No jobs available.'}
+                    </div>
+                  )}
+                  {jobSelectTab === 'pipelines' && selectableActivePipelines.length === 0 && (
+                    <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                      {jobSelectKeyword ? 'No active pipelines match the search.' : 'No active pipelines available.'}
                     </div>
                   )}
                 </div>
@@ -673,6 +811,25 @@ export default function JobsPage() {
                 </button>
               </div>
             )}
+
+            {/* Entry node popover — 시작 노드 클릭 시 입력 파일 정보·교체 (Step Detail 통합) */}
+            {entryPickerOpen && selectedPipeline && entryStep && (() => {
+              const jobEntryStep = selectedJob?.steps.find((s) => s.order === entryStep.order);
+              return (
+                <EntryNodePopover
+                  entryStep={entryStep}
+                  jobStepStatus={jobEntryStep?.status}
+                  jobStepDurationMs={jobEntryStep?.durationMs}
+                  jobStepStartedAt={jobEntryStep?.startedAt}
+                  jobStepFinishedAt={jobEntryStep?.finishedAt}
+                  rawDataItems={rawDataItems}
+                  products={productItems}
+                  saving={entrySaving}
+                  onSelect={handleSelectEntryInputFile}
+                  onClose={() => setEntryPickerOpen(false)}
+                />
+              );
+            })()}
 
             {/* Step detail popover */}
             {activeStepOrder != null && activeStepOrder > 0 && (() => {
@@ -737,7 +894,17 @@ export default function JobsPage() {
           onPartialReprocess={handlePartialReprocess}
           onCancelJob={handleCancelJob}
           availableProfiles={[]}
-          onStepClick={(order, clickY) => { setActiveStepOrder(order); setPopoverClickY(clickY); }}
+          onStepClick={(order, clickY) => {
+            const step = selectedPipeline?.steps.find((s) => s.order === order);
+            if (step && (step.kind === 'TRIGGER' || step.kind === 'FILE_INPUT')) {
+              setActiveStepOrder(null);
+              setEntryPickerOpen(true);
+              return;
+            }
+            setEntryPickerOpen(false);
+            setActiveStepOrder(order);
+            setPopoverClickY(clickY);
+          }}
           activeStepOrder={activeStepOrder}
         />
       </RightTabbedPanel>

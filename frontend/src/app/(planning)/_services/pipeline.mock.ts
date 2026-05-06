@@ -1572,12 +1572,50 @@ let nextPipelineSeq = 100;
 // Sequential Execution Simulator
 // =============================================================================
 
-/** 스텝 간 실행 시간 (ms). TRIGGER/JOB_INIT/FILE_INPUT은 짧고, SAR/CATALOG는 길다. */
-function stepDurationMs(kind: PipelineNodeKind): number {
-  if (kind === 'TRIGGER' || kind === 'FILE_INPUT') return 800;
-  if (kind === 'JOB_INIT') return 1200;
-  if (kind === 'CATALOG') return 1500;
-  return 2000 + Math.floor(Math.random() * 2000); // SAR: 2~4초
+/** 스텝 종류별 가중치 — 파이프라인 총 실행 시간을 이 가중치 비율로 분배한다. */
+function stepWeight(kind: PipelineNodeKind): number {
+  if (kind === 'JOB_INIT') return 0.7;
+  if (kind === 'CATALOG') return 1.0;
+  return 1.5; // SAR / 그 외
+}
+
+/** 시작 노드(TRIGGER/FILE_INPUT)는 즉시 통과 — 사용자 시점에 바로 다음 노드로 넘어가는 것처럼 보인다. */
+const ENTRY_STEP_DURATION_MS = 600;
+
+/**
+ * 파이프라인 전체 실행 시간을 60~90초 사이에서 무작위로 잡고, 시작 노드는
+ * 짧은 고정 시간으로 즉시 통과시킨다. 남은 시간은 비-시작 스텝의 가중치 비율로
+ * 분배되며 ±30% 지터가 더해진다.
+ */
+function planStepDurationsMs(kinds: PipelineNodeKind[]): number[] {
+  if (kinds.length === 0) return [];
+  const TARGET_MIN_MS = 60_000;
+  const TARGET_MAX_MS = 90_000;
+  const target = TARGET_MIN_MS + Math.random() * (TARGET_MAX_MS - TARGET_MIN_MS);
+
+  const isEntry = (kind: PipelineNodeKind) => kind === 'TRIGGER' || kind === 'FILE_INPUT';
+  const entryBudget = kinds.filter(isEntry).length * ENTRY_STEP_DURATION_MS;
+  const remainingTarget = Math.max(target - entryBudget, kinds.length * 500);
+
+  const weights = kinds.map((kind) => (isEntry(kind) ? 0 : stepWeight(kind) * (0.7 + Math.random() * 0.6)));
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+
+  const durations = kinds.map((kind, idx) => {
+    if (isEntry(kind)) return ENTRY_STEP_DURATION_MS;
+    if (totalWeight <= 0) return Math.max(500, Math.round(remainingTarget / kinds.length));
+    return Math.max(500, Math.round((weights[idx]! / totalWeight) * remainingTarget));
+  });
+
+  // 반올림 오차를 마지막 비-시작 스텝에 흡수
+  const lastNonEntryIdx = (() => {
+    for (let i = durations.length - 1; i >= 0; i -= 1) {
+      if (!isEntry(kinds[i]!)) return i;
+    }
+    return durations.length - 1;
+  })();
+  const drift = Math.round(target) - durations.reduce((sum, d) => sum + d, 0);
+  durations[lastNonEntryIdx] = Math.max(500, (durations[lastNonEntryIdx] ?? 0) + drift);
+  return durations;
 }
 
 /** 스텝을 PENDING으로 되돌릴 때 이전 실행 흔적(에러·소요시간·산출물)을 함께 지운다. */
@@ -1603,6 +1641,11 @@ function simulateJobExecution(job: JobDetail) {
   let currentIdx = steps.findIndex((s) => s.status !== 'COMPLETED');
   if (currentIdx === -1) currentIdx = steps.length;
 
+  // 남은 스텝들의 소요 시간을 미리 분배 — 파이프라인 총 실행 시간 60~90s 보장
+  const remainingKinds = steps.slice(currentIdx).map((s) => s.kind ?? 'SAR');
+  const plannedDurations = planStepDurationsMs(remainingKinds);
+  const startIdx = currentIdx;
+
   function advanceStep() {
     if (currentIdx >= steps.length) {
       // 모든 스텝 완료
@@ -1620,7 +1663,7 @@ function simulateJobExecution(job: JobDetail) {
     job.currentLevel = step.productLevel;
     job.currentTargetCsc = step.targetCsc;
 
-    const duration = stepDurationMs(step.kind ?? 'SAR');
+    const duration = plannedDurations[currentIdx - startIdx] ?? 1000;
 
     setTimeout(() => {
       step.status = 'COMPLETED';
@@ -2102,10 +2145,37 @@ class MockPipelineUIService implements IPipelineUIService {
     if (!pl) return { success: false, message: 'Pipeline not found', data: null as unknown as JobSummary };
     const jobId = `job-${Date.now().toString(36)}`;
     const now = new Date().toISOString();
+    // 시작 노드(TRIGGER/FILE_INPUT)에 설정된 입력 파일이 있다면 해당 sceneId/path로 작업을 생성한다.
+    // 명시적 설정이 없으면 노드 종류에 맞는 첫 번째 가용 파일을 사용한다 (UI 기본 선택과 일치).
+    const entryStep = pl.steps[0];
+    const entryInput = entryStep?.fileInputConfig;
+    const fallbackEntrySource = (() => {
+      if (entryInput) return null;
+      if (entryStep?.kind === 'TRIGGER') {
+        const raw = this.rawData[0];
+        if (!raw) return null;
+        return { sceneId: raw.id, inputFilePath: raw.rawDataPath };
+      }
+      if (entryStep?.kind === 'FILE_INPUT') {
+        const product = this.products.find((p) => p.level === entryStep.inputLevel);
+        if (!product) return null;
+        const lvl = entryStep.inputLevel === 'LEVEL_0' ? 'l0'
+          : entryStep.inputLevel === 'LEVEL_1' ? 'l1'
+          : entryStep.inputLevel === 'LEVEL_2' ? 'l2'
+          : 'lx';
+        return {
+          sceneId: product.sceneId,
+          inputFilePath: `/mnt/nas/sdpe/output/${lvl}/${product.sceneId}.h5`,
+        };
+      }
+      return null;
+    })();
+    const effectiveEntrySource = entryInput ?? fallbackEntrySource ?? undefined;
+    const sceneId = effectiveEntrySource?.sceneId ?? `SCN-${Date.now().toString(36).toUpperCase()}`;
     const summary: JobSummary = {
       jobId,
       pipelineId,
-      sceneId: `SCN-${Date.now().toString(36).toUpperCase()}`,
+      sceneId,
       status: 'CREATED',
       currentLevel: null,
       currentTargetCsc: null,
@@ -2140,7 +2210,7 @@ class MockPipelineUIService implements IPipelineUIService {
       receivedAt: now,
       satelliteId: SATELLITE_IDS[0],
       mode: MODES[0],
-      rawDataPath: `/nas/raw/${jobId}/`,
+      rawDataPath: effectiveEntrySource?.inputFilePath ?? `/nas/raw/${jobId}/`,
       processingProfile: undefined,
     };
     this.jobs.push(detail);

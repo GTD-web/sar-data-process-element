@@ -39,6 +39,10 @@ export interface PipelineNodeData {
   sarStage?: SarStage;
   /** FILE_INPUT 노드 전용. 입력 파일의 처리 레벨. */
   inputLevel?: ProductLevel;
+  /** TRIGGER/FILE_INPUT 노드 전용. 현재 선택된 입력 파일의 씬 식별자. */
+  fileInputSceneId?: string;
+  /** TRIGGER/FILE_INPUT 노드 전용. 현재 선택된 입력 파일 경로. */
+  fileInputFilePath?: string;
   status: StepStatus;
   order: number;
   durationMs?: number;
@@ -300,7 +304,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
     if (hoverLeaveTimerRef.current != null) window.clearTimeout(hoverLeaveTimerRef.current);
   }, []);
 
-  const { kind, sarStage, inputLevel, status, order, durationMs, errorMessage, editable, isLeaf, enabledTasks, onDelete, onAddAfter, onTrigger, onExecuteStep, warningReason, enabled, onToggleActive, onReprocess, isJobMode } = nodeData;
+  const { kind, sarStage, inputLevel, fileInputSceneId, fileInputFilePath, status, order, durationMs, errorMessage, editable, isLeaf, enabledTasks, onDelete, onAddAfter, onTrigger, onExecuteStep, warningReason, enabled, onToggleActive, onReprocess, isJobMode } = nodeData;
 
   const isEnabled = enabled !== false;
   const isSelected = !!selected;
@@ -371,13 +375,16 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
 
   let label: string;
   let subLabel: string;
+  let entryInputBadge: string | undefined;
   if (isTrigger) {
-    label = 'Raw data received trigger';
-    subLabel = 'EI-01 · RAW_DATA_RECEIVED';
+    label = 'Pipeline input';
+    subLabel = 'EI-01 · raw data trigger';
+    entryInputBadge = 'RAW';
   } else if (isFileInput) {
     const levelStr = inputLevel === 'LEVEL_0' ? 'L0' : inputLevel === 'LEVEL_1' ? 'L1' : inputLevel === 'LEVEL_2' ? 'L2' : 'L?';
-    label = `${levelStr} result input`;
-    subLabel = 'SI-07 · Partial reprocessing';
+    label = 'Pipeline input';
+    subLabel = 'SI-07 · existing file';
+    entryInputBadge = levelStr;
   } else if (isJobInit) {
     label = 'Job initialization';
     subLabel = 'CSU-08.02 · Profile selection';
@@ -566,6 +573,31 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
 
         {/* Label below — n8n style */}
         <div className="mt-2 text-center max-w-[130px]">
+          {entryInputBadge && (
+            <div className="mb-1 flex flex-col items-center gap-0.5">
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-mono font-semibold tracking-wide',
+                  !isEnabled || status === 'CANCELED' || (isJobMode && status === 'PENDING')
+                    ? 'border-muted-foreground/30 bg-muted/40 text-muted-foreground/70'
+                    : 'border-accent/50 bg-accent/15 text-accent',
+                )}
+                title={`Input type: ${entryInputBadge}`}
+              >
+                {entryInputBadge}
+              </span>
+              {fileInputSceneId ? (
+                <span
+                  className="max-w-[130px] truncate font-mono text-[9px] text-muted-foreground"
+                  title={fileInputFilePath ? `${fileInputSceneId}\n${fileInputFilePath}` : fileInputSceneId}
+                >
+                  {fileInputSceneId}
+                </span>
+              ) : (
+                <span className="text-[9px] italic text-muted-foreground/60">No input set</span>
+              )}
+            </div>
+          )}
           <div className={cn('text-[11px] font-semibold leading-tight', !isEnabled || status === 'CANCELED' || (isJobMode && status === 'PENDING') ? 'text-muted-foreground/50' : 'text-foreground')}>{label}</div>
           <div className="text-[10px] text-muted-foreground">{subLabel}</div>
           {!isEnabled && (
