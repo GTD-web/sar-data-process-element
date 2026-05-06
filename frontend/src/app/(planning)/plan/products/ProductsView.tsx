@@ -37,8 +37,11 @@ const PRODUCT_TABLE_COLUMNS = [
   { id: 'level', label: 'Level', align: 'center' },
   { id: 'pipeline', label: 'Pipeline', align: 'left' },
   { id: 'satelliteId', label: 'Satellite', align: 'left' },
-  { id: 'mode', label: 'Mode', align: 'left' },
   { id: 'status', label: 'Status', align: 'center' },
+  { id: 'qcNesz', label: 'NESZ', align: 'center' },
+  { id: 'qcPslr', label: 'PSLR', align: 'center' },
+  { id: 'qcGeom', label: 'Geom Acc', align: 'center' },
+  { id: 'qcRadiom', label: 'Radiom Cal', align: 'center' },
   { id: 'createdAt', label: 'Created', align: 'left' },
 ] as const;
 
@@ -168,14 +171,14 @@ function ProductStatusBadge({ status }: { status: string }) {
   );
 }
 
-function QualityBadge({ pass }: { pass: boolean }) {
+function QualityBadge({ pass, title }: { pass: boolean; title?: string }) {
   return pass ? (
-    <span className="inline-flex items-center gap-0.5 text-xs font-medium text-success">
+    <span title={title} className="inline-flex items-center gap-0.5 text-xs font-medium text-success">
       <CheckCircle className="w-3 h-3" />
       Pass
     </span>
   ) : (
-    <span className="inline-flex items-center gap-0.5 text-xs font-medium text-destructive">
+    <span title={title} className="inline-flex items-center gap-0.5 text-xs font-medium text-destructive">
       <XCircle className="w-3 h-3" />
       Fail
     </span>
@@ -557,6 +560,18 @@ export default function ProductsView() {
       ? searched.filter((p) => pipelineByJobId.get(p.jobId) === filterPipeline)
       : searched;
 
+    const qcKey = (p: Product, key: ProductSortKey): number => {
+      // 미수행 → -1, Fail → 0, Pass → 1 — Pass 가 가장 위로 오도록 정렬.
+      if (!p.quality) return -1;
+      switch (key) {
+        case 'qcNesz': return p.quality.nesz.pass ? 1 : 0;
+        case 'qcPslr': return p.quality.pslr.pass ? 1 : 0;
+        case 'qcGeom': return p.quality.geometricAccuracy.pass ? 1 : 0;
+        case 'qcRadiom': return p.quality.radiometricCalibration.pass ? 1 : 0;
+        default: return -1;
+      }
+    };
+
     const sorted = pipelineFiltered.slice().sort((a, b) => {
       const direction = sortOrder === 'asc' ? 1 : -1;
       switch (sortBy) {
@@ -571,6 +586,11 @@ export default function ProductsView() {
           const bn = getPipelineName(b) ?? '';
           return an.localeCompare(bn, 'ko') * direction;
         }
+        case 'qcNesz':
+        case 'qcPslr':
+        case 'qcGeom':
+        case 'qcRadiom':
+          return (qcKey(a, sortBy) - qcKey(b, sortBy)) * direction;
         default:
           return String(a[sortBy as keyof Product] ?? '').localeCompare(
             String(b[sortBy as keyof Product] ?? ''),
@@ -785,9 +805,48 @@ export default function ProductsView() {
                       )}
                     </td>
                     <td className="px-3 py-1.5 text-xs text-foreground">{p.satelliteId}</td>
-                    <td className="px-3 py-1.5 text-xs text-foreground">{p.mode}</td>
                     <td className="px-3 py-1.5 text-center">
                       <ProductStatusBadge status={p.status} />
+                    </td>
+                    <td className="px-3 py-1.5 text-center">
+                      {p.quality ? (
+                        <QualityBadge
+                          pass={p.quality.nesz.pass}
+                          title={`${p.quality.nesz.value.toFixed(1)} ${p.quality.nesz.unit}`}
+                        />
+                      ) : (
+                        <span className="text-muted-foreground/50">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5 text-center">
+                      {p.quality ? (
+                        <QualityBadge
+                          pass={p.quality.pslr.pass}
+                          title={`${p.quality.pslr.value.toFixed(1)} ${p.quality.pslr.unit}`}
+                        />
+                      ) : (
+                        <span className="text-muted-foreground/50">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5 text-center">
+                      {p.quality ? (
+                        <QualityBadge
+                          pass={p.quality.geometricAccuracy.pass}
+                          title={`${p.quality.geometricAccuracy.value.toFixed(1)} ${p.quality.geometricAccuracy.unit}`}
+                        />
+                      ) : (
+                        <span className="text-muted-foreground/50">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5 text-center">
+                      {p.quality ? (
+                        <QualityBadge
+                          pass={p.quality.radiometricCalibration.pass}
+                          title={p.quality.radiometricCalibration.detail}
+                        />
+                      ) : (
+                        <span className="text-muted-foreground/50">—</span>
+                      )}
                     </td>
                     <td className="px-3 py-1.5 text-xs text-muted-foreground">{formatKST(p.createdAt)}</td>
                     <td className="px-5 py-1.5">
