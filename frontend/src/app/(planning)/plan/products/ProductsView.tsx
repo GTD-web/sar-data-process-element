@@ -36,7 +36,6 @@ const PRODUCT_TABLE_COLUMNS = [
   { id: 'sceneId', label: 'Raw Data', align: 'left' },
   { id: 'level', label: 'Level', align: 'center' },
   { id: 'pipeline', label: 'Pipeline', align: 'left' },
-  { id: 'satelliteId', label: 'Satellite', align: 'left' },
   { id: 'status', label: 'Status', align: 'center' },
   { id: 'qcNesz', label: 'NESZ', align: 'center' },
   { id: 'qcPslr', label: 'PSLR', align: 'center' },
@@ -804,7 +803,6 @@ export default function ProductsView() {
                         <span className="text-muted-foreground/60">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-1.5 text-xs text-foreground">{p.satelliteId}</td>
                     <td className="px-3 py-1.5 text-center">
                       <ProductStatusBadge status={p.status} />
                     </td>
