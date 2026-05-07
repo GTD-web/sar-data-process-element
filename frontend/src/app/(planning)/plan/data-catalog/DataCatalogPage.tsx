@@ -231,15 +231,10 @@ function RawDataList({
 const LEVEL_ORDERED: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
 const LEVEL_TO_IDX: Record<ProductLevel, number> = { LEVEL_0: 0, LEVEL_1: 1, LEVEL_2: 2, LEVEL_3: 3 };
 
-const RUN_LEVEL_COLOR: Record<number, string> = {
-  3: '#04B58B',
-  2: '#2B7FFF',
-  1: '#2B7FFF',
-  0: '#8E51FF',
-};
+const RUN_COLOR_FROM_RAW = '#04B58B';
+const RUN_COLOR_PARTIAL = '#2B7FFF';
 function colorForRun(run: LineageRun): string {
-  const idx = run.lastProducedIdx;
-  return RUN_LEVEL_COLOR[idx] ?? '#94A3B8';
+  return run.isPartial ? RUN_COLOR_PARTIAL : RUN_COLOR_FROM_RAW;
 }
 
 type RunStatus = 'running' | 'completed' | 'failed';
@@ -709,8 +704,8 @@ function RunsTable({
                     ? PRODUCT_LEVEL_LABELS[LEVEL_ORDERED[run.pipelineTargetIdx]]
                     : '—'}
                 </td>
-                <td className="px-3 py-2 text-[11px] text-muted-foreground">
-                  {formatRelativeTime(run.job.startedAt)}
+                <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground" title={run.job.startedAt}>
+                  {run.job.startedAt}
                 </td>
                 <td className="px-3 py-2">
                   <RunStatusBadge status={run.status} />
