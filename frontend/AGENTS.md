@@ -37,6 +37,20 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - 서비스 구현체를 컴포넌트에 직접 import하지 않는다 — Context 를 통해 주입한다.
 - `(planning)` 과 `(current)` 에서 같은 URL path 로 page.tsx 를 만들지 않는다.
 
+## Design Decisions: frontend/docs
+
+`frontend/docs/` 의 각 문서는 코드만 봐선 알 수 없는 UI/식별자/레이아웃
+결정의 근거를 보존한다. UI/식별자/카드 레이아웃/네이밍 관련 코드를 수정하기
+전에:
+
+1. `frontend/docs/INDEX.md` 를 읽고 영향 받는 active 결정이 있는지 확인한다
+   (관련 코드 경로 매치 또는 트리거 키워드 매치).
+2. 매치되면 해당 문서의 "결정" 섹션을 사용자에게 인용해 보여주고
+   "이 결정을 바꾸는 변경인가?" 명시적으로 확인을 받는다.
+3. 사용자가 변경을 승인하면, `frontend/docs/README.md` 의 supersession
+   워크플로에 따라 코드 변경과 함께 문서도 업데이트한다.
+4. 결정과 무관한 변경(스타일 미세 조정, 버그 수정 등)이면 그냥 진행한다.
+
 ## Post-change Deployment
 
 - `frontend/` 변경 작업이 끝나면 최종 응답 전에 다음 명령을 실행해 프론트엔드 컨테이너를 재배포한다. 사용자가 명시적으로 하지 말라고 한 경우만 생략한다.

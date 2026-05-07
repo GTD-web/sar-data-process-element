@@ -1,10 +1,14 @@
 # Raw Data 파일명(타이틀) 네이밍 컨벤션
 
 - **결정 일자**: 2026-05-07
+- **최근 검토**: 2026-05-07
 - **상태**: Active
 - **관련 코드**:
-  - `frontend/src/app/(planning)/_services/pipeline.mock.ts` — `formatRawDataTitle()`, `MODE_CODE`, `POL_CODE`, `SCENE_DURATION_S`
-  - `frontend/src/app/(planning)/plan/data-catalog/DataCatalogPage.tsx` — `RawDataList` (카드 렌더)
+  - `frontend/src/app/(planning)/_services/pipeline.mock.ts` — `formatRawDataTitle`, `MODE_CODE`, `POL_CODE`, `SCENE_DURATION_S`
+  - `frontend/src/app/(planning)/plan/data-catalog/DataCatalogPage.tsx` — `RawDataList`
+- **트리거 키워드**: Raw Data 파일명, 식별자, naming, title, Sentinel-1, scene title, 위성 ID 포맷, look angle 슬롯
+- **Supersedes**: (없음)
+- **Superseded by**: (없음)
 
 ## 배경
 

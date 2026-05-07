@@ -855,6 +855,7 @@ const POL_CODE: Record<string, string> = {
 };
 const SCENE_DURATION_S: Record<string, number> = { Stripmap: 103, ScanSAR: 150, Spotlight: 10 };
 
+// Naming spec: frontend/docs/raw-data-title-naming.md
 function formatRawDataTitle(
   satelliteId: string,
   capturedAt: string,
