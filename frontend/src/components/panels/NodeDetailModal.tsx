@@ -112,7 +112,7 @@ function getMockOutput(step: PipelineStepDefinition): MockRecord {
   if (step.kind === 'SAR' && step.sarStage) return MOCK_SAR_OUTPUT[step.sarStage] ?? {};
   if (step.kind === 'TRIGGER') return {
     event: 'RAW_DATA_RECEIVED', raw_data_path: '/nas/sar/raw/LX3_STRIP_20240312_RAW.h5',
-    satellite_id: 'Lumir-X3', mode: 'Stripmap', received_at: new Date().toISOString(),
+    satellite_id: 'LumirX-3', mode: 'Stripmap', received_at: new Date().toISOString(),
     file_size_bytes: 2_147_483_648, checksum_ok: true,
   };
   if (step.kind === 'JOB_INIT') return {

@@ -110,5 +110,5 @@
 
 ## 5. 위성·모드
 
-- **위성**: Lumir-X1, Lumir-X2, Lumir-X3
+- **위성**: LumirX-1, LumirX-2, LumirX-3
 - **모드**: Stripmap (SM), ScanSAR (SC), Spotlight (SL)

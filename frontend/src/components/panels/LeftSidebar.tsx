@@ -27,7 +27,7 @@ interface LeftSidebarBaseProps {
   collapsed: boolean;
   onToggle: () => void;
   /** 현재 활성 페이지 (nav highlight용) */
-  activePage?: 'home' | 'data-catalog' | 'raw-data' | 'hdf5-attributes' | 'console' | 'deployed' | 'jobs' | 'queues' | 'archive' | 'profiles' | 'products' | 'alerts' | 'audit' | 'users' | 'settings';
+  activePage?: 'home' | 'data-catalog' | 'raw-data' | 'hdf5-attributes' | 'console' | 'deployed' | 'jobs' | 'queues' | 'archive' | 'profiles' | 'alerts' | 'audit' | 'users' | 'settings';
 }
 
 interface LeftSidebarConsoleProps extends LeftSidebarBaseProps {
@@ -125,7 +125,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
 
   const navItems: { id: NonNullable<LeftSidebarBaseProps['activePage']>; icon: React.ElementType; label: string; href: string; adminOnly?: boolean }[] = [
     { id: 'home', icon: LayoutDashboard, label: 'Dashboard', href: base },
-    { id: 'data-catalog', icon: Database, label: 'Data', href: `${base}/data-catalog` },
+    { id: 'data-catalog', icon: Database, label: 'Raw Data', href: `${base}/data-catalog` },
     { id: 'console', icon: GitBranch, label: 'Pipeline Management', href: `${base}/console` },
     { id: 'queues', icon: Layers, label: 'System Monitoring', href: `${base}/queues` },
     { id: 'alerts', icon: Bell, label: 'Alerts', href: `${base}/alerts` },

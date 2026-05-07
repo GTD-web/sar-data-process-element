@@ -84,9 +84,9 @@ const SCENE_IDS = [
 
 const SATELLITE_IDS = SATELLITE_OPTIONS;
 const SATELLITE_SHORT_NAMES: Record<string, string> = {
-  'Lumir-X1': 'X1',
-  'Lumir-X2': 'X2',
-  'Lumir-X3': 'X3',
+  'LumirX-1': 'X1',
+  'LumirX-2': 'X2',
+  'LumirX-3': 'X3',
 };
 const MODES = MODE_OPTIONS;
 
@@ -846,15 +846,36 @@ function generateProducts(jobs: JobDetail[], rawData: RawDataSummary[], pipeline
   return products.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
-function formatRawDataTitle(satelliteId: string, capturedAt: string, latitude: number, longitude: number): string {
-  const shortName = SATELLITE_SHORT_NAMES[satelliteId] ?? satelliteId.replace('Lumir-', '');
-  const ts = new Date(capturedAt);
-  const pad = (value: number) => String(value).padStart(2, '0');
-  const datePart = `${ts.getUTCFullYear()}${pad(ts.getUTCMonth() + 1)}${pad(ts.getUTCDate())}`;
-  const timePart = `${pad(ts.getUTCHours())}${pad(ts.getUTCMinutes())}${pad(ts.getUTCSeconds())}`;
-  const latPart = latitude.toFixed(6).replace('.', '-');
-  const lonPart = longitude.toFixed(6).replace('.', '-');
-  return `${shortName}_${datePart}_${timePart}_${latPart}_${lonPart}`;
+const MODE_CODE: Record<string, string> = { Stripmap: 'SM', ScanSAR: 'SC', Spotlight: 'SL' };
+const POL_CODE: Record<string, string> = {
+  HH: 'SH',
+  VV: 'SV',
+  'HH+HV': 'DH',
+  'VV+VH': 'DV',
+};
+const SCENE_DURATION_S: Record<string, number> = { Stripmap: 103, ScanSAR: 150, Spotlight: 10 };
+
+function formatRawDataTitle(
+  satelliteId: string,
+  capturedAt: string,
+  mode: string,
+  polarization: string,
+  idx: number,
+): string {
+  const shortName = SATELLITE_SHORT_NAMES[satelliteId] ?? satelliteId.replace('LumirX-', '');
+  const mission = `L${shortName}`;
+  const modeCode = MODE_CODE[mode] ?? 'SM';
+  const polCode = POL_CODE[polarization] ?? 'SV';
+  const start = new Date(capturedAt);
+  const stop = new Date(start.getTime() + (SCENE_DURATION_S[mode] ?? 60) * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fmtTs = (d: Date) =>
+    `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}` +
+    `T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`;
+  const flight = `F${String((idx * 13 + 41) % 10000).padStart(4, '0')}`;
+  const la = `LA${String(20 + ((idx * 7) % 35)).padStart(2, '0')}`;
+  const hash = (((idx + 1) * 0x9e3779b1) >>> 16).toString(16).padStart(4, '0').toUpperCase();
+  return `${mission}_${modeCode}_RAW_0${polCode}_${fmtTs(start)}_${fmtTs(stop)}_${flight}_${la}_${hash}.h5`;
 }
 
 function buildRawDataFootprint(latitude: number, longitude: number, footprintKm: number, mode: string, idx: number): [number, number][] {
@@ -906,9 +927,10 @@ function generateRawData(pipelines: PipelineDefinition[]): RawDataSummary[] {
     const mapped = idx % 5 !== 0 && preferredPipeline;
     const status: RawDataStatus = mapped ? (idx % 4 === 0 ? 'READY' : 'MAPPED') : (idx % 7 === 0 ? 'HOLD' : 'RECEIVED');
 
+    const title = formatRawDataTitle(satelliteId, capturedAt, mode, polarization, idx);
     return {
       id: `RAW-${String(idx + 1).padStart(4, '0')}`,
-      title: formatRawDataTitle(satelliteId, capturedAt, latitude, longitude),
+      title,
       satelliteId,
       mode,
       polarization,
@@ -920,7 +942,7 @@ function generateRawData(pipelines: PipelineDefinition[]): RawDataSummary[] {
       footprint: buildRawDataFootprint(latitude, longitude, footprintKm, mode, idx),
       fileSizeBytes: 18_000_000_000 + idx * 630_000_000,
       status,
-      rawDataPath: `/mnt/nas/sdpe/raw/${satelliteId}/${mode.toLowerCase()}/${formatRawDataTitle(satelliteId, capturedAt, latitude, longitude)}.dat`,
+      rawDataPath: `/mnt/nas/sdpe/raw/${satelliteId}/${mode.toLowerCase()}/${title}`,
       mappedPipelineId: mapped ? preferredPipeline.id : null,
       mappedPipelineName: mapped ? preferredPipeline.name : null,
     };
@@ -1194,7 +1216,7 @@ const QUEUE_SAR_STAGE_MAP: Record<string, SarStage | undefined> = {
   'sdpe.jobs.csc06': 'L3',
 };
 
-const SATELLITES = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'];
+const SATELLITES = ['LumirX-1', 'LumirX-2', 'LumirX-3'];
 
 function generateQueueMessages(queue: string, depth: number): QueueMessage[] {
   const now = Date.now();

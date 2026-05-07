@@ -25,7 +25,7 @@ import {
   X,
 } from 'lucide-react';
 
-const SATELLITES = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'];
+const SATELLITES = ['LumirX-1', 'LumirX-2', 'LumirX-3'];
 const MODES = ['Stripmap', 'ScanSAR', 'Spotlight'];
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 

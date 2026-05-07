@@ -267,7 +267,7 @@ export const POLARIZATION_OPTIONS = ['HH', 'VV', 'HH+HV', 'VV+VH', 'HH+HV+VH+VV'
  * 매칭 가능한 위성 식별자.
  * 처리 프로파일 / 파이프라인 / 자동 실행 규칙이 공통으로 사용한다.
  */
-export const SATELLITE_OPTIONS = ['Lumir-X1', 'Lumir-X2', 'Lumir-X3'] as const;
+export const SATELLITE_OPTIONS = ['LumirX-1', 'LumirX-2', 'LumirX-3'] as const;
 
 /**
  * 매칭 가능한 관측 모드.

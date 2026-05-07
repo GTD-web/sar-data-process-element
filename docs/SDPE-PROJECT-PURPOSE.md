@@ -64,7 +64,7 @@ SDPE는 `LEVEL_1`, `LEVEL_2`, `LEVEL_3` 등 특정 지점부터 다시 처리할
 
 ### 5. 위성 및 촬영 모드별 처리 설정을 유연하게 바꿔야 한다
 
-Lumir-X1, Lumir-X2, Lumir-X3 같은 위성과 Stripmap, ScanSAR, Spotlight 같은 촬영 모드에 따라 처리 설정이 달라진다.
+LumirX-1, LumirX-2, LumirX-3 같은 위성과 Stripmap, ScanSAR, Spotlight 같은 촬영 모드에 따라 처리 설정이 달라진다.
 
 SDPE는 새 위성이나 촬영 모드가 추가될 때 코드 변경보다 처리 프로파일과 파이프라인 구성을 통해 대응할 수 있도록 설계된다.
 
