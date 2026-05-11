@@ -56,6 +56,7 @@ import type {
   User,
   UserListQuery,
 } from '@/types/user';
+import { selectDefaultProfileId } from '@/lib/pipeline-defaults';
 
 // =============================================================================
 // Mock Data Generators
@@ -350,7 +351,37 @@ const QUICK_LOOK_BRANCH_EDGES: BranchedEdge[] = [
 // ICD가 "진입점별 별도 파이프라인"으로 설계를 확정했고 (PARTIAL_L1_* / PARTIAL_L2_* 가 이미 반영),
 // 두 진입 노드를 한 DAG에 섞는 모델은 ICD 설계와 상충하여 삭제함. (DAG-RATIONALE §5 참조)
 
-function buildSteps(pipelineSteps: StepDef[], status: JobStatus, retryCount: number): PipelineStep[] {
+/**
+ * Raw 파일명(`LX1_SM_RAW_0SVV_..._A1B2.h5`)을 동일 stem 의 산출물 파일명으로 변환.
+ * `raw-data-title-naming.md` 의 슬롯 규칙: ProductType(2) + Level digit(첫 글자, 3) 만 교체.
+ */
+function formatProductTitleFromRaw(rawTitle: string, level: ProductLevel): string {
+  const parts = rawTitle.split('_');
+  if (parts.length < 4) return rawTitle;
+  const productType =
+    level === 'LEVEL_1' ? 'SLC' : level === 'LEVEL_2' ? 'GRD' : level === 'LEVEL_3' ? 'MAP' : 'RAW';
+  const levelDigit =
+    level === 'LEVEL_0' ? '0' : level === 'LEVEL_1' ? '1' : level === 'LEVEL_2' ? '2' : '3';
+  parts[2] = productType;
+  const lsp = parts[3] ?? '';
+  parts[3] = `${levelDigit}${lsp.slice(1)}`;
+  return parts.join('_');
+}
+
+/** rawDataPath (`/mnt/nas/sdpe/raw/{sat}/{mode}/{title}`) 에서 title 슬롯만 뽑는다. */
+function extractRawTitleFromPath(rawDataPath: string): string | null {
+  const idx = rawDataPath.lastIndexOf('/');
+  if (idx === -1) return null;
+  const last = rawDataPath.slice(idx + 1);
+  return last.endsWith('.h5') ? last : null;
+}
+
+function buildSteps(
+  pipelineSteps: StepDef[],
+  status: JobStatus,
+  retryCount: number,
+  rawTitle: string | null,
+): PipelineStep[] {
   // TRIGGER·FILE_INPUT·JOB_INIT 스텝은 항상 COMPLETED. 나머지 스텝에만 completedCount 적용
   const activeDagSteps = pipelineSteps.filter((s) => s.kind !== 'TRIGGER' && s.kind !== 'FILE_INPUT' && s.kind !== 'JOB_INIT');
   const completedCount =
@@ -414,7 +445,9 @@ function buildSteps(pipelineSteps: StepDef[], status: JobStatus, retryCount: num
       errorMessage: stepStatus === 'FAILED'
         ? retryCount >= 3 ? `Max retry exceeded for ${stageId}` : `Processing timeout at ${stageId}`
         : undefined,
-      outputPath: stepStatus === 'COMPLETED' && !isFixed ? `/mnt/nas/sdpe/output/${productLevel.toLowerCase()}/scene_xxx.h5` : undefined,
+      outputPath: stepStatus === 'COMPLETED' && def.kind === 'SAR' && rawTitle
+        ? `/mnt/nas/sdpe/output/${productLevel.toLowerCase()}/${formatProductTitleFromRaw(rawTitle, productLevel)}`
+        : undefined,
     };
   });
 }
@@ -456,11 +489,12 @@ function generateJobs(rawData: RawDataSummary[], pipelines: PipelineDefinition[]
 
   const profileForPipeline = (p: PipelineDefinition): ProcessingProfileSummary => {
     const jobInit = p.steps.find((s) => s.kind === 'JOB_INIT');
-    const profileId = jobInit?.jobInitConfig?.profileId ?? 'PROF-L1A-RANGE-BASELINE';
-    const profile = MOCK_PROCESSING_PROFILES.find((mp) => mp.id === profileId);
+    const profileId =
+      jobInit?.jobInitConfig?.profileId ?? selectDefaultProfileId(MOCK_PROCESSING_PROFILES, p.steps);
+    const profile = profileId ? MOCK_PROCESSING_PROFILES.find((mp) => mp.id === profileId) : undefined;
     return {
-      id: profile?.id ?? 'PROF-L1A-RANGE-BASELINE',
-      name: profile?.name ?? 'L1A Range Processing Baseline',
+      id: profile?.id ?? MOCK_PROCESSING_PROFILES[0]!.id,
+      name: profile?.name ?? MOCK_PROCESSING_PROFILES[0]!.name,
       description: profile?.description ?? 'Generic processing profile',
     };
   };
@@ -474,6 +508,13 @@ function generateJobs(rawData: RawDataSummary[], pipelines: PipelineDefinition[]
     }
     return 'COMPLETED';
   };
+
+  // 같은 파이프라인의 잡 이력은 같은 CSC 큐를 타고 시간 순서대로 처리되므로 (interfaces/csc-8 의 pgmq
+  // dispatch 정의), "과거 잡은 PENDING/RUNNING 인데 신규 잡은 COMPLETED/FAILED" 같은 시퀀스는 운영상
+  // anomaly. mock 은 이를 재현하지 않도록 *과거 잡* 은 항상 terminal(COMPLETED/FAILED) 로 강제하고,
+  // *최신 1~2개 잡* 만 transient(CREATED/ASSIGNED) 가 될 수 있게 한다.
+  const pickTerminalStatus = (): JobStatus => (Math.random() < 0.85 ? 'COMPLETED' : 'FAILED');
+  const NEWEST_TRANSIENT_WINDOW = 2;
 
   const jobs: RawBoundJob[] = [];
   let jobSeq = 0;
@@ -492,7 +533,8 @@ function generateJobs(rawData: RawDataSummary[], pipelines: PipelineDefinition[]
 
     for (let p = 0; p < primaryCount && primaryPipelines.length > 0; p++) {
       const pipeline = primaryPipelines[(rawIdx + p) % primaryPipelines.length];
-      const status: JobStatus = p === 0 ? 'COMPLETED' : pickStatus();
+      const isNewest = p >= primaryCount - NEWEST_TRANSIENT_WINDOW;
+      const status: JobStatus = p === 0 ? 'COMPLETED' : isNewest ? pickStatus() : pickTerminalStatus();
       const startedAt = new Date(cursorMs).toISOString();
       jobs.push(buildJob({ raw, rawIdx, pipeline, status, jobId: nextJobId(), startedAt, profileForPipeline }));
       cursorMs += 15 * 60_000;
@@ -503,7 +545,8 @@ function generateJobs(rawData: RawDataSummary[], pipelines: PipelineDefinition[]
       const partialCount = 2 + (rawIdx % 4);
       for (let p = 0; p < partialCount; p++) {
         const pipeline = partialPipelines[(rawIdx + p) % partialPipelines.length];
-        const status: JobStatus = pickStatus();
+        const isNewest = p >= partialCount - NEWEST_TRANSIENT_WINDOW;
+        const status: JobStatus = isNewest ? pickStatus() : pickTerminalStatus();
         const startedAt = new Date(cursorMs).toISOString();
         jobs.push(buildJob({ raw, rawIdx, pipeline, status, jobId: nextJobId(), startedAt, profileForPipeline }));
         cursorMs += 30 * 60_000;
@@ -533,7 +576,8 @@ function buildJob({
 }): RawBoundJob {
   const pipelineStepDefs = toStepDefs(pipeline);
   const retryCount = status === 'FAILED' ? Math.floor(Math.random() * 4) : 0;
-  const steps = buildSteps(pipelineStepDefs, status, retryCount);
+  const rawTitle = extractRawTitleFromPath(raw.rawDataPath) ?? raw.title;
+  const steps = buildSteps(pipelineStepDefs, status, retryCount, rawTitle);
   const runningStep = steps.find((s) => s.status === 'RUNNING' || s.status === 'FAILED');
 
   const isPartial = pipelineStepDefs.some((s) => s.kind === 'FILE_INPUT');
@@ -1335,7 +1379,8 @@ function buildPipelineFromSteps(
   stepDefs: StepDef[],
   createdAt = '2026-01-15T09:00:00Z',
 ): PipelineDefinition {
-  const matchingProfile = MOCK_PROCESSING_PROFILES.find((p) => p.processingStage === 'L1A') ?? MOCK_PROCESSING_PROFILES[0];
+  const defaultProfileId = selectDefaultProfileId(MOCK_PROCESSING_PROFILES, stepDefs);
+  const matchingProfile = MOCK_PROCESSING_PROFILES.find((p) => p.id === defaultProfileId) ?? MOCK_PROCESSING_PROFILES[0];
   const defaultPolarization = matchingProfile?.polarizationTags?.[0]
     ?? matchingProfile?.polarization
     ?? 'HH';
@@ -1371,7 +1416,8 @@ function buildBranchedPipeline(
   edges: BranchedEdge[],
   createdAt = '2026-03-20T09:00:00Z',
 ): PipelineDefinition {
-  const matchingProfile = MOCK_PROCESSING_PROFILES.find((p) => p.processingStage === 'L1A') ?? MOCK_PROCESSING_PROFILES[0];
+  const defaultProfileId = selectDefaultProfileId(MOCK_PROCESSING_PROFILES, stepDefs);
+  const matchingProfile = MOCK_PROCESSING_PROFILES.find((p) => p.id === defaultProfileId) ?? MOCK_PROCESSING_PROFILES[0];
   const defaultPolarization = matchingProfile?.polarizationTags?.[0]
     ?? matchingProfile?.polarization
     ?? 'HH';
@@ -1692,8 +1738,9 @@ function simulateJobExecution(job: JobDetail) {
       step.status = 'COMPLETED';
       step.finishedAt = new Date().toISOString();
       step.durationMs = duration;
-      step.outputPath = step.kind === 'SAR'
-        ? `/mnt/nas/sdpe/output/${step.productLevel.toLowerCase()}/${job.sceneId}.h5`
+      const rawTitle = extractRawTitleFromPath(job.rawDataPath);
+      step.outputPath = step.kind === 'SAR' && rawTitle
+        ? `/mnt/nas/sdpe/output/${step.productLevel.toLowerCase()}/${formatProductTitleFromRaw(rawTitle, step.productLevel)}`
         : undefined;
       job.updatedAt = new Date().toISOString();
 

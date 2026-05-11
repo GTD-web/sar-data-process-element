@@ -28,6 +28,13 @@ interface LeftSidebarBaseProps {
   onToggle: () => void;
   /** 현재 활성 페이지 (nav highlight용) */
   activePage?: 'home' | 'data-catalog' | 'raw-data' | 'hdf5-attributes' | 'console' | 'deployed' | 'jobs' | 'queues' | 'archive' | 'profiles' | 'alerts' | 'audit' | 'users' | 'settings';
+  /**
+   * Pipeline Execution 항목 아래 노출되는 현재 위성 스코프.
+   * Automatic Pipelines / Manual Pipelines 페이지에서 선택된 값을 위로 끌어와 사이드바에 표시한다.
+   */
+  executionSatellite?: string | null;
+  /** 위성 배지 클릭 시 호출 — 호스트 페이지가 SelectSatelliteDialog 를 다시 띄운다. */
+  onChangeExecutionSatellite?: () => void;
 }
 
 interface LeftSidebarConsoleProps extends LeftSidebarBaseProps {
@@ -78,7 +85,7 @@ type LeftSidebarProps = LeftSidebarConsoleProps | LeftSidebarJobsProps | LeftSid
 // ---------------------------------------------------------------------------
 
 export default function LeftSidebar(props: LeftSidebarProps) {
-  const { collapsed, onToggle, activePage, mode = 'console' } = props;
+  const { collapsed, onToggle, activePage, mode = 'console', executionSatellite, onChangeExecutionSatellite } = props;
   const pathname = usePathname();
   const router = useRouter();
   const base = pathname.startsWith('/current') ? '/current' : '/plan';
@@ -268,6 +275,23 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                       <Radio className="w-3.5 h-3.5 flex-shrink-0" />
                       <span className="leading-4 break-words">Pipeline Execution</span>
                     </a>
+                    {executionActive && executionSatellite && (
+                      <button
+                        type="button"
+                        onClick={onChangeExecutionSatellite}
+                        disabled={!onChangeExecutionSatellite}
+                        className={cn(
+                          'mt-1 flex w-full items-center gap-1.5 rounded-md border border-accent/30 bg-accent/5 px-2 py-1 text-[10px] text-accent transition-colors',
+                          onChangeExecutionSatellite ? 'hover:bg-accent/10' : 'cursor-default',
+                        )}
+                        title="Change satellite scope"
+                        aria-label={`Current satellite scope: ${executionSatellite}. Click to change.`}
+                        data-testid="sidebar-execution-satellite-badge"
+                      >
+                        <span className="ml-4 inline-block h-1 w-1 flex-shrink-0 rounded-full bg-accent/70" />
+                        <span className="font-mono leading-3">{executionSatellite}</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -365,7 +389,7 @@ export default function LeftSidebar(props: LeftSidebarProps) {
                 <ChevronDown className={cn('mt-0.5 w-3 h-3 transition-transform', !jobsOpen && '-rotate-90')} />
                 <Briefcase className="mt-0.5 w-3 h-3" />
                 <span className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left">
-                  <span className="max-w-full truncate leading-3">Job Execution History</span>
+                  <span className="max-w-full truncate leading-3">Manual Pipelines</span>
                   <span
                     className="flex max-w-full items-center gap-1 overflow-hidden normal-case tracking-normal"
                     title={`${pendingJobCount} pending, ${runningJobCount} running`}

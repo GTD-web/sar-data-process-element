@@ -59,6 +59,6 @@ GitHub Actions (`ci.yml`): Node 20 + Python 3.11
 - 빌드 실패 시: 즉시 사용자에게 보고하고, 직전 컨테이너가 살아있는 상태에서 원인을 수정한다 (실패 상태로 응답을 마치지 않는다).
 - 명령 (Bash 툴 / git-bash 호환):
   ```
-  docker rm -f sdpe-frontend 2>/dev/null; docker build -t sdpe-frontend:latest frontend && docker run -d --name sdpe-frontend -p 3010:3000 sdpe-frontend:latest
+  docker rm -f sdpe-frontend 2>/dev/null; docker build -t sdpe-frontend:latest frontend && docker run -d --name sdpe-frontend --restart=unless-stopped -p 3010:3000 sdpe-frontend:latest
   ```
 - 컨테이너는 `http://localhost:3010` 에 노출된다.

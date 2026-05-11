@@ -51,7 +51,38 @@ This version has breaking changes — APIs, conventions, and file structure may 
    워크플로에 따라 코드 변경과 함께 문서도 업데이트한다.
 4. 결정과 무관한 변경(스타일 미세 조정, 버그 수정 등)이면 그냥 진행한다.
 
+## Playwright UI 검증
+
+`frontend/e2e/` 의 Playwright 스펙은 UI 기획 변경(탭/모달/리스트 정렬/상태 토글 등
+사용자 흐름)을 마무리하기 전에 통과해야 하는 회귀 게이트다. 코드만 보고서는
+검증할 수 없는 "흐름이 의도대로 도는가" 를 잡기 위함.
+
+### 마무리 체크리스트 (UI 기획 변경 작업 시)
+
+다음 중 하나라도 해당하는 변경이면 **사용자에게 최종 보고하기 전** 에 e2e
+테스트를 실행하고 통과를 확인한다.
+
+- 탭/메뉴 라벨, 사이드바 항목명, 페이지 타이틀 변경
+- 모달 추가/제거, 모달 안의 동작 변경 (확인/취소/스왑/삭제 등)
+- 리스트 정렬 기준, 행 순서, 행 안의 상태 토글 (Active/Inactive 등)
+- 폼 필드 추가/제거, 필수 조건, 버튼 활성화 조건
+- 탭 간 이동 / 라우팅 흐름
+
+순수 스타일 미세 조정, 색상/여백 변경, 타입 시그니처 정리, 버그 수정 (UI
+흐름과 무관) 은 e2e 게이트에서 제외한다.
+
+### 실행 절차
+
+1. 컨테이너가 `http://localhost:3010` 에 떠 있는지 확인 (재배포 직후라면 자동 충족).
+2. `cd frontend && npm run e2e` — 모든 스펙 실행. 실패 시 원인 분석 후 수정.
+3. 변경한 흐름이 기존 스펙으로 커버되지 않으면 `frontend/e2e/<topic>.spec.ts` 를
+   추가하거나 기존 스펙을 보강한 뒤 다시 실행.
+4. 모두 통과해야 작업 종료. 실패한 채 응답을 마치지 않는다.
+
+설정·관례·예시는 `frontend/docs/playwright-ui-verification.md` 참고.
+
 ## Post-change Deployment
 
 - `frontend/` 변경 작업이 끝나면 최종 응답 전에 다음 명령을 실행해 프론트엔드 컨테이너를 재배포한다. 사용자가 명시적으로 하지 말라고 한 경우만 생략한다.
 - `docker rm -f sdpe-frontend 2>nul & docker build -t sdpe-frontend:latest "C:\Users\USER\dev\sar-data-process-element\frontend" && docker run -d --name sdpe-frontend -p 3010:3000 sdpe-frontend:latest`
+- 재배포 후 위 "Playwright UI 검증" 체크리스트 적용 대상이면 `npm run e2e` 통과까지 확인한다.

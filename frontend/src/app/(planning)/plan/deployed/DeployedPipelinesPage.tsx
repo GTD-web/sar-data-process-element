@@ -13,6 +13,7 @@ import {
   Loader2,
   Plus,
   Power,
+  Satellite,
   ServerCog,
   X,
   Zap,
@@ -20,17 +21,22 @@ import {
 import LeftSidebar from '@/components/panels/LeftSidebar';
 import PipelineExecutionTabs from '@/components/panels/PipelineExecutionTabs';
 import ExecutionLogPanel from '@/components/panels/ExecutionLogPanel';
+import RightTabbedPanel from '@/components/panels/RightTabbedPanel';
+import AutomaticPipelineDetailPanel from '@/components/panels/AutomaticPipelineDetailPanel';
+import SelectSatelliteDialog from '@/components/panels/SelectSatelliteDialog';
 import { useMockRole } from '@/components/auth/RolePreviewSelect';
 import { toast } from '@/components/ui/Toast';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import type {
   ExecutionLog,
+  JobDetail,
   JobSummary,
   PipelineActivationRule,
   PipelineDefinition,
   PipelineEventType,
   PipelineStep,
   PipelineStepDefinition,
+  Product,
   ProductLevel,
   SavePipelineActivationRuleData,
   TriggerSource,
@@ -60,6 +66,8 @@ const CanvasGraph = dynamic(() => import('@/components/graph/CanvasGraph'), {
 const MAPPING_CONTENT_MIN_WIDTH = 1180;
 const MAPPING_GROUP_GRID = '260px 84px minmax(0,1fr)';
 const MAPPING_RULE_GRID = 'minmax(0,1fr) 280px 132px 96px';
+// 사용자가 마지막으로 고른 위성. 최초 진입 시 키가 없으면 SelectSatelliteDialog 가 강제 노출된다.
+const SATELLITE_SCOPE_LS_KEY = 'sdpe.automatic-pipelines.satellite';
 const EVENT_TYPE_OPTIONS: PipelineEventType[] = ['RAW_DATA_RECEIVED', 'PARTIAL_REPROCESS_REQUESTED', 'PRODUCT_REPROCESS_REQUESTED'];
 const EVENT_TYPE_GROUP_ORDER: PipelineEventType[] = ['RAW_DATA_RECEIVED', 'PARTIAL_REPROCESS_REQUESTED', 'PRODUCT_REPROCESS_REQUESTED'];
 const PRODUCT_LEVEL_OPTIONS: ProductLevel[] = ['LEVEL_0', 'LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
@@ -491,6 +499,7 @@ function EventGroupCard({
   const total = rules.length;
   const fanRef = useRef<HTMLDivElement>(null);
   const [paths, setPaths] = useState<ThreadPath[]>([]);
+  const rulesSignature = rules.map((r) => `${r.id}:${r.active ? 1 : 0}:${r.pipelineId}`).join('|');
 
   useLayoutEffect(() => {
     const recalc = () => {
@@ -529,7 +538,7 @@ function EventGroupCard({
       window.removeEventListener('resize', recalc);
       window.clearTimeout(t);
     };
-  }, [rules.length, expandedRuleId]);
+  }, [rulesSignature, expandedRuleId]);
 
   return (
     <div
@@ -795,8 +804,51 @@ export default function DeployedPipelinesPage() {
   const [swapping, setSwapping] = useState(false);
   const [automating, setAutomating] = useState(false);
   const [logPanelOpen, setLogPanelOpen] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [detailJobOverride, setDetailJobOverride] = useState<JobDetail | null>(null);
+  const [selectedDetailJobId, setSelectedDetailJobId] = useState<string | null>(null);
+  const [pipelineProducts, setPipelineProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  // 위성 스코프: 최초 진입 시 null → SelectSatelliteDialog 강제 노출. 선택 후 localStorage 영속화.
+  const [selectedSatellite, setSelectedSatellite] = useState<string | null>(null);
+  const [satelliteDialogOpen, setSatelliteDialogOpen] = useState(false);
+  // 사이드바 배지로 다시 띄운 경우엔 cancellable=true (이미 선택된 위성이 있어 취소 가능).
+  const [satelliteDialogCancellable, setSatelliteDialogCancellable] = useState(false);
+  // SSR 환경에서 localStorage 가 없는 동안 모달이 깜빡 떴다 사라지는 걸 막기 위한 가드.
+  const [satelliteHydrated, setSatelliteHydrated] = useState(false);
 
   const canManage = previewRole === 'Administrator';
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem(SATELLITE_SCOPE_LS_KEY);
+    if (stored && (SATELLITE_OPTIONS as readonly string[]).includes(stored)) {
+      setSelectedSatellite(stored);
+    } else {
+      setSatelliteDialogOpen(true);
+      setSatelliteDialogCancellable(false);
+    }
+    setSatelliteHydrated(true);
+  }, []);
+
+  const handleConfirmSatellite = useCallback((satelliteId: string) => {
+    setSelectedSatellite(satelliteId);
+    setSatelliteDialogOpen(false);
+    setSatelliteDialogCancellable(false);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(SATELLITE_SCOPE_LS_KEY, satelliteId);
+    }
+  }, []);
+
+  const handleOpenSatelliteDialog = useCallback(() => {
+    setSatelliteDialogCancellable(true);
+    setSatelliteDialogOpen(true);
+  }, []);
+
+  const handleCancelSatelliteDialog = useCallback(() => {
+    if (!satelliteDialogCancellable) return;
+    setSatelliteDialogOpen(false);
+  }, [satelliteDialogCancellable]);
 
   const refresh = useCallback(async () => {
     const [pipelineRes, ruleRes] = await Promise.all([
@@ -823,9 +875,22 @@ export default function DeployedPipelinesPage() {
   }, [service]);
 
   const deployedRules = useMemo(() => rules.filter((rule) => rule.active), [rules]);
+  // 선택한 위성에 매치되는 룰만 노출. satelliteIds 가 비어있는 룰은 "전체 위성 대상" 으로 간주해 항상 포함.
+  const ruleMatchesSatellite = useCallback(
+    (rule: PipelineActivationRule, satelliteId: string | null): boolean => {
+      if (!satelliteId) return false;
+      const ids = rule.match.satelliteIds;
+      if (!ids || ids.length === 0) return true;
+      return ids.includes(satelliteId);
+    },
+    [],
+  );
   const matchingRules = useMemo(
-    () => [...rules].sort((a, b) => Number(b.active) - Number(a.active) || a.sourceQueue.localeCompare(b.sourceQueue)),
-    [rules],
+    () =>
+      rules
+        .filter((rule) => ruleMatchesSatellite(rule, selectedSatellite))
+        .sort((a, b) => a.sourceQueue.localeCompare(b.sourceQueue) || a.id.localeCompare(b.id)),
+    [rules, ruleMatchesSatellite, selectedSatellite],
   );
   const activePipelineIds = useMemo(
     () => new Set(deployedRules.map((rule) => rule.pipelineId)),
@@ -855,21 +920,78 @@ export default function DeployedPipelinesPage() {
     !ruleForm.inputLevel ? 'Input Level' : null,
     !ruleForm.pipelineId ? 'Active Pipeline' : null,
   ].filter((selection): selection is string => selection !== null), [ruleForm.inputLevel, ruleForm.pipelineId]);
-  const selectedPipelineJobIds = useMemo(() => {
-    if (!selectedRule) return new Set<string>();
-    return new Set(jobs.filter((job) => job.pipelineId === selectedRule.pipelineId).map((job) => job.jobId));
+  const selectedPipelineJobs = useMemo(() => {
+    if (!selectedRule) return [] as JobSummary[];
+    // 자동 파이프라인 컨텍스트에서는 CANCELED 잡을 제외 — 자동 트리거된 잡은 운영 흐름상 cancel 되지 않는다.
+    // 동일 파이프라인이 manual 로도 트리거돼 CANCELED 가 데이터에 섞여 들어오면 이 패널에서는 보이지 않게 가린다.
+    return jobs
+      .filter((job) => job.pipelineId === selectedRule.pipelineId && job.status !== 'CANCELED')
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   }, [jobs, selectedRule]);
+  const selectedPipelineJobIds = useMemo(
+    () => new Set(selectedPipelineJobs.map((job) => job.jobId)),
+    [selectedPipelineJobs],
+  );
   const automaticPipelineLogs = useMemo(() => {
     if (!selectedRule) return executionLogs;
     const matched = executionLogs.filter((log) => log.jobId && selectedPipelineJobIds.has(log.jobId));
     return matched.length > 0 ? matched : executionLogs.slice(0, 80);
   }, [executionLogs, selectedPipelineJobIds, selectedRule]);
+  const automaticPipelineErrorLogs = useMemo(
+    () => automaticPipelineLogs.filter((log) => log.level === 'ERROR'),
+    [automaticPipelineLogs],
+  );
+  const latestJobForSelectedPipeline = selectedPipelineJobs[0] ?? null;
+  const effectiveDetailJobId = selectedDetailJobId ?? latestJobForSelectedPipeline?.jobId ?? null;
+
+  // 룰을 바꾸면 사용자가 명시 선택한 jobId 도 초기화 — 다른 파이프라인의 잡을 가리키게 두지 않는다.
+  useEffect(() => {
+    setSelectedDetailJobId(null);
+  }, [selectedRuleId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!effectiveDetailJobId) {
+      setDetailJobOverride(null);
+      return;
+    }
+    (async () => {
+      const res = await service.Job_상세를_조회한다(effectiveDetailJobId);
+      if (!cancelled && res.data) setDetailJobOverride(res.data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [service, effectiveDetailJobId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedRule) {
+      setPipelineProducts([]);
+      return;
+    }
+    setProductsLoading(true);
+    (async () => {
+      const res = await service.제품_목록을_조회한다({ limit: 50 });
+      if (cancelled) return;
+      if (res.data) {
+        const ids = new Set(jobs.filter((j) => j.pipelineId === selectedRule.pipelineId).map((j) => j.jobId));
+        setPipelineProducts(res.data.items.filter((p) => ids.has(p.jobId)));
+      } else {
+        setPipelineProducts([]);
+      }
+      setProductsLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [service, selectedRule, jobs]);
 
   const handleOpenPipeline = useCallback((pipelineId: string) => {
     router.push(`${base}/console?pipelineId=${encodeURIComponent(pipelineId)}`);
   }, [router, base]);
 
-  const handleSaveRule = useCallback(async (form: RuleFormState, options?: { requireInputLevel?: boolean }) => {
+  const handleSaveRule = useCallback(async (form: RuleFormState, options?: { requireInputLevel?: boolean; skipDuplicateCheck?: boolean }) => {
     if (!form.pipelineId) {
       toast.error('Select a pipeline to automate');
       return null;
@@ -894,13 +1016,15 @@ export default function DeployedPipelinesPage() {
       triggerSource: form.triggerSource,
       description: form.description,
     };
-    const payloadEventQueueKey = eventQueueKey(payload.sourceQueue, payload.eventType);
-    const duplicateRule = payload.active
-      ? rules.find((rule) => rule.active && rule.id !== payload.id && ruleEventQueueKey(rule) === payloadEventQueueKey)
-      : undefined;
-    if (duplicateRule) {
-      toast.error('The same event and source queue is already active.');
-      return null;
+    if (!options?.skipDuplicateCheck) {
+      const payloadEventQueueKey = eventQueueKey(payload.sourceQueue, payload.eventType);
+      const duplicateRule = payload.active
+        ? rules.find((rule) => rule.active && rule.id !== payload.id && ruleEventQueueKey(rule) === payloadEventQueueKey)
+        : undefined;
+      if (duplicateRule) {
+        toast.error('The same event and source queue is already active.');
+        return null;
+      }
     }
 
     setSavingPipelineId(form.pipelineId);
@@ -950,12 +1074,18 @@ export default function DeployedPipelinesPage() {
   const handleConfirmSwap = useCallback(async () => {
     if (!swapConfirm) return;
     setSwapping(true);
-    const offResult = await handleSaveRule({ ...ruleToForm(swapConfirm.from), active: false });
+    const offResult = await handleSaveRule(
+      { ...ruleToForm(swapConfirm.from), active: false },
+      { skipDuplicateCheck: true },
+    );
     if (!offResult) {
       setSwapping(false);
       return;
     }
-    const onResult = await handleSaveRule({ ...ruleToForm(swapConfirm.to), active: true });
+    const onResult = await handleSaveRule(
+      { ...ruleToForm(swapConfirm.to), active: true },
+      { skipDuplicateCheck: true },
+    );
     setSwapping(false);
     if (!onResult) return;
     setSwapConfirm(null);
@@ -980,11 +1110,26 @@ export default function DeployedPipelinesPage() {
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         activePage="deployed"
+        executionSatellite={selectedSatellite}
+        onChangeExecutionSatellite={handleOpenSatelliteDialog}
       />
 
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
         <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-border bg-background px-5 py-2.5">
-          <PipelineExecutionTabs active="auto" counts={{ auto: matchingRules.length, manual: jobs.length }} />
+          <div className="flex items-center gap-3">
+            <PipelineExecutionTabs active="auto" counts={{ auto: matchingRules.length, manual: jobs.length }} />
+            <button
+              type="button"
+              onClick={handleOpenSatelliteDialog}
+              className="inline-flex items-center gap-1.5 rounded-md border border-accent/35 bg-accent/10 px-2.5 py-1.5 text-[11px] font-semibold text-accent transition-colors hover:bg-accent/15"
+              aria-label="Change satellite scope"
+              title="Change satellite scope"
+            >
+              <Satellite className="h-3.5 w-3.5" />
+              <span>Satellite:</span>
+              <span className="font-mono">{selectedSatellite ?? '—'}</span>
+            </button>
+          </div>
           {canManage && (
             <button
               type="button"
@@ -1001,8 +1146,16 @@ export default function DeployedPipelinesPage() {
           {matchingRules.length === 0 ? (
             <section className="rounded-xl border border-border bg-card px-4 py-24 text-center">
               <Activity className="w-10 h-10 mx-auto text-muted-foreground/30" />
-              <p className="mt-3 text-sm font-medium text-foreground">No automation matching rules</p>
-              <p className="mt-1 text-xs text-muted-foreground">Use the button at the top right to link a pgmq event condition to an execution pipeline.</p>
+              <p className="mt-3 text-sm font-medium text-foreground">
+                {selectedSatellite
+                  ? `No automation rules scoped to ${selectedSatellite}`
+                  : 'Select a satellite to inspect automatic pipelines'}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {selectedSatellite
+                  ? 'Use the button at the top right to link a pgmq event condition to an execution pipeline.'
+                  : 'Use the satellite chip in the header to choose which satellite’s automation rules to view.'}
+              </p>
             </section>
           ) : (
             <div className="overflow-x-auto">
@@ -1039,6 +1192,56 @@ export default function DeployedPipelinesPage() {
           onToggle={() => setLogPanelOpen((value) => !value)}
         />
       </main>
+
+      <RightTabbedPanel
+        collapsed={rightCollapsed}
+        onToggle={() => setRightCollapsed((v) => !v)}
+        title={(() => {
+          const pipelineForRule = selectedRule ? pipelineById.get(selectedRule.pipelineId) ?? null : null;
+          if (!selectedRule || !pipelineForRule) return 'Pipeline detail';
+          return (
+            <div className="flex min-w-0 flex-1 items-center gap-2 py-1.5">
+              <span
+                className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                  selectedRule.active ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                <span
+                  className={`h-1 w-1 rounded-full ${
+                    selectedRule.active ? 'bg-success' : 'bg-muted-foreground/60'
+                  }`}
+                />
+                {selectedRule.active ? 'Active' : 'Inactive'}
+              </span>
+              <span
+                className="min-w-0 flex-1 truncate text-[11.5px] font-semibold text-foreground"
+                title={pipelineForRule.name}
+              >
+                {pipelineForRule.name}
+              </span>
+              <span
+                className="shrink-0 rounded border border-border/70 bg-muted/40 px-1.5 py-0.5 font-mono text-[9.5px] text-muted-foreground"
+                title={selectedRule.sourceQueue}
+              >
+                {selectedRule.sourceQueue}
+              </span>
+            </div>
+          );
+        })()}
+      >
+        <AutomaticPipelineDetailPanel
+          rule={selectedRule}
+          pipeline={selectedRule ? pipelineById.get(selectedRule.pipelineId) ?? null : null}
+          detailJob={detailJobOverride ? { summary: detailJobOverride, steps: detailJobOverride.steps } : null}
+          pipelineJobs={selectedPipelineJobs}
+          selectedJobId={selectedDetailJobId}
+          onSelectJob={setSelectedDetailJobId}
+          products={pipelineProducts}
+          productsLoading={productsLoading}
+          errorLogs={automaticPipelineErrorLogs}
+          dataCatalogBasePath={`${base}/data-catalog`}
+        />
+      </RightTabbedPanel>
 
       {mappingModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-5 py-3" onClick={() => !automating && setMappingModalOpen(false)}>
@@ -1406,6 +1609,15 @@ export default function DeployedPipelinesPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {satelliteHydrated && satelliteDialogOpen && (
+        <SelectSatelliteDialog
+          cancellable={satelliteDialogCancellable}
+          initialSatelliteId={selectedSatellite}
+          onConfirm={handleConfirmSatellite}
+          onCancel={handleCancelSatelliteDialog}
+        />
       )}
 
       <style jsx global>{`

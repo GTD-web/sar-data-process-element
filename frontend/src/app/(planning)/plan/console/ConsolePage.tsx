@@ -41,6 +41,7 @@ import {
   SAR_STAGE_TO_CSC,
   SAR_STAGE_TO_LEVEL,
 } from '@/types/pipeline';
+import { selectDefaultProfileId } from '@/lib/pipeline-defaults';
 
 // ---------------------------------------------------------------------------
 // Pipeline Name Badge (canvas overlay)
@@ -353,6 +354,8 @@ export default function ConsolePage() {
           kind: s.kind,
           sarStage: s.sarStage,
           inputLevel: s.inputLevel,
+          fileInputSceneId: s.fileInputConfig?.sceneId,
+          fileInputFilePath: s.fileInputConfig?.inputFilePath,
           targetCsc,
           productLevel,
           durationMs: jobStep?.durationMs,
@@ -559,7 +562,15 @@ export default function ConsolePage() {
       if (!selectedPipeline) return;
       const newStep: { kind: PipelineNodeKind; sarStage?: SarStage; jobInitConfig?: import('@/types/pipeline').JobInitConfig } =
         kind === 'JOB_INIT'
-          ? { kind, jobInitConfig: { polarization: '', priority: 5, retryInterval: 'IMMEDIATE' as const } }
+          ? {
+              kind,
+              jobInitConfig: {
+                polarization: '',
+                priority: 5,
+                retryInterval: 'IMMEDIATE' as const,
+                profileId: selectDefaultProfileId(profiles, selectedPipeline.steps),
+              },
+            }
           : { kind, sarStage };
       const newSteps = [
         ...selectedPipeline.steps.map(toStepUpdate),
@@ -586,7 +597,7 @@ export default function ConsolePage() {
       setConsoleMode({ type: 'idle' });
       setRightCollapsed(true);
     },
-    [selectedPipeline, updatePipeline, consoleMode, toStepUpdate],
+    [selectedPipeline, updatePipeline, consoleMode, toStepUpdate, profiles],
   );
 
   const handleSaveNode = useCallback(
@@ -753,7 +764,7 @@ export default function ConsolePage() {
   const handleNodeOpenDetail = useCallback((stepOrder: number) => {
     const step = selectedPipeline?.steps.find((s) => s.order === stepOrder);
     if (!step) return;
-    if (step.kind === 'FILE_INPUT') {
+    if (step.kind === 'FILE_INPUT' || step.kind === 'TRIGGER') {
       setFileInputConfigStep(step);
       return;
     }
@@ -1022,9 +1033,10 @@ export default function ConsolePage() {
         />
       )}
 
-      {/* FILE_INPUT 노드 설정 다이얼로그 — 더블클릭 또는 툴바 Play */}
-      {fileInputConfigStep && fileInputConfigStep.inputLevel && (
+      {/* 시작 노드(TRIGGER/FILE_INPUT) 입력 파일 설정 다이얼로그 — 더블클릭 또는 툴바 Play */}
+      {fileInputConfigStep && (fileInputConfigStep.kind === 'TRIGGER' || fileInputConfigStep.kind === 'FILE_INPUT') && (
         <FileInputConfigDialog
+          kind={fileInputConfigStep.kind}
           inputLevel={fileInputConfigStep.inputLevel}
           current={fileInputConfigStep.fileInputConfig}
           onConfirm={handleFileInputConfigApply}

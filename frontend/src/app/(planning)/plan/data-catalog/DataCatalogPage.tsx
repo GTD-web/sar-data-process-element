@@ -17,6 +17,7 @@ import type {
   RawDataSummary,
 } from '@/types/pipeline';
 import CanvasGraph from '@/components/graph/CanvasGraph';
+import ProductReprocessConfirmDialog from '@/components/panels/ProductReprocessConfirmDialog';
 import {
   Antenna,
   Binary,
@@ -1373,6 +1374,7 @@ export default function DataCatalogPage() {
   const [selection, setSelection] = useState<InspectorSelection>({ type: 'raw' });
   const [diagramPipelineId, setDiagramPipelineId] = useState<string | null>(null);
   const [diagramCollapsed, setDiagramCollapsed] = useState(false);
+  const [reprocessTarget, setReprocessTarget] = useState<Product | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -1533,7 +1535,14 @@ export default function DataCatalogPage() {
     window.open(res.data.url, '_blank', 'noopener,noreferrer');
   };
 
-  const handleReprocessProduct = async (product: Product) => {
+  const handleReprocessProduct = (product: Product) => {
+    setReprocessTarget(product);
+  };
+
+  const handleReprocessConfirm = async () => {
+    const product = reprocessTarget;
+    if (!product) return;
+    setReprocessTarget(null);
     const res = await service.제품_재처리를_요청한다(product.id, { targetLevel: product.level });
     if (!res.success || !res.data) {
       toast.error(res.message || 'Failed to request reprocessing.');
@@ -1843,13 +1852,20 @@ export default function DataCatalogPage() {
                   selection={selection}
                   onSelect={selectInInspector}
                   onDownloadProduct={(product) => void handleDownloadProduct(product)}
-                  onReprocessProduct={(product) => void handleReprocessProduct(product)}
+                  onReprocessProduct={handleReprocessProduct}
                 />
               </div>
             </aside>
           )}
         </div>
       </main>
+      {reprocessTarget && (
+        <ProductReprocessConfirmDialog
+          product={reprocessTarget}
+          onConfirm={() => void handleReprocessConfirm()}
+          onCancel={() => setReprocessTarget(null)}
+        />
+      )}
     </div>
   );
 }
