@@ -12,7 +12,9 @@ import type {
   RawDataSummary,
   StepStatus,
 } from '@/types/pipeline';
-import { NODE_KIND_INFO, PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
+import { NODE_KIND_INFO, PRODUCT_LEVEL_LABELS, SATELLITE_OPTIONS } from '@/types/pipeline';
+
+type SatelliteFilter = 'ALL' | (typeof SATELLITE_OPTIONS)[number];
 
 export type EntryInputKind = 'RAW' | 'L0' | 'L1' | 'L2';
 
@@ -135,9 +137,9 @@ function buildOptions(
 
 function entryHeaderLabel(kind: EntryInputKind | null): string {
   if (kind === 'RAW') return 'Raw data input';
-  if (kind === 'L0') return 'L0 result input';
-  if (kind === 'L1') return 'L1 result input';
-  if (kind === 'L2') return 'L2 result input';
+  if (kind === 'L0') return 'L0 data input';
+  if (kind === 'L1') return 'L1 data input';
+  if (kind === 'L2') return 'L2 data input';
   return 'Pipeline input';
 }
 
@@ -154,6 +156,7 @@ export default function EntryNodePopover({
   onClose,
 }: EntryNodePopoverProps) {
   const [search, setSearch] = useState('');
+  const [satelliteFilter, setSatelliteFilter] = useState<SatelliteFilter>('ALL');
   /** 사용자가 클릭만 한 상태 — 아직 onSelect 으로 부모에 반영되지 않은 후보. */
   const [pendingOption, setPendingOption] = useState<EntryFileOption | null>(null);
 
@@ -169,14 +172,23 @@ export default function EntryNodePopover({
   );
   const filtered = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return options;
-    return options.filter((opt) => (
-      opt.sceneId.toLowerCase().includes(keyword)
-      || opt.title.toLowerCase().includes(keyword)
-      || opt.satelliteId.toLowerCase().includes(keyword)
-      || opt.filePath.toLowerCase().includes(keyword)
-    ));
-  }, [search, options]);
+    return options.filter((opt) => {
+      if (satelliteFilter !== 'ALL' && opt.satelliteId !== satelliteFilter) return false;
+      if (!keyword) return true;
+      return (
+        opt.sceneId.toLowerCase().includes(keyword)
+        || opt.title.toLowerCase().includes(keyword)
+        || opt.satelliteId.toLowerCase().includes(keyword)
+        || opt.filePath.toLowerCase().includes(keyword)
+      );
+    });
+  }, [search, options, satelliteFilter]);
+
+  const satelliteCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const opt of options) counts.set(opt.satelliteId, (counts.get(opt.satelliteId) ?? 0) + 1);
+    return counts;
+  }, [options]);
 
   // 기본 선택 — fileInputConfig 가 없으면 첫 번째 매칭 옵션을 현재 입력으로 본다.
   const explicitSceneId = entryStep.fileInputConfig?.sceneId;
@@ -292,6 +304,23 @@ export default function EntryNodePopover({
               className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-2 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:border-accent/60 focus:ring-1 focus:ring-accent/30"
               aria-label="Search alternative input file"
             />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1" role="group" aria-label="Filter by satellite">
+            <SatelliteChip
+              label="All"
+              active={satelliteFilter === 'ALL'}
+              count={options.length}
+              onClick={() => setSatelliteFilter('ALL')}
+            />
+            {SATELLITE_OPTIONS.map((sat) => (
+              <SatelliteChip
+                key={sat}
+                label={sat}
+                active={satelliteFilter === sat}
+                count={satelliteCounts.get(sat) ?? 0}
+                onClick={() => setSatelliteFilter(sat)}
+              />
+            ))}
           </div>
         </div>
 
@@ -450,5 +479,41 @@ function MetaRow({ label, value }: { label: string; value: string }) {
       <span className="text-muted-foreground/60">{label}</span>
       <span className="text-foreground">{value}</span>
     </div>
+  );
+}
+
+function SatelliteChip({
+  label,
+  active,
+  count,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors',
+        active
+          ? 'border-accent bg-accent/15 text-accent'
+          : 'border-border bg-background text-muted-foreground hover:border-accent/40 hover:text-foreground',
+      )}
+    >
+      <span>{label}</span>
+      <span
+        className={cn(
+          'rounded-full px-1.5 py-0.5 font-mono text-[9px] leading-none',
+          active ? 'bg-accent/20 text-accent' : 'bg-muted/60 text-muted-foreground',
+        )}
+      >
+        {count}
+      </span>
+    </button>
   );
 }
