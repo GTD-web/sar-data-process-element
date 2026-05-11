@@ -1,25 +1,34 @@
 'use client';
 
-import { useState } from 'react';
-import { Antenna, FileInput, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import type { FileInputConfig, PipelineNodeKind, ProductLevel } from '@/types/pipeline';
+import { useEffect, useMemo, useState } from 'react';
+import { Antenna, Check, FileInput, Search, X } from 'lucide-react';
+import { cn, formatKST } from '@/lib/utils';
+import type { FileInputConfig, PipelineNodeKind, Product, ProductLevel, RawDataSummary } from '@/types/pipeline';
 import { PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
+import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 
 interface FileInputConfigDialogProps {
-  /** TRIGGER (raw data) 또는 FILE_INPUT (이미 처리된 결과 파일) */
+  /** TRIGGER (raw data 카탈로그) 또는 FILE_INPUT (해당 레벨 product 카탈로그) */
   kind: 'TRIGGER' | 'FILE_INPUT';
-  /** FILE_INPUT 일 때만 사용 — 어느 레벨의 결과 파일인지 표시. */
+  /** FILE_INPUT 일 때만 사용 — 어느 레벨의 product 를 보여줄지. */
   inputLevel?: ProductLevel;
   current?: FileInputConfig;
   onConfirm: (config: FileInputConfig) => void;
   onCancel: () => void;
 }
 
+interface PickerItem {
+  id: string;
+  sceneId: string;
+  filePath: string;
+  title: string;
+  metadata: string;
+  sortKey: string;
+}
+
 /**
- * 시작 노드(TRIGGER/FILE_INPUT) 입력 파일 지정 다이얼로그.
- * - TRIGGER  : 어떤 raw 데이터 파일을 이 파이프라인의 입력으로 흘려넣을 것인가 (EI-01)
- * - FILE_INPUT: 어떤 기존 처리 결과 파일을 입력으로 사용할 것인가 (SI-07, 부분 재처리)
+ * 시작 노드(TRIGGER/FILE_INPUT) 입력 파일 선택 다이얼로그.
+ * 카탈로그에서 항상 유효한 파일만 골라 입력으로 지정.
  */
 export default function FileInputConfigDialog({
   kind,
@@ -28,101 +37,198 @@ export default function FileInputConfigDialog({
   onConfirm,
   onCancel,
 }: FileInputConfigDialogProps) {
-  const [sceneId, setSceneId] = useState(current?.sceneId ?? '');
-  const [inputFilePath, setInputFilePath] = useState(current?.inputFilePath ?? '');
-
-  const isValid = sceneId.trim().length > 0 && inputFilePath.trim().length > 0;
-
-  const handleConfirm = () => {
-    if (!isValid) return;
-    onConfirm({ sceneId: sceneId.trim(), inputFilePath: inputFilePath.trim() });
-  };
+  const service = usePipelineService();
+  const [items, setItems] = useState<PickerItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [userSelectedId, setUserSelectedId] = useState<string | null>(null);
 
   const isTrigger = kind === 'TRIGGER';
   const Icon = isTrigger ? Antenna : FileInput;
   const title = isTrigger ? 'Raw Data Input' : 'Result File Input';
-  const badge = isTrigger ? 'RAW · EI-01' : `${inputLevel ? PRODUCT_LEVEL_LABELS[inputLevel] : 'L?'} · SI-07`;
+  const badge = isTrigger
+    ? 'RAW · EI-01'
+    : `${inputLevel ? PRODUCT_LEVEL_LABELS[inputLevel] : 'L?'} · SI-07`;
   const description = isTrigger
-    ? 'Pick the raw data file (CCSDS) this pipeline will process. The pipeline starts processing this file from L0.'
+    ? 'Pick the raw data file (CCSDS) this pipeline will process. The pipeline starts from L0.'
     : `Pick the existing ${inputLevel ? PRODUCT_LEVEL_LABELS[inputLevel] : 'processing result'} file this pipeline will start from. Subsequent stages run on top of this file.`;
-  const pathLabel = isTrigger ? 'Raw Data Path' : 'Input File Path';
-  const scenePlaceholder = isTrigger ? 'e.g. LX1-20260401-001' : 'e.g. SCENE-LX1-20260101-001';
-  const pathPlaceholder = isTrigger
-    ? 'e.g. /data/raw/lumirx-1/scene_xxx.bin'
-    : 'e.g. /data/processed/l1/SCENE-LX1-20260101-001.h5';
+  const emptyHint = isTrigger
+    ? 'No raw data files available in the catalog.'
+    : `No ${inputLevel ? PRODUCT_LEVEL_LABELS[inputLevel] : ''} products available in the catalog.`;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      if (isTrigger) {
+        const res = await service.원시데이터_목록을_조회한다({ limit: 500 });
+        if (!cancelled && res.data) {
+          const mapped = res.data.items.map(rawToPickerItem);
+          mapped.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+          setItems(mapped);
+        }
+      } else if (inputLevel) {
+        const res = await service.제품_목록을_조회한다({ level: inputLevel, status: 'COMPLETED', limit: 500 });
+        if (!cancelled && res.data) {
+          const mapped = res.data.items.map((p) => productToPickerItem(p, inputLevel));
+          mapped.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+          setItems(mapped);
+        }
+      }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isTrigger, inputLevel, service]);
+
+  // current 입력값이 카탈로그에 있으면 사용자가 직접 고르기 전까지 그 항목을 기본 선택으로 둔다.
+  const defaultSelectedId = useMemo(() => {
+    if (!current) return null;
+    return items.find((it) => it.sceneId === current.sceneId)?.id ?? null;
+  }, [current, items]);
+  const selectedId = userSelectedId ?? defaultSelectedId;
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(
+      (it) =>
+        it.sceneId.toLowerCase().includes(q) ||
+        it.title.toLowerCase().includes(q) ||
+        it.metadata.toLowerCase().includes(q),
+    );
+  }, [items, query]);
+
+  const selected = items.find((it) => it.id === selectedId) ?? null;
+
+  const handleApply = () => {
+    if (!selected) return;
+    onConfirm({ sceneId: selected.sceneId, inputFilePath: selected.filePath });
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onCancel}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+      onClick={onCancel}
+      role="dialog"
+      aria-modal="true"
+    >
       <div
-        className="w-full max-w-md bg-card border border-border rounded-xl shadow-2xl"
+        className="flex w-full max-w-lg max-h-[80vh] flex-col rounded-xl border border-border bg-card shadow-2xl"
         onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
           <div className="flex items-center gap-2">
-            <Icon className="w-4 h-4 text-accent" />
+            <Icon className="h-4 w-4 text-accent" />
             <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-            <span className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full">
+            <span className="rounded-full bg-muted/50 px-2 py-0.5 text-[10px] text-muted-foreground">
               {badge}
             </span>
           </div>
-          <button onClick={onCancel} className="p-1 rounded-md hover:bg-muted/50 transition-colors" aria-label="Close">
-            <X className="w-4 h-4 text-muted-foreground" />
+          <button onClick={onCancel} className="rounded-md p-1 transition-colors hover:bg-muted/50" aria-label="Close">
+            <X className="h-4 w-4 text-muted-foreground" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-4 space-y-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 py-3">
           <p className="text-xs text-muted-foreground">{description}</p>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">Scene Identifier (Scene ID)</label>
+          {/* Search */}
+          <div className="relative shrink-0">
+            <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
-              value={sceneId}
-              onChange={(e) => setSceneId(e.target.value)}
-              placeholder={scenePlaceholder}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by ID, scene, satellite..."
               autoFocus
-              className={cn(
-                'w-full bg-muted border rounded-md px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1',
-                sceneId.trim() ? 'border-accent/40 focus:ring-accent/50' : 'border-border focus:ring-accent/50',
-              )}
+              className="w-full rounded-md border border-border bg-muted py-1.5 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent/50"
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">{pathLabel}</label>
-            <input
-              type="text"
-              value={inputFilePath}
-              onChange={(e) => setInputFilePath(e.target.value)}
-              placeholder={pathPlaceholder}
-              className={cn(
-                'w-full bg-muted border rounded-md px-3 py-1.5 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1',
-                inputFilePath.trim() ? 'border-accent/40 focus:ring-accent/50' : 'border-border focus:ring-accent/50',
-              )}
-            />
+          {/* List */}
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border bg-background">
+            {loading ? (
+              <div className="p-6 text-center text-xs text-muted-foreground">Loading...</div>
+            ) : filtered.length === 0 ? (
+              <div className="p-6 text-center text-xs text-muted-foreground">
+                {items.length === 0 ? emptyHint : 'No items match the search.'}
+              </div>
+            ) : (
+              <ul className="divide-y divide-border">
+                {filtered.map((item) => {
+                  const isSelected = selectedId === item.id;
+                  return (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        onClick={() => setUserSelectedId(item.id)}
+                        className={cn(
+                          'flex w-full items-start gap-2 px-3 py-2 text-left transition-colors',
+                          isSelected ? 'bg-accent/15' : 'hover:bg-muted/40',
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full',
+                            isSelected ? 'bg-accent' : 'bg-muted-foreground/30',
+                          )}
+                          aria-hidden
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-mono text-[11px] font-semibold text-foreground" title={item.title}>
+                            {item.title}
+                          </div>
+                          <div className="truncate text-[10px] text-muted-foreground" title={item.metadata}>
+                            {item.metadata}
+                          </div>
+                        </div>
+                        {isSelected && <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-accent" />}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
+
+          {/* Selected summary */}
+          {selected ? (
+            <div className="shrink-0 space-y-1 rounded-md border border-accent/30 bg-accent/5 px-3 py-2">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-accent">Selected</div>
+              <div className="truncate font-mono text-[11px] text-foreground" title={selected.sceneId}>
+                {selected.sceneId}
+              </div>
+              <div className="truncate font-mono text-[10px] text-muted-foreground" title={selected.filePath}>
+                {selected.filePath}
+              </div>
+            </div>
+          ) : (
+            <div className="shrink-0 rounded-md border border-dashed border-border px-3 py-2 text-center text-[11px] text-muted-foreground">
+              Pick a file from the list above.
+            </div>
+          )}
         </div>
 
         {/* Footer */}
-        <div className="flex gap-2 px-4 py-3 border-t border-border">
+        <div className="flex shrink-0 gap-2 border-t border-border px-4 py-3">
           <button
             onClick={onCancel}
-            className="flex-1 py-1.5 rounded-md border border-border text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
+            className="flex-1 rounded-md border border-border py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50"
           >
             Cancel
           </button>
           <button
-            onClick={handleConfirm}
-            disabled={!isValid}
+            onClick={handleApply}
+            disabled={!selected}
             className={cn(
-              'flex-1 py-1.5 rounded-md text-xs font-medium transition-colors',
-              isValid
+              'flex-1 rounded-md py-1.5 text-xs font-medium transition-colors',
+              selected
                 ? 'bg-accent text-accent-foreground hover:brightness-110'
-                : 'bg-muted text-muted-foreground cursor-not-allowed',
+                : 'cursor-not-allowed bg-muted text-muted-foreground',
             )}
           >
             Apply
@@ -131,6 +237,36 @@ export default function FileInputConfigDialog({
       </div>
     </div>
   );
+}
+
+function rawToPickerItem(raw: RawDataSummary): PickerItem {
+  return {
+    id: raw.id,
+    sceneId: raw.id,
+    filePath: raw.rawDataPath,
+    title: raw.title,
+    metadata: `${raw.satelliteId} · ${raw.mode} · ${formatBytes(raw.fileSizeBytes)} · ${formatKST(raw.capturedAt)}`,
+    sortKey: raw.capturedAt,
+  };
+}
+
+function productToPickerItem(product: Product, level: ProductLevel): PickerItem {
+  const lvl = level.toLowerCase().replace('level_', 'l');
+  return {
+    id: product.id,
+    sceneId: product.sceneId,
+    filePath: `/mnt/nas/sdpe/output/${lvl}/${product.sceneId}.h5`,
+    title: product.id,
+    metadata: `${product.satelliteId} · ${product.mode} · ${product.polarization} · ${formatKST(product.acquisitionStart)}`,
+    sortKey: product.acquisitionStart,
+  };
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
+  if (bytes >= 1e3) return `${(bytes / 1e3).toFixed(1)} KB`;
+  return `${bytes} B`;
 }
 
 // Re-export kind type alias for callers
