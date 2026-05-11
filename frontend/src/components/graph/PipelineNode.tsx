@@ -433,13 +433,14 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
   // 노드 위 툴바: editable 노드 전체에 표시
   const showToolbar = !!editable;
   // 진입 노드인데 입력 파일이 아직 지정되지 않았다면 노드 자체에 경고 표시.
+  // 단 입력 파일 지정은 Manual Pipelines (isJobMode) 흐름의 관심사이므로, Pipelines 정의 탭에서는 끈다.
   // 외부에서 warningReason 이 이미 들어왔으면 그것을 우선.
-  const missingEntryInput = isEntryNode && !fileInputSceneId;
+  const missingEntryInput = isJobMode && isEntryNode && !fileInputSceneId;
   const effectiveWarningReason = warningReason
     ?? (missingEntryInput
       ? (kind === 'TRIGGER'
-        ? 'No raw data file is set for this pipeline input. Double-click the node to pick one.'
-        : 'No input file is set for this pipeline input. Double-click the node to pick one.')
+        ? 'No raw data file is set for this pipeline input. Click the node to pick one.'
+        : 'No input file is set for this pipeline input. Click the node to pick one.')
       : undefined);
   const showNodeWarning = !!effectiveWarningReason;
   const leafAddAffordance = Boolean(isLeaf && editable && onAddAfter);
@@ -615,15 +616,15 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
                 >
                   {fileInputSceneId}
                 </span>
-              ) : (
+              ) : isJobMode ? (
                 <span
                   className="inline-flex items-center gap-1 rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-amber-600 dark:text-amber-400"
-                  title="No input file set — double-click the node to pick one"
+                  title="No input file set — click the node to pick one"
                 >
                   <AlertTriangle className="h-2.5 w-2.5" strokeWidth={2.5} />
                   No input set
                 </span>
-              )}
+              ) : null}
             </div>
           )}
           <div className={cn('text-[11px] font-semibold leading-tight', !isEnabled || status === 'CANCELED' || (isJobMode && status === 'PENDING') ? 'text-muted-foreground/50' : 'text-foreground')}>{label}</div>

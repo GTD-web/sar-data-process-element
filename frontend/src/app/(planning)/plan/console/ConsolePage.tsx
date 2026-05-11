@@ -15,7 +15,6 @@ import CancelConfirmDialog from '@/components/panels/CancelConfirmDialog';
 import CreatePipelineDialog, { type CreatePipelineBasicData } from '@/components/panels/CreatePipelineDialog';
 import SelectStartNodeDialog, { type StartNodeSelection } from '@/components/panels/SelectStartNodeDialog';
 import NodeDetailModal, { type PrevNodeInfo } from '@/components/panels/NodeDetailModal';
-import FileInputConfigDialog from '@/components/panels/FileInputConfigDialog';
 import PipelineArchiveConfirmDialog from '@/components/panels/PipelineArchiveConfirmDialog';
 import PipelineDeleteConfirmDialog from '@/components/panels/PipelineDeleteConfirmDialog';
 import PipelineUndeployConfirmDialog from '@/components/panels/PipelineUndeployConfirmDialog';
@@ -25,7 +24,6 @@ import { Plus, GitBranch, Pencil, Check, X, Radio, Info, Archive } from 'lucide-
 import type {
   PipelineDefinition,
   PipelineStepDefinition,
-  FileInputConfig,
   ProcessingProfile,
   ExecutionLog,
   JobDetail,
@@ -281,7 +279,6 @@ export default function ConsolePage() {
   const [logPanelOpen, setLogPanelOpen] = useState(false);
   const [focusEntryTrigger, setFocusEntryTrigger] = useState(0);
   const [nodeDetailStep, setNodeDetailStep] = useState<PipelineStepDefinition | null>(null);
-  const [fileInputConfigStep, setFileInputConfigStep] = useState<PipelineStepDefinition | null>(null);
   const [archivePipelineTarget, setArchivePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [deletePipelineTarget, setDeletePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [undeployTarget, setUndeployTarget] = useState<PipelineDefinition | null>(null);
@@ -354,8 +351,8 @@ export default function ConsolePage() {
           kind: s.kind,
           sarStage: s.sarStage,
           inputLevel: s.inputLevel,
-          fileInputSceneId: s.fileInputConfig?.sceneId,
-          fileInputFilePath: s.fileInputConfig?.inputFilePath,
+          // 입력 파일 sceneId/path 는 정의 단계의 관심사가 아니므로 Pipelines 탭 그래프에는 넘기지 않는다.
+          // (Manual Pipelines 탭의 JobsPage 가 entry input 표시/편집을 담당.)
           targetCsc,
           productLevel,
           durationMs: jobStep?.durationMs,
@@ -764,10 +761,8 @@ export default function ConsolePage() {
   const handleNodeOpenDetail = useCallback((stepOrder: number) => {
     const step = selectedPipeline?.steps.find((s) => s.order === stepOrder);
     if (!step) return;
-    if (step.kind === 'FILE_INPUT' || step.kind === 'TRIGGER') {
-      setFileInputConfigStep(step);
-      return;
-    }
+    // 시작 노드(TRIGGER/FILE_INPUT) 의 입력 파일 지정은 Manual Pipelines 탭(JobsPage)에서 처리한다.
+    // Pipelines 탭에서는 정의 정보만 보여주므로 일반 노드 상세 모달을 띄운다.
     setNodeDetailStep(step);
   }, [selectedPipeline]);
 
@@ -811,19 +806,6 @@ export default function ConsolePage() {
     setConsoleMode({ type: 'addStep', afterOrder: 0, asSeparateStart: true });
     setRightCollapsed(false);
   }, [selectedPipeline]);
-
-  const handleFileInputConfigApply = useCallback(async (config: FileInputConfig) => {
-    if (!selectedPipelineId || !fileInputConfigStep || !selectedPipeline) return;
-    const updatedSteps = selectedPipeline.steps.map((s) =>
-      s.order === fileInputConfigStep.order ? { ...s, fileInputConfig: config } : s,
-    );
-    const res = await service.파이프라인을_수정한다(selectedPipelineId, { steps: updatedSteps });
-    if (res.success && res.data) {
-      setPipelines((prev) => prev.map((p) => (p.id === selectedPipelineId ? res.data! : p)));
-      await refreshActivationRules();
-    }
-    setFileInputConfigStep(null);
-  }, [selectedPipelineId, fileInputConfigStep, selectedPipeline, service, refreshActivationRules]);
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -1033,16 +1015,6 @@ export default function ConsolePage() {
         />
       )}
 
-      {/* 시작 노드(TRIGGER/FILE_INPUT) 입력 파일 설정 다이얼로그 — 더블클릭 또는 툴바 Play */}
-      {fileInputConfigStep && (fileInputConfigStep.kind === 'TRIGGER' || fileInputConfigStep.kind === 'FILE_INPUT') && (
-        <FileInputConfigDialog
-          kind={fileInputConfigStep.kind}
-          inputLevel={fileInputConfigStep.inputLevel}
-          current={fileInputConfigStep.fileInputConfig}
-          onConfirm={handleFileInputConfigApply}
-          onCancel={() => setFileInputConfigStep(null)}
-        />
-      )}
 
       {/* 노드 상세 모달 — 더블클릭 또는 툴바 Play */}
       {nodeDetailStep && (
