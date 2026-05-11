@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-sar_multilook.py
-================
-Multi-look processor for SAR SLC data produced by sar_rda_processorV4.py
+csu_04_05_multilook.py
+======================
+CSU-04.05 Multi-look Processor for SAR SLC data produced by the CSC-04 RDA
+processor (V4/V7).
 
 Loads the 2-band float32 GeoTIFF (band-1 = real, band-2 = imag) and the
 companion XML metadata file written by the RDA processor, applies incoherent
@@ -57,15 +58,15 @@ Output TIFF
 
 Usage
 -----
-  python sar_multilook.py --slc SLC_complex.tif --xml SLC_metadata.xml \\
-                          --range-looks 4 --azimuth-looks 10 \\
-                          --output ./ml_output
+  python csu_04_05_multilook.py --slc SLC_complex.tif --xml SLC_metadata.xml \\
+                                --range-looks 4 --azimuth-looks 10 \\
+                                --output ./ml_output
 
-  python sar_multilook.py -s SLC_complex.tif -x SLC_metadata.xml \\
-                          -r 4 -a 10 -o ./ml_output --strip-lines 128
+  python csu_04_05_multilook.py -s SLC_complex.tif -x SLC_metadata.xml \\
+                                -r 4 -a 10 -o ./ml_output --strip-lines 128
 
-  python sar_multilook.py ... --dry-run          # show parameters, don't process
-  python sar_multilook.py ... --amplitude         # save sqrt(intensity) instead
+  python csu_04_05_multilook.py ... --dry-run     # show parameters, don't process
+  python csu_04_05_multilook.py ... --amplitude   # save sqrt(intensity) instead
 """
 
 import argparse
@@ -99,6 +100,8 @@ except ImportError:
     HAS_MPL = False
 
 log = logging.getLogger("SAR-ML")
+
+__all__ = ["SLCMeta", "load_slc_meta", "multilook"]
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -567,7 +570,7 @@ def _write_output_xml(src_xml_path: str, out_xml_path: str,
         pi = ET.SubElement(root, 'ProductInfo')
     _set(pi, 'ProductType',      'MLD')
     _set(pi, 'ProcessingLevel',  'L2')
-    _set(pi, 'Processor',        'sar_multilook.py v1.0')
+    _set(pi, 'Processor',        'csu_04_05_multilook.py v1.0')
     _set(pi, 'ProcessingDate',
          datetime.now(UTC).isoformat().replace('+00:00', 'Z'))
     _set(pi, 'InputSLC', src_xml_path)
@@ -579,7 +582,7 @@ def _write_output_xml(src_xml_path: str, out_xml_path: str,
         root.remove(old_ml)
 
     ml = ET.SubElement(root, 'MultiLook')
-    ml.set('processor',  'sar_multilook.py v1.0')
+    ml.set('processor',  'csu_04_05_multilook.py v1.0')
     ml.set('applied',    datetime.now(UTC).isoformat().replace('+00:00', 'Z'))
 
     _sub(ml, 'Method',
