@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Antenna, Check, FileInput, Search, X } from 'lucide-react';
 import { cn, formatKST } from '@/lib/utils';
 import type { FileInputConfig, PipelineNodeKind, Product, ProductLevel, RawDataSummary } from '@/types/pipeline';
-import { PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
+import { PRODUCT_LEVEL_LABELS, SATELLITE_OPTIONS } from '@/types/pipeline';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 
 interface FileInputConfigDialogProps {
@@ -23,8 +23,11 @@ interface PickerItem {
   filePath: string;
   title: string;
   metadata: string;
+  satelliteId: string;
   sortKey: string;
 }
+
+type SatelliteFilter = 'ALL' | (typeof SATELLITE_OPTIONS)[number];
 
 /**
  * 시작 노드(TRIGGER/FILE_INPUT) 입력 파일 선택 다이얼로그.
@@ -41,6 +44,7 @@ export default function FileInputConfigDialog({
   const [items, setItems] = useState<PickerItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [satelliteFilter, setSatelliteFilter] = useState<SatelliteFilter>('ALL');
   const [userSelectedId, setUserSelectedId] = useState<string | null>(null);
 
   const isTrigger = kind === 'TRIGGER';
@@ -91,14 +95,22 @@ export default function FileInputConfigDialog({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter(
-      (it) =>
+    return items.filter((it) => {
+      if (satelliteFilter !== 'ALL' && it.satelliteId !== satelliteFilter) return false;
+      if (!q) return true;
+      return (
         it.sceneId.toLowerCase().includes(q) ||
         it.title.toLowerCase().includes(q) ||
-        it.metadata.toLowerCase().includes(q),
-    );
-  }, [items, query]);
+        it.metadata.toLowerCase().includes(q)
+      );
+    });
+  }, [items, query, satelliteFilter]);
+
+  const satelliteCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const it of items) counts.set(it.satelliteId, (counts.get(it.satelliteId) ?? 0) + 1);
+    return counts;
+  }, [items]);
 
   const selected = items.find((it) => it.id === selectedId) ?? null;
 
@@ -147,6 +159,25 @@ export default function FileInputConfigDialog({
               autoFocus
               className="w-full rounded-md border border-border bg-muted py-1.5 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-accent/50"
             />
+          </div>
+
+          {/* Satellite filter */}
+          <div className="flex shrink-0 items-center gap-1" role="group" aria-label="Filter by satellite">
+            <SatelliteFilterButton
+              label="All"
+              active={satelliteFilter === 'ALL'}
+              count={items.length}
+              onClick={() => setSatelliteFilter('ALL')}
+            />
+            {SATELLITE_OPTIONS.map((sat) => (
+              <SatelliteFilterButton
+                key={sat}
+                label={sat}
+                active={satelliteFilter === sat}
+                count={satelliteCounts.get(sat) ?? 0}
+                onClick={() => setSatelliteFilter(sat)}
+              />
+            ))}
           </div>
 
           {/* List */}
@@ -246,6 +277,7 @@ function rawToPickerItem(raw: RawDataSummary): PickerItem {
     filePath: raw.rawDataPath,
     title: raw.title,
     metadata: `${raw.satelliteId} · ${raw.mode} · ${formatBytes(raw.fileSizeBytes)} · ${formatKST(raw.capturedAt)}`,
+    satelliteId: raw.satelliteId,
     sortKey: raw.capturedAt,
   };
 }
@@ -258,8 +290,45 @@ function productToPickerItem(product: Product, level: ProductLevel): PickerItem 
     filePath: `/mnt/nas/sdpe/output/${lvl}/${product.sceneId}.h5`,
     title: product.id,
     metadata: `${product.satelliteId} · ${product.mode} · ${product.polarization} · ${formatKST(product.acquisitionStart)}`,
+    satelliteId: product.satelliteId,
     sortKey: product.acquisitionStart,
   };
+}
+
+function SatelliteFilterButton({
+  label,
+  active,
+  count,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors',
+        active
+          ? 'border-accent bg-accent/15 text-accent'
+          : 'border-border bg-background text-muted-foreground hover:border-accent/40 hover:text-foreground',
+      )}
+    >
+      <span>{label}</span>
+      <span
+        className={cn(
+          'rounded-full px-1.5 py-0.5 font-mono text-[9px] leading-none',
+          active ? 'bg-accent/20 text-accent' : 'bg-muted/60 text-muted-foreground',
+        )}
+      >
+        {count}
+      </span>
+    </button>
+  );
 }
 
 function formatBytes(bytes: number): string {
