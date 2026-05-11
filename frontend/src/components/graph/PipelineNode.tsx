@@ -432,7 +432,16 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
   const showTriggerButton = isEntryNode && !!onTrigger;
   // 노드 위 툴바: editable 노드 전체에 표시
   const showToolbar = !!editable;
-  const showNodeWarning = !!warningReason;
+  // 진입 노드인데 입력 파일이 아직 지정되지 않았다면 노드 자체에 경고 표시.
+  // 외부에서 warningReason 이 이미 들어왔으면 그것을 우선.
+  const missingEntryInput = isEntryNode && !fileInputSceneId;
+  const effectiveWarningReason = warningReason
+    ?? (missingEntryInput
+      ? (kind === 'TRIGGER'
+        ? 'No raw data file is set for this pipeline input. Double-click the node to pick one.'
+        : 'No input file is set for this pipeline input. Double-click the node to pick one.')
+      : undefined);
+  const showNodeWarning = !!effectiveWarningReason;
   const leafAddAffordance = Boolean(isLeaf && editable && onAddAfter);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
@@ -519,8 +528,8 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
             } as React.CSSProperties}
           >
             <div className="node-hover-overlay" style={isSelected && isEnabled ? { opacity: 1 } : undefined} />
-            {showNodeWarning && warningReason && (
-              <NodeWarningHint text={warningReason} />
+            {showNodeWarning && effectiveWarningReason && (
+              <NodeWarningHint text={effectiveWarningReason} />
             )}
             {showStatusBadge && (
               <div className="absolute -top-3 -left-3 z-10">
@@ -607,7 +616,13 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
                   {fileInputSceneId}
                 </span>
               ) : (
-                <span className="text-[9px] italic text-muted-foreground/60">No input set</span>
+                <span
+                  className="inline-flex items-center gap-1 rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-amber-600 dark:text-amber-400"
+                  title="No input file set — double-click the node to pick one"
+                >
+                  <AlertTriangle className="h-2.5 w-2.5" strokeWidth={2.5} />
+                  No input set
+                </span>
               )}
             </div>
           )}
