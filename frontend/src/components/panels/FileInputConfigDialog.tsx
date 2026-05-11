@@ -45,11 +45,13 @@ export default function FileInputConfigDialog({
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [satelliteFilter, setSatelliteFilter] = useState<SatelliteFilter>('ALL');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [userSelectedId, setUserSelectedId] = useState<string | null>(null);
 
   const isTrigger = kind === 'TRIGGER';
   const Icon = isTrigger ? Antenna : FileInput;
-  const title = isTrigger ? 'Raw Data Input' : 'Result File Input';
+  const title = 'Pipeline Input';
   const badge = isTrigger
     ? 'RAW · EI-01'
     : `${inputLevel ? PRODUCT_LEVEL_LABELS[inputLevel] : 'L?'} · SI-07`;
@@ -95,8 +97,13 @@ export default function FileInputConfigDialog({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    // ISO sortKey 와 비교하기 위해 yyyy-mm-dd 를 ISO 경계로 변환.
+    const fromBound = dateFrom ? `${dateFrom}T00:00:00.000Z` : null;
+    const toBound = dateTo ? `${dateTo}T23:59:59.999Z` : null;
     return items.filter((it) => {
       if (satelliteFilter !== 'ALL' && it.satelliteId !== satelliteFilter) return false;
+      if (fromBound && it.sortKey < fromBound) return false;
+      if (toBound && it.sortKey > toBound) return false;
       if (!q) return true;
       return (
         it.sceneId.toLowerCase().includes(q) ||
@@ -104,7 +111,9 @@ export default function FileInputConfigDialog({
         it.metadata.toLowerCase().includes(q)
       );
     });
-  }, [items, query, satelliteFilter]);
+  }, [items, query, satelliteFilter, dateFrom, dateTo]);
+
+  const dateFilterActive = dateFrom !== '' || dateTo !== '';
 
   const satelliteCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -178,6 +187,40 @@ export default function FileInputConfigDialog({
                 onClick={() => setSatelliteFilter(sat)}
               />
             ))}
+          </div>
+
+          {/* Date range filter */}
+          <div className="flex shrink-0 items-center gap-1.5 text-[10px] text-muted-foreground">
+            <span className="font-medium uppercase tracking-wider">Date</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              max={dateTo || undefined}
+              aria-label="From date"
+              className="rounded-md border border-border bg-muted px-2 py-1 text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-accent/50"
+            />
+            <span className="text-muted-foreground/60">—</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              min={dateFrom || undefined}
+              aria-label="To date"
+              className="rounded-md border border-border bg-muted px-2 py-1 text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-accent/50"
+            />
+            {dateFilterActive && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDateFrom('');
+                  setDateTo('');
+                }}
+                className="ml-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+              >
+                Clear
+              </button>
+            )}
           </div>
 
           {/* List */}
