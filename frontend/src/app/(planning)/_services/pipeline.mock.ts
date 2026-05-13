@@ -1522,7 +1522,7 @@ function generatePipelines(): PipelineDefinition[] {
     buildPipelineFromSteps('PL-START-FROM-L2', 'Start from L2 Processing', START_FROM_L2_STEPS, '2026-01-30T09:00:00Z'),
     buildPipelineFromSteps('PL-PARTIAL-REPROCESS-FROM-L1', 'Partial Reprocess from L1', PARTIAL_L1_STRIPMAP_STEPS, '2026-02-01T09:00:00Z'),
     buildPipelineFromSteps('PL-PARTIAL-REPROCESS-FROM-L2', 'Partial Reprocess from L2', PARTIAL_L2_STEPS, '2026-03-01T09:00:00Z'),
-    buildBranchedPipeline('PL-CSC04-DEMO', 'CSC-04 Demo (L0 → SLC → Speckle 5종)', CSC04_DEMO_STEPS, CSC04_DEMO_EDGES, '2026-05-13T09:00:00Z'),
+    buildBranchedPipeline('PL-CSC04-DEMO', 'Speckle Filter Comparison (L1 Stripmap)', CSC04_DEMO_STEPS, CSC04_DEMO_EDGES, '2026-05-13T09:00:00Z'),
     buildBranchedPipeline('PL-MULTI-LEVEL-BRANCHED', 'Multi-level Branched', MULTI_LEVEL_BRANCH_STEPS, MULTI_LEVEL_BRANCH_EDGES, '2026-03-20T09:00:00Z'),
     buildBranchedPipeline('PL-MULTI-LEVEL-CUSTOM-OUTPUT', 'Multi-level Branched (L3 Only Output)', MULTI_LEVEL_CUSTOM_OUTPUT_STEPS, MULTI_LEVEL_CUSTOM_OUTPUT_EDGES, '2026-03-22T09:00:00Z'),
     buildBranchedPipeline('PL-DUAL-POL-BRANCHED', 'Dual-Polarization Branched', DUAL_POL_BRANCH_STEPS, DUAL_POL_BRANCH_EDGES, '2026-03-25T09:00:00Z'),
