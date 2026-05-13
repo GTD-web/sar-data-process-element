@@ -84,5 +84,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ## Post-change Deployment
 
 - `frontend/` 변경 작업이 끝나면 최종 응답 전에 다음 명령을 실행해 프론트엔드 컨테이너를 재배포한다. 사용자가 명시적으로 하지 말라고 한 경우만 생략한다.
-- `docker rm -f sdpe-frontend 2>nul & docker build -t sdpe-frontend:latest "C:\Users\USER\dev\sar-data-process-element\frontend" && docker run -d --name sdpe-frontend -p 3010:3000 sdpe-frontend:latest`
+- **빌드 컨텍스트는 repo root** (CSC natives 를 컨테이너에 동봉하기 위함). H5 입력은 컨테이너로 직접 업로드(multipart)하므로 호스트 볼륨 마운트는 불필요.
+- `docker rm -f sdpe-frontend 2>nul & docker build -t sdpe-frontend:latest -f "C:\Users\USER\dev\sar-data-process-element\frontend\Dockerfile" "C:\Users\USER\dev\sar-data-process-element" && docker run -d --name sdpe-frontend -p 3010:3000 sdpe-frontend:latest`
 - 재배포 후 위 "Playwright UI 검증" 체크리스트 적용 대상이면 `npm run e2e` 통과까지 확인한다.
+- CSC-03/04 시연 통합 전체는 `frontend/docs/csc-demo-integration.md` 참고.
