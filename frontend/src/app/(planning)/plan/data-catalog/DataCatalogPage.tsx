@@ -406,7 +406,7 @@ function LineageView({
   const pendingCount = Math.max(0, expectedStations - completedCount - runningCount - failedCount);
 
   return (
-    <div>
+    <div className="flex min-h-0 flex-1 flex-col">
       <LineageFilterStrip
         query={query}
         onQueryChange={setQuery}
@@ -419,7 +419,7 @@ function LineageView({
       />
 
       {filteredRuns.length === 0 && allRuns.length > 0 ? (
-        <div className="flex h-32 items-center justify-center rounded-md border border-dashed border-border bg-card text-[12px] text-muted-foreground">
+        <div className="flex flex-1 items-center justify-center rounded-md border border-dashed border-border bg-card text-[12px] text-muted-foreground">
           No runs match the filters.
         </div>
       ) : (
@@ -582,7 +582,8 @@ function RunsTable({
   }, [runs]);
 
   return (
-    <div className="rounded-md border border-border bg-card">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-card">
+      <div className="min-h-0 flex-1 overflow-y-auto">
       <table className="w-full border-separate border-spacing-0 text-xs">
         <thead className="text-left text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
           <tr>
@@ -722,25 +723,22 @@ function RunsTable({
             </tr>
           )}
         </tbody>
-        <tfoot>
-          <tr>
-            <td colSpan={11} className="sticky bottom-0 z-10 border-t-2 border-border bg-muted/95 px-3 py-2 backdrop-blur">
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
-                <FooterStat num={totals.runs} label="runs" />
-                <FooterStat num={totals.completed} label="completed" tone="text-success" />
-                <FooterStat num={totals.running} label="running" tone="text-accent" />
-                <FooterStat num={totals.pending} label="pending" />
-                {totals.failed > 0 && (
-                  <FooterStat num={totals.failed} label="failed" tone="text-destructive" />
-                )}
-                <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
-                  Showing {visibleRuns.length} / {runs.length}
-                </span>
-              </div>
-            </td>
-          </tr>
-        </tfoot>
       </table>
+      </div>
+      <div className="shrink-0 border-t-2 border-border bg-muted/95 px-3 py-2 backdrop-blur">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+          <FooterStat num={totals.runs} label="runs" />
+          <FooterStat num={totals.completed} label="completed" tone="text-success" />
+          <FooterStat num={totals.running} label="running" tone="text-accent" />
+          <FooterStat num={totals.pending} label="pending" />
+          {totals.failed > 0 && (
+            <FooterStat num={totals.failed} label="failed" tone="text-destructive" />
+          )}
+          <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
+            Showing {visibleRuns.length} / {runs.length}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1713,7 +1711,7 @@ export default function DataCatalogPage() {
                   <div className="mb-2 shrink-0 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                     Pipeline Execution Matrix
                   </div>
-                  <div className="min-h-0 flex-1 overflow-y-auto">
+                  <div className="flex min-h-0 flex-1 flex-col">
                     <LineageView
                       item={selectedItem}
                       selection={selection}
@@ -1782,6 +1780,7 @@ export default function DataCatalogPage() {
                             pipelineEdges={selectedPipeline.edges}
                             editable={false}
                             isJobMode
+                            suppressEntryInputWarning
                             showGlow={false}
                             showMinimap={false}
                           />

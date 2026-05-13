@@ -1077,6 +1077,7 @@ function PipelineFlowDiagram({
           isHead: !pipeline.edges.some((edge) => edge.target === step.order),
           enabled: !step.disabled,
           isJobMode: true,
+          suppressEntryInputWarning: true,
         } satisfies PipelineNodeData,
       };
     })
