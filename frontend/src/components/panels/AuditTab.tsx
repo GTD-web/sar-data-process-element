@@ -12,13 +12,21 @@ const EVENT_COLORS: Record<AuditEventType, string> = {
   PIPELINE_STARTED: 'bg-accent/15 text-accent',
   PIPELINE_REPROCESSED: 'bg-muted/50 text-muted-foreground',
   ALERT_DISPATCHED: 'bg-destructive/15 text-destructive',
+  LOGIN_SUCCEEDED: 'bg-success/15 text-success',
+  LOGIN_FAILED: 'bg-destructive/15 text-destructive',
+  USER_CREATED: 'bg-accent/15 text-accent',
+  USER_UPDATED: 'bg-accent/15 text-accent',
+  USER_ROLE_CHANGED: 'bg-accent/15 text-accent',
+  USER_DEACTIVATED: 'bg-destructive/15 text-destructive',
+  PASSWORD_RESET: 'bg-muted/50 text-muted-foreground',
+  PASSWORD_CHANGED: 'bg-muted/50 text-muted-foreground',
 };
 
 const COLUMNS: { id: keyof AuditEvent; label: string }[] = [
-  { id: 'timestamp', label: '시각' },
-  { id: 'eventType', label: '이벤트' },
+  { id: 'timestamp', label: 'Time' },
+  { id: 'eventType', label: 'Event' },
   { id: 'jobId', label: 'Job' },
-  { id: 'detail', label: '상세' },
+  { id: 'detail', label: 'Detail' },
 ];
 
 interface AuditTabProps {

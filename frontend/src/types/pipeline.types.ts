@@ -18,7 +18,7 @@ export type SarStage = 'L0' | 'L1A' | 'L1B' | 'L1C' | 'L2A' | 'L2B' | 'L3';
  * JOB_INIT = 작업 생성·프로파일 선택(CSU-08.02),
  * SAR = SAR 처리 스테이지, CATALOG = 카탈로그 등록
  */
-export type PipelineNodeKind = 'TRIGGER' | 'FILE_INPUT' | 'JOB_INIT' | 'SAR' | 'CATALOG';
+export type PipelineNodeKind = 'TRIGGER' | 'FILE_INPUT' | 'JOB_INIT' | 'SAR' | 'CATALOG' | 'THUMBNAIL';
 
 /**
  * UI 표시용 CSC 범위. 백엔드 호환용으로 유지.
@@ -36,7 +36,15 @@ export type AuditEventType =
   | 'JOB_FAILED'
   | 'PIPELINE_STARTED'
   | 'PIPELINE_REPROCESSED'
-  | 'ALERT_DISPATCHED';
+  | 'ALERT_DISPATCHED'
+  | 'LOGIN_SUCCEEDED'
+  | 'LOGIN_FAILED'
+  | 'USER_CREATED'
+  | 'USER_UPDATED'
+  | 'USER_ROLE_CHANGED'
+  | 'USER_DEACTIVATED'
+  | 'PASSWORD_RESET'
+  | 'PASSWORD_CHANGED';
 
 /** ICD 3.5: 재시도 간격 전략 (TBC — 내부 결정 대기) */
 export type RetryInterval = 'IMMEDIATE' | 'EXPONENTIAL_BACKOFF';
@@ -45,6 +53,10 @@ export type RetryInterval = 'IMMEDIATE' | 'EXPONENTIAL_BACKOFF';
 export type TriggerSource = 'PIPELINE_AUTO' | 'MANUAL_REQUEST' | 'PARTIAL_REPROCESS';
 
 export type LogLevel = 'INFO' | 'WARN' | 'ERROR';
+
+export type PipelineEventType = 'RAW_DATA_RECEIVED' | 'PARTIAL_REPROCESS_REQUESTED' | 'PRODUCT_REPROCESS_REQUESTED';
+export type RawDataStatus = 'RECEIVED' | 'MAPPED' | 'READY' | 'HOLD';
+export type Hdf5NodeType = 'file' | 'group' | 'dataset';
 
 // --- Domain Interfaces ---
 
@@ -57,6 +69,103 @@ export interface FileInputConfig {
   sceneId: string;
   /** 입력 파일 경로 (부분 재처리 시 사용할 기존 처리 결과) */
   inputFilePath: string;
+}
+
+/**
+ * CATALOG 노드 외부 STAC publish용 인증 모드.
+ * 기본 동작은 ICD §6.8 SI-06(PostgreSQL 직접 쓰기)이라 인증이 불필요하지만,
+ * 옵션으로 외부 STAC 브라우저/카탈로그에 추가 publish 할 때만 사용한다.
+ */
+export type CatalogAuthMode = 'NONE' | 'BEARER' | 'API_KEY';
+
+/**
+ * 동일 product key (job_id × product_level × product_type) 재등장 시 처리 정책.
+ * - NEW_VERSION_ARCHIVE_PREVIOUS: 신규 버전 등록 + 이전 버전 아카이빙 (ICD OPS-04 확정)
+ * - REPLACE_IN_PLACE: 기존 레코드 in-place 갱신 (운영자 정정용)
+ * - REJECT_DUPLICATE: 중복 등록 거부, CSC-08에 실패 통보
+ */
+export type CatalogDuplicatePolicy =
+  | 'NEW_VERSION_ARCHIVE_PREVIOUS'
+  | 'REPLACE_IN_PLACE'
+  | 'REJECT_DUPLICATE';
+
+/** sar_products.status 초기값 (ICD §6.8 sar_products 테이블 컬럼) */
+export type CatalogInitialStatus = 'REGISTERED' | 'PUBLISHED';
+
+/** 품질 검증 실패 시 처리 정책 (SAD CSC-07.02 결과 → CSC-08.07 경로) */
+export type CatalogQualityFailurePolicy =
+  | 'BLOCK_REGISTRATION'
+  | 'REGISTER_WITH_FLAG'
+  | 'ALERT_ONLY';
+
+/**
+ * STAC Collection 매핑 규칙.
+ * SAD 12.3 "STAC Collection: 위성별, 처리 레벨별 제품군" 정의에 따라
+ * (satellite_id × product_level) → collection_id 로 결정한다.
+ * '*' 는 와일드카드이며, 가장 구체적인 규칙이 우선한다.
+ */
+export interface CollectionMappingRule {
+  satelliteId: string;
+  productLevel: ProductLevel | '*';
+  collectionId: string;
+}
+
+/**
+ * CSC-07: CATALOG 노드 전용 설정.
+ *
+ * ICD/SAD 모델 기준:
+ * - SI-06(PostgreSQL/PostGIS 직접 쓰기) 가 카탈로그 등록의 1차 경로이며,
+ *   외부 HTTP STAC publish 는 옵션이다.
+ * - sar_products / stac_items / stac_collections 테이블에 INSERT.
+ * - CSU-07.02 품질 검증, CSU-07.05 생명주기, CSU-07.06 Thumbnail 생성을 함께 제어한다.
+ */
+export interface CatalogConfig {
+  /** Section 1: Storage Target */
+  storage: {
+    /** Thumbnail / 부가 산출물 NAS 루트 경로 (CI-03 NAS Manager 경유) */
+    nasRootPath: string;
+    /** 외부 STAC 브라우저/카탈로그에 추가 publish 할지 여부 (옵션) */
+    externalPublish: {
+      enabled: boolean;
+      endpoint?: string;
+      authMode?: CatalogAuthMode;
+      authSecretRef?: string;
+    };
+  };
+
+  /** Section 2: Collection Mapping (SAD 12.3) */
+  collectionMapping: CollectionMappingRule[];
+
+  /** Section 3: Quality Validation (CSU-07.02) */
+  quality: {
+    /** SI-05 quality_run 토글 */
+    runValidation: boolean;
+    /** NESZ 임계값 (dB). 임계값 자체는 ICD TBC. */
+    neszThresholdDb: number;
+    /** PSLR 임계값 (dB). 임계값 자체는 ICD TBC. */
+    pslrThresholdDb: number;
+    failurePolicy: CatalogQualityFailurePolicy;
+  };
+
+  /** Section 4: Versioning & Lifecycle (OPS-04 재처리 흐름) */
+  versioning: {
+    duplicatePolicy: CatalogDuplicatePolicy;
+    initialStatus: CatalogInitialStatus;
+    /** CSU-07.06 Thumbnail 생성 여부 */
+    generateThumbnail: boolean;
+    /** Thumbnail 최대 변 길이 (px). undefined 면 기본값 사용. */
+    thumbnailMaxPx?: number;
+  };
+
+  /**
+   * Section 5: STAC Item Mapping.
+   * 표준 매핑(SAR/EO Extension)은 코드 상수에서 read-only 로 표시하고,
+   * 여기서는 사용자 정의 추가 매핑만 보관한다.
+   * key = sar_products 컬럼명, value = STAC property 명
+   */
+  stacMapping: {
+    customProperties: Record<string, string>;
+  };
 }
 
 /**
@@ -75,8 +184,8 @@ export interface JobInitConfig {
 export interface ProcessingProfileSummary {
   id: string;
   name: string;
-  mode: string;
-  polarization: string;
+  mode?: string;
+  polarization?: string;
   description?: string;
 }
 
@@ -98,8 +207,14 @@ export interface PipelineStep {
   parentOrder?: number | null;
   /** 표시 기본 필드. SAR 노드의 처리 스테이지. */
   sarStage?: SarStage;
+  /** L1B 한정 sub-stage (Multi-look / Speckle / Ground-range / GRD 분기). */
+  sarSubStage?: SarSubStage;
   /** FILE_INPUT 노드 전용. 파이프라인에 입력되는 기존 처리 결과의 레벨. */
   inputLevel?: ProductLevel;
+  /** TRIGGER/FILE_INPUT 노드 전용. 시작 노드에 들어가는 입력 파일의 씬 식별자 (UI 표시용). */
+  fileInputSceneId?: string;
+  /** TRIGGER/FILE_INPUT 노드 전용. 시작 노드에 들어가는 입력 파일 경로 (UI 표시용). */
+  fileInputFilePath?: string;
   /** 백엔드 호환용. sarStage에서 파생되거나 백엔드 응답에서 직접 수신. */
   targetCsc: TargetCsc;
   productLevel: ProductLevel;
@@ -129,6 +244,62 @@ export interface JobDetail extends JobSummary {
   processingProfile?: ProcessingProfileSummary;
   priority?: number;
   triggerSource?: TriggerSource;
+}
+
+export interface RawDataSummary {
+  id: string;
+  title: string;
+  satelliteId: string;
+  mode: string;
+  polarization: string;
+  capturedAt: string;
+  receivedAt: string;
+  latitude: number;
+  longitude: number;
+  footprintKm: number;
+  /** EPSG:4326 lon/lat ring coordinates describing the captured ground footprint. */
+  footprint?: [number, number][];
+  fileSizeBytes: number;
+  status: RawDataStatus;
+  rawDataPath: string;
+  mappedPipelineId: string | null;
+  mappedPipelineName?: string | null;
+}
+
+export interface Hdf5AttributeEntry {
+  name: string;
+  type: string;
+  arraySize: string;
+  value: string | number | boolean | string[] | number[];
+  variableName?: string;
+  description?: string;
+}
+
+export interface Hdf5NodeSummary {
+  path: string;
+  name: string;
+  type: Hdf5NodeType;
+  depth: number;
+  attributeCount: number;
+  childCount: number;
+  dtype?: string;
+  shape?: number[];
+}
+
+export interface Hdf5FileSummary {
+  id: string;
+  rawDataId: string;
+  title: string;
+  fileName: string;
+  satelliteId: string;
+  mode: string;
+  receivedAt: string;
+  capturedAt: string;
+  fileSizeBytes: number;
+  rootGroups: string[];
+  nodes: Hdf5NodeSummary[];
+  attributes: Record<string, Hdf5AttributeEntry[]>;
+  notes: string[];
 }
 
 export interface Alert {
@@ -201,11 +372,34 @@ export interface QueueHealth {
   depthHistory: QueueDepthPoint[];
 }
 
+/**
+ * L1B sub-stage. 한 L1B SarStage 안에 여러 CSU/필터가 있어 노드별로 어떤 처리인지
+ * 구분해야 할 때 사용. 같은 sarStage='L1B' 노드를 여러 개 직렬로 연결하면서
+ * 각 노드가 어떤 sub-operation 인지 그래프에서 직관적으로 표현하기 위함.
+ *
+ * - multilook: CSU-04.05 (한 파이프라인 안에서 보통 1번)
+ * - speckle  : CSU-04.06, 필터 종류별로 직렬 중첩 가능 (lee → gamma_map → ...)
+ * - ground-range / grd: CSU-04.07/08 (TBD, mock)
+ */
+export type SpeckleFilter = 'lee' | 'enhanced_lee' | 'gamma_map' | 'boxcar' | 'median';
+
+export type SarSubStage =
+  | { kind: 'multilook'; rangeLooks?: number; azimuthLooks?: number }
+  | { kind: 'speckle'; filter: SpeckleFilter; winX?: number; winY?: number }
+  | { kind: 'ground-range' }
+  | { kind: 'grd' };
+
 export interface PipelineStepDefinition {
   order: number;
   kind: PipelineNodeKind;
   /** SAR 노드의 처리 스테이지. kind='SAR'일 때 필수. */
   sarStage?: SarStage;
+  /**
+   * SAR L1B 한정 — 한 L1B 단계 안에서 어떤 CSU/필터를 수행하는지.
+   * 같은 sarStage='L1B' 노드라도 sub-stage 가 달라 라벨/실행이 분기된다.
+   * 미설정 시 default 는 multilook 으로 간주.
+   */
+  sarSubStage?: SarSubStage;
   /** FILE_INPUT 노드 전용. 파이프라인에 입력되는 기존 처리 결과의 레벨. */
   inputLevel?: ProductLevel;
   parentOrder?: number | null;
@@ -218,8 +412,16 @@ export interface PipelineStepDefinition {
   jobInitConfig?: JobInitConfig;
   /** FILE_INPUT 노드 전용. 입력 파일 선택 설정. */
   fileInputConfig?: FileInputConfig;
+  /** CATALOG 노드 전용. STAC 엔드포인트/매핑 규칙 등. */
+  catalogConfig?: CatalogConfig;
   /** UC13: 실행 시 건너뛰도록 비활성화된 노드. 진입 노드는 비활성화하지 않습니다. */
   disabled?: boolean;
+  /** L1/L2 SAR 노드 전용. 사용자 업로드 처리 코드 (Mock — 사용자 정의 알고리즘). */
+  code?: string;
+  /** 업로드 코드의 언어 (monaco 식별자, 예: 'python', 'cpp'). */
+  codeLanguage?: string;
+  /** 업로드 시점의 원본 파일명. */
+  codeFilename?: string;
 }
 
 export interface PipelineEdge {
@@ -230,27 +432,57 @@ export interface PipelineEdge {
 export interface PipelineDefinition {
   id: string;
   name: string;
-  satelliteId: string;
-  mode: string;
   steps: PipelineStepDefinition[];
   edges: PipelineEdge[];
   createdAt: string;
   updatedAt: string;
   archived?: boolean;
+  archivedAt?: string;
+  archiveReason?: string;
+}
+
+export interface PipelineActivationRule {
+  id: string;
+  pipelineId: string;
+  active: boolean;
+  eventType: PipelineEventType;
+  sourceQueue: string;
+  /** 이벤트 매칭 조건. 각 필드는 OR 매칭 (둘 중 어느 값이든 매칭되면 통과). */
+  match: {
+    satelliteIds?: string[];
+    modes?: string[];
+    polarizations?: string[];
+    inputLevel?: ProductLevel;
+  };
+  triggerSource: TriggerSource;
+  deployedAt?: string;
+  description: string;
+}
+
+export interface SavePipelineActivationRuleData {
+  id?: string;
+  pipelineId: string;
+  active: boolean;
+  eventType: PipelineEventType;
+  sourceQueue: string;
+  match: {
+    satelliteIds?: string[];
+    modes?: string[];
+    polarizations?: string[];
+    inputLevel?: ProductLevel;
+  };
+  triggerSource: TriggerSource;
+  description?: string;
 }
 
 export interface CreatePipelineData {
   name: string;
-  satelliteId: string;
-  mode: string;
   steps: Omit<PipelineStepDefinition, 'order'>[];
   edges?: PipelineEdge[];
 }
 
 export interface UpdatePipelineData {
   name?: string;
-  satelliteId?: string;
-  mode?: string;
   steps?: Omit<PipelineStepDefinition, 'order'>[];
   edges?: PipelineEdge[];
 }
@@ -258,9 +490,13 @@ export interface UpdatePipelineData {
 export interface ProcessingProfile {
   id: string;
   name: string;
-  satelliteId: string;
-  mode: string;
-  polarization: string;
+  satelliteId?: string;
+  mode?: string;
+  polarization?: string;
+  satelliteTags?: string[];
+  modeTags?: string[];
+  polarizationTags?: string[];
+  processingStage?: string;
   priority: number;
   description?: string;
   parameters: Record<string, unknown>;
@@ -314,7 +550,9 @@ export interface ProductQuality {
 
 export interface Product {
   id: string;
+  rawDataId: string;
   sceneId: string;
+  rawDataName?: string;
   jobId: string;
   level: ProductLevel;
   satelliteId: string;

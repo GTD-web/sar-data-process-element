@@ -1,6 +1,38 @@
+@import url("https://spoqa.github.io/spoqa-han-sans/css/SpoqaHanSansNeo.css");
 @import "tailwindcss";
+@import "ol/ol.css";
 
+/*
+ * Tailwind v4의 dark variant를 class 기반으로 강제한다.
+ * 기본값(prefers-color-scheme)을 두면 OS 다크모드 + 앱 라이트모드 조합에서
+ * dark:* 유틸이 라이트 테마 위에 함께 적용되어 색이 어긋난다.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Light theme (default) */
 :root {
+  --background: #ffffff;
+  --foreground: #1a1a1a;
+  --card: #f9fafb;
+  --card-foreground: #1a1a1a;
+  --border: #e5e7eb;
+  --muted: #f3f4f6;
+  --muted-foreground: #6b7280;
+  --accent: #10b981;
+  --accent-foreground: #ffffff;
+  --destructive: #dc2626;
+  --success: #10b981;
+  --warning: #d97706;
+  --sidebar: #f9fafb;
+  --sidebar-foreground: #6b7280;
+  --sidebar-border: #e5e7eb;
+  --sidebar-accent: #ffffff;
+  --ring: #10b981;
+  --graph-edge-muted: rgba(107, 114, 128, 0.3);
+}
+
+/* Dark theme (applied via <html class="dark">) */
+.dark {
   --background: #1a1a1a;
   --foreground: #f5f5f5;
   --card: #262626;
@@ -18,6 +50,7 @@
   --sidebar-border: #262626;
   --sidebar-accent: #262626;
   --ring: #34d399;
+  --graph-edge-muted: rgba(160, 160, 160, 0.3);
 }
 
 @theme inline {
@@ -38,14 +71,22 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-ring: var(--ring);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: "Spoqa Han Sans Neo", "Spoqa Han Sans", sans-serif;
+  --font-mono: "Spoqa Han Sans Neo", "Spoqa Han Sans", monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: "Spoqa Han Sans Neo", "Spoqa Han Sans", sans-serif;
+}
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
 }
 
 /* Scrollbar */
@@ -71,6 +112,28 @@ body {
   animation: toast-enter 180ms ease-out;
 }
 
+/* L1B sub-stage kind-change toast — emphasized slide+pop entrance.
+   Exit is handled by sonner's built-in opacity transition on the wrapper. */
+@keyframes kind-toast-enter {
+  0%   { opacity: 0; transform: translateX(24px) scale(0.94); }
+  55%  { opacity: 1; transform: translateX(-3px) scale(1.025); }
+  100% { opacity: 1; transform: translateX(0)   scale(1); }
+}
+@keyframes kind-toast-exit {
+  0%   { opacity: 1; transform: translateX(0)   scale(1); }
+  100% { opacity: 0; transform: translateX(16px) scale(0.96); }
+}
+.kind-change-toast {
+  animation: kind-toast-enter 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  cursor: pointer;
+  transform-origin: right center;
+  will-change: transform, opacity;
+}
+/* When sonner marks the wrapper as removed, play exit on the inner pill. */
+[data-sonner-toast][data-removed="true"] .kind-change-toast {
+  animation: kind-toast-exit 220ms ease-in both;
+}
+
 /* Node icon box — smooth hover transitions for glow + overlay */
 .node-icon-box {
   transition: border-color 0.25s ease, box-shadow 0.25s ease;
@@ -82,7 +145,7 @@ body {
   opacity: 0;
   transition: opacity 0.25s ease;
   pointer-events: none;
-  background: radial-gradient(circle at center, rgba(52, 211, 153, 0.12) 0%, rgba(52, 211, 153, 0.04) 100%);
+  background: radial-gradient(circle at center, rgba(var(--node-tone-rgb, 52, 211, 153), 0.12) 0%, rgba(var(--node-tone-rgb, 52, 211, 153), 0.04) 100%);
 }
 .node-icon-box.node-failed .node-hover-overlay {
   background: radial-gradient(circle at center, rgba(239, 68, 68, 0.12) 0%, rgba(239, 68, 68, 0.04) 100%);
@@ -91,8 +154,8 @@ body {
   opacity: 1;
 }
 .react-flow__node-pipeline:hover .node-icon-box {
-  border-color: rgba(52, 211, 153, 0.8) !important;
-  box-shadow: 0 0 24px rgba(52, 211, 153, 0.35) !important;
+  border-color: rgba(var(--node-tone-rgb, 52, 211, 153), 0.8) !important;
+  box-shadow: 0 0 24px rgba(var(--node-tone-rgb, 52, 211, 153), 0.35) !important;
 }
 .react-flow__node-pipeline:hover .node-icon-box.node-failed {
   border-color: rgba(239, 68, 68, 0.8) !important;
@@ -111,8 +174,8 @@ body {
   opacity: 1;
 }
 .react-flow__node-pipeline.selected .node-icon-box {
-  border-color: rgba(52, 211, 153, 0.8) !important;
-  box-shadow: 0 0 24px rgba(52, 211, 153, 0.35) !important;
+  border-color: rgba(var(--node-tone-rgb, 52, 211, 153), 0.8) !important;
+  box-shadow: 0 0 24px rgba(var(--node-tone-rgb, 52, 211, 153), 0.35) !important;
 }
 .react-flow__node-pipeline.selected .node-icon-box.node-failed {
   border-color: rgba(239, 68, 68, 0.8) !important;
@@ -162,10 +225,9 @@ body {
   border-radius: 50%;
 }
 
-/* Edge paths: smooth transition + emerald glow */
+/* Edge paths: smooth transition. Glow filter is set inline per-edge so it follows stroke. */
 .react-flow__edge path.react-flow__edge-path {
   transition: stroke 0.25s ease, stroke-width 0.25s ease, filter 0.25s ease;
-  filter: drop-shadow(0 0 4px rgba(52, 211, 153, 0.3));
 }
 
 /* Connection line styling */

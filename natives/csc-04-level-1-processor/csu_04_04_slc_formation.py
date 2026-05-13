@@ -73,6 +73,9 @@ def _process_block(args: dict) -> Tuple[int, int, np.ndarray, float]:
     h5_path = args["h5_path"]
     az0 = args["az0"]
     az1 = args["az1"]
+    # Offset into raw H5 so block-local [az0, az1) (relative to subset)
+    # maps to absolute [az_offset+az0, az_offset+az1) on disk.
+    az_offset = args.get("az_offset", 0)
     nr_dec = args["nr_dec"]
     prf = args["prf"]
     r_near = args["r_near"]
@@ -89,7 +92,7 @@ def _process_block(args: dict) -> Tuple[int, int, np.ndarray, float]:
 
     # ── 1. Read raw HDF5 block ────────────────────────────────────────────────
     with h5py.File(h5_path, "r") as f:
-        chunk = f["ST0/Raw data"][az0:az1, :, :]      # (na_actual, nr, 2)
+        chunk = f["ST0/Raw data"][az_offset + az0 : az_offset + az1, :, :]  # (na_actual, nr, 2)
 
     na_actual = chunk.shape[0]                         # = az1 - az0
     s = chunk[:, :, 0].astype(np.float32) + 1j * chunk[:, :, 1].astype(np.float32)
@@ -144,6 +147,9 @@ class SARProcessor:
         az_batch: int = 64,
         vmin_db: float = -60.0,
         vmax_db: float = -5.0,
+        az_start: Optional[int] = None,
+        az_stop: Optional[int] = None,
+        reporter: Optional[object] = None,
     ):
         self.workers = workers
         self.rng_chunk = rng_chunk
@@ -152,6 +158,8 @@ class SARProcessor:
         self.vmax_db = vmax_db
         self.out_dir = Path(output_dir)
         os.makedirs(self.out_dir, exist_ok=True)
+        # 시연 modal 의 staged-progress UI 용. None 이면 평소대로 평이한 로그만.
+        self.reporter = reporter
 
         self.meta = load_metadata(
             h5_path,
@@ -159,6 +167,8 @@ class SARProcessor:
             valid_lines=valid_lines,
             na_block_override=na_block_override,
             na_overlap_override=na_overlap_override,
+            az_start=az_start,
+            az_stop=az_stop,
         )
         m = self.meta
         self.schedule = _build_block_schedule(m.na_total, m.na_block, m.na_valid)
@@ -190,6 +200,7 @@ class SARProcessor:
         # ── Worker base args ──────────────────────────────────────────────────
         base = dict(
             h5_path=m.h5_path,
+            az_offset=m.az_offset,
             nr=m.nr,
             nr_dec=m.nr_dec,
             prf=m.prf,
@@ -251,6 +262,24 @@ class SARProcessor:
             eta = (time.time() - t0) / done * (n_blk - done) if done < n_blk else 0
             log.info("[%d/%d]  az %d-%d  fdc=%.1f Hz  written=%d  ETA %.0fs", done, n_blk, az0, az0 + na_actual, fdc, written, eta)
 
+            # Staged-progress UI 갱신 — 10% milestone 마다만 (또는 마지막 block).
+            if self.reporter is not None:
+                pct_now = int(done * 100 / n_blk) if n_blk > 0 else 0
+                last = getattr(self, "_last_progress_pct", -1)
+                if pct_now >= last + 10 or done == n_blk:
+                    self.reporter.progress(
+                        pct_now,
+                        label="Azimuth block focusing",
+                        done=done,
+                        total=n_blk,
+                    )
+                    self._last_progress_pct = pct_now
+
+        # 시연 — block 처리 진입.
+        if self.reporter is not None:
+            self.reporter.start_stage(2)
+            self._last_progress_pct = -1
+
         # ── Block dispatch ────────────────────────────────────────────────────
         if self.workers == 1:
             for k, blk in enumerate(self.schedule):
@@ -274,14 +303,26 @@ class SARProcessor:
                         _accumulate_and_flush(next_k, az0_p, foc_p, fdc_p)
                         next_k += 1
 
+        if self.reporter is not None:
+            self.reporter.complete_stage(2)
+            self.reporter.start_stage(3)
+
         tif_writer.close()
         log.info("All blocks written — total time: %.1f s", time.time() - t0)
 
         fdc_mean = float(np.mean(list(fdc_log.values()))) if fdc_log else 0.0
+        write_metadata_xml(m, fdc_mean, fdc_log, n_blk, str(out_xml))
+
+        if self.reporter is not None:
+            self.reporter.complete_stage(3)
+            self.reporter.start_stage(4)
+
         # ── Quicklook (two-pass strip reader, no full image in RAM) ──────────
         ql_written = _write_quicklook_from_slc(str(out_slc), str(out_ql), vmin_db=self.vmin_db, vmax_db=self.vmax_db)
-        write_metadata_xml(m, fdc_mean, fdc_log, n_blk, str(out_xml))
         log.info("Done → %s", self.out_dir)
+
+        if self.reporter is not None:
+            self.reporter.complete_stage(4)
 
         result = {"slc": str(out_slc), "xml": str(out_xml)}
         if ql_written:

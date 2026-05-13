@@ -19,8 +19,8 @@ interface BottomPanelProps {
 const TABS: { id: BottomTab; label: string }[] = [
   { id: 'jobs', label: 'Jobs' },
   { id: 'alerts', label: 'Alerts' },
-  { id: 'audit', label: '감사 로그' },
-  { id: 'queues', label: '큐 상태' },
+  { id: 'audit', label: 'Audit Logs' },
+  { id: 'queues', label: 'Queue Status' },
 ];
 
 export default function BottomPanel({

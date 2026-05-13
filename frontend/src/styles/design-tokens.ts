@@ -32,5 +32,6 @@ export const warning = '#fbbf24';
 export const edge = '#2a8a6a';
 export const edgeSuccess = '#34d399';
 export const edgeActive = '#34d399';
+export const edgeMuted = 'var(--graph-edge-muted)';
 export const canvasDot = '#2a2a2a';
 export const nodeDefault = '#4a4a4a';

@@ -1,18 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowLeft, Sparkles, Antenna, FileInput, Folder, GitBranch } from 'lucide-react';
+import { ArrowLeft, Sparkles, Antenna, FileInput, Folder, GitBranch, FileBox } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { PipelineNodeKind, ProductLevel } from '@/types/pipeline';
+import type { PipelineNodeKind, ProductLevel, SarStage } from '@/types/pipeline';
 
 export interface StartNodeSelection {
   startNodeKind: PipelineNodeKind;
   startNodeInputLevel?: ProductLevel;
+  startNodeSarStage?: SarStage;
 }
 
 type StartNodeOption = {
   kind: PipelineNodeKind;
   inputLevel?: ProductLevel;
+  sarStage?: SarStage;
   icon: React.ElementType;
   iconColor: string;
   borderActive: string;
@@ -31,44 +33,55 @@ const OPTIONS: StartNodeOption[] = [
     iconColor: 'text-emerald-400',
     borderActive: 'border-emerald-500/70',
     bgActive: 'bg-emerald-500/8',
-    badgeText: '전체 처리',
-    badgeColor: 'bg-emerald-500/20 text-emerald-400',
-    label: '원시 데이터 수신 트리거',
+    badgeText: 'Full Processing',
+    badgeColor: 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300/70 dark:bg-emerald-500/20 dark:text-emerald-300 dark:ring-emerald-400/20',
+    label: 'Raw Data Reception Trigger',
     sublabel: 'EI-01',
-    description: '위성 수신국에서 전달된 원시 데이터부터 L0 → L1 → L2 → L3 전 구간을 처리합니다.',
+    description: 'Processes the entire L0 → L1 → L2 → L3 pipeline starting from raw data delivered by the ground station.',
+  },
+  {
+    kind: 'FILE_INPUT',
+    inputLevel: 'LEVEL_0',
+    icon: FileBox,
+    iconColor: 'text-sky-500 dark:text-sky-400',
+    borderActive: 'border-sky-500/70',
+    bgActive: 'bg-sky-500/8',
+    badgeText: 'Partial Reprocessing',
+    badgeColor: 'bg-sky-100 text-sky-800 ring-1 ring-sky-300/70 dark:bg-sky-500/20 dark:text-sky-200 dark:ring-sky-400/20',
+    label: 'L0 Result Input',
+    sublabel: 'SI-07',
+    description: 'Takes existing L0 result HDF5 files as input and reprocesses the L1 → L2 → L3 segment.',
   },
   {
     kind: 'FILE_INPUT',
     inputLevel: 'LEVEL_1',
     icon: FileInput,
-    iconColor: 'text-amber-400',
-    borderActive: 'border-amber-500/70',
-    bgActive: 'bg-amber-500/8',
-    badgeText: '부분 재처리',
-    badgeColor: 'bg-amber-500/20 text-amber-400',
-    label: 'L1 결과 입력',
+    iconColor: 'text-sky-500 dark:text-sky-400',
+    borderActive: 'border-sky-500/70',
+    bgActive: 'bg-sky-500/8',
+    badgeText: 'Partial Reprocessing',
+    badgeColor: 'bg-sky-100 text-sky-800 ring-1 ring-sky-300/70 dark:bg-sky-500/20 dark:text-sky-200 dark:ring-sky-400/20',
+    label: 'L1 Result Input',
     sublabel: 'SI-07',
-    description: '기존 L1 처리 결과 파일을 입력으로 받아 L2 → L3 구간만 재처리합니다.',
+    description: 'Takes existing L1 result HDF5 files as input and reprocesses only the L2 → L3 segment.',
   },
   {
     kind: 'FILE_INPUT',
     inputLevel: 'LEVEL_2',
     icon: Folder,
-    iconColor: 'text-sky-400',
+    iconColor: 'text-sky-500 dark:text-sky-400',
     borderActive: 'border-sky-500/70',
     bgActive: 'bg-sky-500/8',
-    badgeText: '부분 재처리',
-    badgeColor: 'bg-sky-500/20 text-sky-400',
-    label: 'L2 결과 입력',
+    badgeText: 'Partial Reprocessing',
+    badgeColor: 'bg-sky-100 text-sky-800 ring-1 ring-sky-300/70 dark:bg-sky-500/20 dark:text-sky-200 dark:ring-sky-400/20',
+    label: 'L2 Result Input',
     sublabel: 'SI-07',
-    description: '기존 L2 처리 결과 파일을 입력으로 받아 L3 구간만 재처리합니다.',
+    description: 'Takes existing L2 result HDF5 files as input and reprocesses only the L3 segment.',
   },
 ];
 
 interface SelectStartNodeDialogProps {
   pipelineName: string;
-  satelliteId: string;
-  mode: string;
   onConfirm: (selection: StartNodeSelection) => void;
   onBack: () => void;
   onCancel: () => void;
@@ -77,8 +90,6 @@ interface SelectStartNodeDialogProps {
 /** 파이프라인 생성 2단계 — 시작 노드 선택 */
 export default function SelectStartNodeDialog({
   pipelineName,
-  satelliteId,
-  mode,
   onConfirm,
   onBack,
   onCancel,
@@ -87,7 +98,11 @@ export default function SelectStartNodeDialog({
 
   const handleConfirm = () => {
     const opt = OPTIONS[selectedIdx];
-    onConfirm({ startNodeKind: opt.kind, startNodeInputLevel: opt.inputLevel });
+    onConfirm({
+      startNodeKind: opt.kind,
+      startNodeInputLevel: opt.inputLevel,
+      startNodeSarStage: opt.sarStage,
+    });
   };
 
   return (
@@ -100,11 +115,11 @@ export default function SelectStartNodeDialog({
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <GitBranch className="w-4 h-4 text-accent" />
-            <h2 className="text-sm font-semibold text-foreground">시작 노드 선택</h2>
+            <h2 className="text-sm font-semibold text-foreground">Select Start Node</h2>
             <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">2 / 2</span>
           </div>
           <button onClick={onCancel} className="p-1 rounded-md hover:bg-muted/50 transition-colors">
-            <span className="sr-only">닫기</span>
+            <span className="sr-only">Close</span>
             <svg className="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -112,16 +127,31 @@ export default function SelectStartNodeDialog({
         </div>
 
         {/* Pipeline summary */}
-        <div className="px-4 pt-3 pb-1 flex items-center gap-2 text-[11px] text-muted-foreground">
-          <span className="font-medium text-foreground truncate">{pipelineName}</span>
-          <span className="text-border">·</span>
-          <span>{satelliteId}</span>
-          <span className="text-border">·</span>
-          <span>{mode}</span>
+        <div className="px-4 pt-3">
+          <div className="flex items-stretch gap-2.5 rounded-lg border border-accent/30 bg-accent/5 px-3 py-2.5">
+            <div className="flex-shrink-0 flex items-center">
+              <div className="w-7 h-7 rounded-md bg-accent/15 flex items-center justify-center">
+                <GitBranch className="w-3.5 h-3.5 text-accent" />
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+                Creating pipeline
+              </div>
+              <div className="text-sm font-semibold text-foreground truncate" title={pipelineName}>
+                {pipelineName}
+              </div>
+            </div>
+            <div className="flex-shrink-0 flex items-center">
+              <span className="text-[9px] font-medium text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded">
+                Step 2 — Choose where to start
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Options */}
-        <div className="px-4 py-3 space-y-2">
+        <div className="max-h-[60vh] space-y-2 overflow-y-auto px-4 py-3">
           {OPTIONS.map((opt, idx) => {
             const Icon = opt.icon;
             const active = selectedIdx === idx;
@@ -179,14 +209,14 @@ export default function SelectStartNodeDialog({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            뒤로
+            Back
           </button>
           <button
             onClick={handleConfirm}
             className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 transition-colors"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            파이프라인 생성
+            Create Pipeline
           </button>
         </div>
       </div>

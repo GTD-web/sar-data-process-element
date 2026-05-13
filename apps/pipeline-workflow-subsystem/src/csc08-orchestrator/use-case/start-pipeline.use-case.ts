@@ -43,6 +43,7 @@ export class StartPipelineUseCase {
     const job = Job.create({
       id: jobId,
       eventId: event.event_id,
+      rawDataId: event.raw_data_id ?? event.event_id,
       rawDataPath: event.raw_data_path,
       processingProfileId: profile.id,
       satelliteId: event.satellite_id,

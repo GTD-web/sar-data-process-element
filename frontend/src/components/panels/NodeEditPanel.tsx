@@ -95,9 +95,9 @@ export default function NodeEditPanel({ step, onSave, onDelete }: NodeEditPanelP
   if (step.kind === 'TRIGGER') {
     return (
       <div className="p-4 space-y-3">
-        <div className="text-xs text-muted-foreground">원시 데이터 수신 트리거 노드는 편집할 수 없습니다.</div>
+        <div className="text-xs text-muted-foreground">The raw data reception trigger node cannot be edited.</div>
         <div className="bg-muted/30 rounded-md p-3 text-[11px] text-muted-foreground">
-          EI-01 RAW_DATA_RECEIVED 이벤트로 파이프라인이 기동됩니다. 이 노드는 항상 파이프라인의 진입점입니다.
+          The pipeline is started by the EI-01 RAW_DATA_RECEIVED event. This node is always the pipeline entry point.
         </div>
       </div>
     );
@@ -106,7 +106,7 @@ export default function NodeEditPanel({ step, onSave, onDelete }: NodeEditPanelP
   // Header — always shows original step info
   const OriginalIcon = step.kind === 'SAR' && step.sarStage ? SAR_STAGE_ICONS[step.sarStage] : Database;
   const originalLabel =
-    step.kind === 'SAR' && step.sarStage ? `${step.sarStage} — ${SAR_STAGE_LABELS[step.sarStage]}` : '카탈로그 등록';
+    step.kind === 'SAR' && step.sarStage ? `${step.sarStage} — ${SAR_STAGE_LABELS[step.sarStage]}` : 'Catalog Registration';
   const originalSub =
     step.kind === 'SAR' && step.sarStage ? PRODUCT_LEVEL_LABELS[SAR_STAGE_TO_LEVEL[step.sarStage]] : 'CSC-07';
   const originalDesc =
@@ -116,7 +116,7 @@ export default function NodeEditPanel({ step, onSave, onDelete }: NodeEditPanelP
 
   // Pending label for header arrow
   const pendingLabel =
-    pendingSelection === 'CATALOG' ? '카탈로그 등록' :
+    pendingSelection === 'CATALOG' ? 'Catalog Registration' :
     pendingSelection != null ? pendingSelection : null;
 
   // Options to show: all except the original selection
@@ -139,7 +139,7 @@ export default function NodeEditPanel({ step, onSave, onDelete }: NodeEditPanelP
               </div>
             )}
           </div>
-          <div className="text-[10px] text-muted-foreground">단계 #{step.order} · {originalSub}</div>
+          <div className="text-[10px] text-muted-foreground">Step #{step.order} · {originalSub}</div>
         </div>
       </div>
 
@@ -153,14 +153,14 @@ export default function NodeEditPanel({ step, onSave, onDelete }: NodeEditPanelP
       {/* Unified stage / kind selector */}
       {options.length > 0 && (
         <div>
-          <label className="text-[11px] text-muted-foreground block mb-1.5">변경</label>
+          <label className="text-[11px] text-muted-foreground block mb-1.5">Change</label>
           <div className="space-y-1">
             {options.map((option) => {
               const isCatalogOption = option === 'CATALOG';
               const Icon = isCatalogOption ? Database : SAR_STAGE_ICONS[option];
               const isSelected = pendingSelection === option;
-              const stageLabel = isCatalogOption ? '카탈로그 등록' : SAR_STAGE_LABELS[option];
-              const sub = isCatalogOption ? 'CSC-07 · 등록' : PRODUCT_LEVEL_LABELS[SAR_STAGE_TO_LEVEL[option]];
+              const stageLabel = isCatalogOption ? 'Catalog Registration' : SAR_STAGE_LABELS[option];
+              const sub = isCatalogOption ? 'CSC-07 · Register' : PRODUCT_LEVEL_LABELS[SAR_STAGE_TO_LEVEL[option]];
               return (
                 <button
                   key={option}
@@ -174,7 +174,7 @@ export default function NodeEditPanel({ step, onSave, onDelete }: NodeEditPanelP
                   <Icon className="w-4 h-4 shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold">{isCatalogOption ? '카탈로그 등록' : option}</span>
+                      <span className="font-semibold">{isCatalogOption ? 'Catalog Registration' : option}</span>
                       <span className={`text-[10px] font-mono ${isSelected ? 'opacity-70' : 'text-foreground/50'}`}>{sub}</span>
                     </div>
                     <div className={`text-[10px] truncate ${isSelected ? 'opacity-70' : 'text-foreground/50'}`}>{stageLabel}</div>
@@ -191,7 +191,7 @@ export default function NodeEditPanel({ step, onSave, onDelete }: NodeEditPanelP
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <label className="text-[11px] text-muted-foreground">
-              처리 항목 {selectionChanged && <span className="text-accent">({effectiveStage})</span>}
+              Tasks {selectionChanged && <span className="text-accent">({effectiveStage})</span>}
             </label>
             <span className={`text-[10px] font-mono ${enabledTasks.length < allTasksForStage.length ? 'text-accent' : 'text-muted-foreground/60'}`}>
               {enabledTasks.length}/{allTasksForStage.length}
@@ -211,7 +211,7 @@ export default function NodeEditPanel({ step, onSave, onDelete }: NodeEditPanelP
                       ? 'bg-accent/10 text-foreground'
                       : 'bg-transparent text-muted-foreground/50 line-through'
                   } ${isLast ? 'cursor-not-allowed' : 'hover:bg-muted/50 cursor-pointer'}`}
-                  title={isLast ? '최소 1개 이상 선택해야 합니다' : undefined}
+                  title={isLast ? 'At least one task must be selected' : undefined}
                 >
                   <span
                     className={`w-3.5 h-3.5 rounded shrink-0 border flex items-center justify-center transition-colors ${
@@ -235,14 +235,14 @@ export default function NodeEditPanel({ step, onSave, onDelete }: NodeEditPanelP
           className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent/80 disabled:opacity-30 transition-colors"
         >
           <Save className="w-3 h-3" />
-          적용
+          Apply
         </button>
         <button
           onClick={onDelete}
           className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-destructive/20 text-destructive text-xs font-medium hover:bg-destructive/30 transition-colors"
         >
           <Trash2 className="w-3 h-3" />
-          삭제
+          Delete
         </button>
       </div>
     </div>

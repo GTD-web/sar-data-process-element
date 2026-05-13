@@ -11,6 +11,7 @@ import type { SchemaVersion } from '../type/schema-version.type';
 export interface CatalogRegistrationMessage {
   // ── 확정 필드 ──
   job_id: string;
+  raw_data_id: string;
   product_level: 'LEVEL_1' | 'LEVEL_2' | 'LEVEL_3';
   product_path: string;
   acquisition_start: string;

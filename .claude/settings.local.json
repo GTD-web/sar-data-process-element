@@ -57,7 +57,10 @@
       "WebFetch(domain:localhost)",
       "Bash(npx --prefix C:/Users/USER/dev/sar-data-process-element/frontend tsc --project C:/Users/USER/dev/sar-data-process-element/frontend/tsconfig.json --noEmit)",
       "Bash(grep -E \"plan/|^C:\\\\\\\\\\\\\\\\\")",
-      "Bash(grep -A1 \"AuditPage.tsx$\")"
+      "Bash(grep -A1 \"AuditPage.tsx$\")",
+      "Bash(python -c ' *)",
+      "Bash(cd /tmp)",
+      "WebFetch(domain:api.anthropic.com)"
     ],
     "deny": [
       "Bash(curl:*)",

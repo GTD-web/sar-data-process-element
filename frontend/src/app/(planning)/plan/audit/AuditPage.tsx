@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { usePipelineService } from '@/app/(planning)/_context/pipeline-service-context';
 import LeftSidebar from '@/components/panels/LeftSidebar';
-import { RolePreviewSelect, useMockRole } from '@/components/auth/RolePreviewSelect';
+import { useMockRole } from '@/components/auth/RolePreviewSelect';
 import type { AuditEvent, AuditEventType } from '@/types/pipeline';
 import { cn, formatKST } from '@/lib/utils';
 import {
@@ -22,6 +22,13 @@ import {
   Bell,
   UserCheck,
   ExternalLink,
+  LogIn,
+  ShieldAlert,
+  UserPlus,
+  UserCog,
+  UserX,
+  KeyRound,
+  Key,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -33,63 +40,120 @@ const EVENT_CONFIG: Record<
   { label: string; color: string; bgColor: string; icon: React.ElementType; description: string }
 > = {
   JOB_CREATED: {
-    label: 'Job 생성',
+    label: 'Job Created',
     color: 'text-accent',
     bgColor: 'bg-accent/15 text-accent',
     icon: PlusCircle,
-    description: '새로운 처리 작업이 생성되었습니다. 파이프라인 자동 트리거 또는 수동 실행에 의해 발생합니다.',
+    description: 'A new processing job has been created. Triggered by automatic pipeline activation or manual execution.',
   },
   JOB_ASSIGNED: {
-    label: 'Job 할당',
+    label: 'Job Assigned',
     color: 'text-accent',
     bgColor: 'bg-accent/15 text-accent',
     icon: UserCheck,
-    description: '처리 작업이 워커에 할당되어 실행 대기 중입니다.',
+    description: 'The processing job has been assigned to a worker and is waiting to run.',
   },
   JOB_COMPLETED: {
-    label: 'Job 완료',
+    label: 'Job Completed',
     color: 'text-success',
     bgColor: 'bg-success/15 text-success',
     icon: CheckCircle,
-    description: '처리 작업이 모든 단계를 성공적으로 완료했습니다.',
+    description: 'The processing job successfully completed all stages.',
   },
   JOB_FAILED: {
-    label: 'Job 실패',
+    label: 'Job Failed',
     color: 'text-destructive',
     bgColor: 'bg-destructive/15 text-destructive',
     icon: XCircle,
-    description: '처리 작업이 오류로 인해 실패했습니다. 재시도 횟수 초과 시 Dead Letter로 이동됩니다.',
+    description: 'The processing job failed due to an error. After exceeding the retry limit, it is moved to the Dead Letter queue.',
   },
   PIPELINE_STARTED: {
-    label: '파이프라인 시작',
+    label: 'Pipeline Started',
     color: 'text-accent',
     bgColor: 'bg-accent/15 text-accent',
     icon: PlayCircle,
-    description: '파이프라인이 시작되어 데이터 처리 워크플로우가 실행됩니다.',
+    description: 'The pipeline has started and the data processing workflow is running.',
   },
   PIPELINE_REPROCESSED: {
-    label: '재처리',
+    label: 'Reprocess',
     color: 'text-muted-foreground',
     bgColor: 'bg-muted/50 text-muted-foreground',
     icon: RefreshCw,
-    description: '운영자에 의해 재처리가 요청되었습니다. 지정된 레벨부터 처리가 다시 시작됩니다.',
+    description: 'Reprocessing has been requested by an operator. Processing restarts from the specified level.',
   },
   ALERT_DISPATCHED: {
-    label: '알림 발행',
+    label: 'Alert Dispatched',
     color: 'text-destructive',
     bgColor: 'bg-destructive/15 text-destructive',
     icon: Bell,
-    description: '시스템 이상 상황이 감지되어 운영자에게 알림이 발행되었습니다.',
+    description: 'A system anomaly was detected and an alert was dispatched to operators.',
+  },
+  LOGIN_SUCCEEDED: {
+    label: 'Login Succeeded',
+    color: 'text-success',
+    bgColor: 'bg-success/15 text-success',
+    icon: LogIn,
+    description: 'A user successfully authenticated and a session was started.',
+  },
+  LOGIN_FAILED: {
+    label: 'Login Failed',
+    color: 'text-destructive',
+    bgColor: 'bg-destructive/15 text-destructive',
+    icon: ShieldAlert,
+    description: 'Login failed due to invalid credentials. The account may be locked after consecutive failures.',
+  },
+  USER_CREATED: {
+    label: 'User Created',
+    color: 'text-accent',
+    bgColor: 'bg-accent/15 text-accent',
+    icon: UserPlus,
+    description: 'An Administrator created a new user account.',
+  },
+  USER_UPDATED: {
+    label: 'User Updated',
+    color: 'text-accent',
+    bgColor: 'bg-accent/15 text-accent',
+    icon: UserCog,
+    description: "The user's profile information (email, role, status) was changed.",
+  },
+  USER_ROLE_CHANGED: {
+    label: 'Role Changed',
+    color: 'text-accent',
+    bgColor: 'bg-accent/15 text-accent',
+    icon: UserCog,
+    description: "The user's RBAC role was changed.",
+  },
+  USER_DEACTIVATED: {
+    label: 'User Deactivated',
+    color: 'text-destructive',
+    bgColor: 'bg-destructive/15 text-destructive',
+    icon: UserX,
+    description: 'The user account was deactivated; subsequent login attempts will be rejected.',
+  },
+  PASSWORD_RESET: {
+    label: 'Password Reset',
+    color: 'text-muted-foreground',
+    bgColor: 'bg-muted/50 text-muted-foreground',
+    icon: KeyRound,
+    description: "An Administrator reset a user's password to a temporary password.",
+  },
+  PASSWORD_CHANGED: {
+    label: 'Password Changed',
+    color: 'text-muted-foreground',
+    bgColor: 'bg-muted/50 text-muted-foreground',
+    icon: Key,
+    description: 'The user changed their own password.',
   },
 };
 
 const ALL_EVENT_TYPES = Object.keys(EVENT_CONFIG) as AuditEventType[];
 
 const COLUMNS: { id: keyof AuditEvent; label: string }[] = [
-  { id: 'timestamp', label: '시각' },
-  { id: 'eventType', label: '이벤트' },
-  { id: 'jobId', label: 'Job' },
-  { id: 'detail', label: '상세' },
+  { id: 'timestamp', label: 'Time' },
+  { id: 'eventType', label: 'Event' },
+  { id: 'id', label: 'Event ID' },
+  { id: 'operatorId', label: 'Operator' },
+  { id: 'detail', label: 'Detail' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -137,7 +201,7 @@ function Pagination({
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-border bg-card shrink-0">
       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-        <span>페이지 당</span>
+        <span>Per page</span>
         <select
           value={pageSize}
           onChange={(e) => onPageSizeChange(Number(e.target.value))}
@@ -161,7 +225,7 @@ function Pagination({
           onClick={() => onPageChange(page - 1)}
           className="px-2 py-1 text-[11px] rounded-md border border-border text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          이전
+          Prev
         </button>
         {range.map((p, i) =>
           p === 'ellipsis' ? (
@@ -190,7 +254,7 @@ function Pagination({
           onClick={() => onPageChange(page + 1)}
           className="px-2 py-1 text-[11px] rounded-md border border-border text-muted-foreground hover:bg-muted/30 disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          다음
+          Next
         </button>
       </div>
     </div>
@@ -216,17 +280,15 @@ function StatCard({
     <button
       onClick={onClick}
       className={cn(
-        'flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left min-w-0',
+        'inline-flex min-w-0 items-center gap-1.5 rounded-full border px-2 py-1 text-left transition-all',
         active
-          ? 'border-accent bg-accent/5 ring-1 ring-accent/30'
-          : 'border-border hover:border-accent/40 hover:bg-muted/20',
+          ? 'border-accent bg-accent/10 ring-1 ring-accent/25'
+          : 'border-border bg-card hover:border-accent/40 hover:bg-muted/20',
       )}
     >
-      <Icon className={cn('w-3.5 h-3.5 shrink-0', color)} />
-      <div className="min-w-0">
-        <div className="text-sm font-semibold text-foreground tabular-nums">{count}</div>
-        <div className="text-[9px] text-muted-foreground truncate">{label}</div>
-      </div>
+      <Icon className={cn('h-3 w-3 shrink-0', color)} />
+      <span className="truncate text-[10px] font-medium text-muted-foreground">{label}</span>
+      <span className="font-mono text-[11px] font-semibold tabular-nums text-foreground">{count}</span>
     </button>
   );
 }
@@ -272,8 +334,8 @@ function DetailPanel({
 
       {/* Key fields */}
       <div className="grid grid-cols-2 gap-3">
-        <DetailField label="이벤트 ID" value={event.id} mono />
-        <DetailField label="발생 시각" value={formatKST(event.timestamp)} />
+        <DetailField label="Event ID" value={event.id} mono />
+        <DetailField label="Occurred At" value={formatKST(event.timestamp)} />
         <DetailField
           label="Job ID"
           value={
@@ -286,12 +348,12 @@ function DetailPanel({
             </a>
           }
         />
-        <DetailField label="운영자" value={event.operatorId ?? '시스템 (자동)'} />
+        <DetailField label="Operator" value={event.operatorId ?? 'System (auto)'} />
       </div>
 
       {/* Detail message */}
       <div>
-        <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">상세 내용</div>
+        <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Details</div>
         <div className="text-xs text-foreground leading-relaxed bg-background rounded-md border border-border p-3">
           {event.detail}
         </div>
@@ -300,16 +362,16 @@ function DetailPanel({
       {/* Related events timeline */}
       <div className="pt-1 border-t border-border">
         <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2.5">
-          Job 이벤트 타임라인
+          Job Event Timeline
           {!relatedLoading && (
-            <span className="font-mono font-normal normal-case ml-1">({relatedEvents.length}건)</span>
+            <span className="font-mono font-normal normal-case ml-1">({relatedEvents.length} items)</span>
           )}
         </div>
 
         {relatedLoading ? (
-          <div className="text-[10px] text-muted-foreground/60 py-3 text-center">로딩 중...</div>
+          <div className="text-[10px] text-muted-foreground/60 py-3 text-center">Loading...</div>
         ) : relatedEvents.length === 0 ? (
-          <div className="text-[10px] text-muted-foreground/60 py-3 text-center">관련 이벤트 없음</div>
+          <div className="text-[10px] text-muted-foreground/60 py-3 text-center">No related events</div>
         ) : (
           <div className="relative ml-2">
             {/* Timeline line */}
@@ -345,7 +407,7 @@ function DetailPanel({
                           {evtConfig.label}
                         </span>
                         {isCurrent && (
-                          <span className="px-1 py-0 rounded text-[8px] font-bold bg-accent text-background">현재</span>
+                          <span className="px-1 py-0 rounded text-[8px] font-bold bg-accent text-background">Current</span>
                         )}
                       </div>
                       <div className="text-[10px] text-muted-foreground mt-0.5">{formatKST(evt.timestamp)}</div>
@@ -360,14 +422,14 @@ function DetailPanel({
 
       {/* Quick links */}
       <div className="pt-1 border-t border-border">
-        <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">빠른 이동</div>
+        <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">Quick Links</div>
         <div className="space-y-1">
           <a
             href={`${base}/jobs?jobId=${event.jobId}`}
             className="flex items-center gap-2 px-3 py-2 rounded-md text-xs text-foreground hover:bg-muted/30 transition-colors border border-border"
           >
             <PlayCircle className="w-3.5 h-3.5 text-accent shrink-0" />
-            <span>파이프라인 콘솔에서 Job 보기</span>
+            <span>View Job in Pipeline Console</span>
             <ExternalLink className="w-3 h-3 text-muted-foreground ml-auto" />
           </a>
           <a
@@ -375,7 +437,7 @@ function DetailPanel({
             className="flex items-center gap-2 px-3 py-2 rounded-md text-xs text-foreground hover:bg-muted/30 transition-colors border border-border"
           >
             <Bell className="w-3.5 h-3.5 text-accent shrink-0" />
-            <span>알림 페이지</span>
+            <span>Alerts Page</span>
             <ExternalLink className="w-3 h-3 text-muted-foreground ml-auto" />
           </a>
         </div>
@@ -403,7 +465,7 @@ export default function AuditPage() {
   const base = pathname.startsWith('/current') ? '/current' : '/plan';
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [previewRole, setPreviewRole] = useMockRole();
+  const [previewRole] = useMockRole();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [total, setTotal] = useState(0);
 
@@ -535,18 +597,17 @@ export default function AuditPage() {
         <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2">
             <FileText className="w-4 h-4 text-accent" />
-            <h1 className="text-sm font-semibold text-foreground">감사 로그</h1>
-            <span className="text-[10px] text-muted-foreground font-mono">{total}건</span>
+            <h1 className="text-sm font-semibold text-foreground">Audit Log</h1>
+            <span className="text-[10px] text-muted-foreground font-mono">{total} items</span>
           </div>
           <div className="flex items-center gap-2">
-            <RolePreviewSelect role={previewRole} onChange={setPreviewRole} />
             {hasActiveFilters && canViewAudit && (
               <button
                 onClick={clearFilters}
                 className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
               >
                 <X className="w-3 h-3" />
-                필터 초기화
+                Clear Filters
               </button>
             )}
           </div>
@@ -556,9 +617,9 @@ export default function AuditPage() {
           <div className="flex-1 flex items-center justify-center bg-background">
             <div className="max-w-sm text-center">
               <FileText className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
-              <h2 className="text-sm font-semibold text-foreground">감사 로그는 Administrator 전용입니다</h2>
+              <h2 className="text-sm font-semibold text-foreground">Audit Log is Administrator-only</h2>
               <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-                Operator 역할은 파이프라인 실행, Job, 모니터링 화면을 사용할 수 있지만 감사 이벤트 조회 권한은 없습니다.
+                The Operator role can use pipeline execution, jobs, and monitoring screens, but does not have permission to view audit events.
               </p>
             </div>
           </div>
@@ -566,8 +627,8 @@ export default function AuditPage() {
           <>
 
         {/* Stats Cards */}
-        <div className="px-5 py-3 border-b border-border shrink-0">
-          <div className="grid grid-cols-7 gap-2">
+        <div className="px-5 py-2 border-b border-border shrink-0">
+          <div className="flex flex-wrap gap-1.5">
             {ALL_EVENT_TYPES.map((type) => (
               <StatCard
                 key={type}
@@ -586,7 +647,7 @@ export default function AuditPage() {
         <div className="flex items-center gap-3 px-5 py-2.5 border-b border-border shrink-0">
           <input
             type="text"
-            placeholder="Job ID 검색..."
+            placeholder="Search Job ID..."
             value={filterJobId}
             onChange={(e) => {
               setFilterJobId(e.target.value);
@@ -628,7 +689,7 @@ export default function AuditPage() {
                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
                   <FileText className="w-8 h-8 opacity-30" />
                   <span className="text-sm">
-                    {hasActiveFilters ? '조건에 맞는 감사 로그가 없습니다' : '감사 로그가 없습니다'}
+                    {hasActiveFilters ? 'No audit logs match the criteria' : 'No audit logs'}
                   </span>
                 </div>
               ) : (
@@ -678,13 +739,10 @@ export default function AuditPage() {
                             </span>
                           </td>
                           <td className="px-4 py-2.5">
-                            <a
-                              href={`${base}/jobs?jobId=${evt.jobId}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="font-mono text-accent hover:underline"
-                            >
-                              {evt.jobId}
-                            </a>
+                            <span className="font-mono text-[11px] text-foreground">{evt.id}</span>
+                          </td>
+                          <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
+                            {evt.operatorId ?? 'System (auto)'}
                           </td>
                           <td className="px-4 py-2.5 text-muted-foreground truncate max-w-md">{evt.detail}</td>
                         </tr>
@@ -721,7 +779,7 @@ export default function AuditPage() {
                       const C = EVENT_CONFIG[selectedEvent.eventType].icon;
                       return <C className="w-4 h-4 text-accent shrink-0" />;
                     })()}
-                    <span className="text-xs font-semibold text-foreground truncate">이벤트 상세</span>
+                    <span className="text-xs font-semibold text-foreground truncate">Event Details</span>
                   </div>
                   <button
                     onClick={() => setSelectedEvent(null)}

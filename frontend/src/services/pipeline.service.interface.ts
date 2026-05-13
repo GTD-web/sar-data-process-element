@@ -4,19 +4,30 @@ import type {
   AuditEventType,
   CreatePipelineData,
   DashboardStats,
+  Hdf5FileSummary,
   ExecutionLog,
   JobDetail,
   JobSummary,
   PaginatedResponse,
+  PipelineActivationRule,
   PipelineDefinition,
   ProcessingProfile,
   Product,
+  RawDataSummary,
   QueueHealth,
   SarStage,
+  SavePipelineActivationRuleData,
   ServiceResponse,
   ServiceResponseWithData,
   UpdatePipelineData,
 } from '@/types/pipeline';
+import type {
+  CreateUserRequest,
+  Session,
+  UpdateUserRequest,
+  User,
+  UserListQuery,
+} from '@/types/user';
 
 /**
  * Pipeline UI Service Interface
@@ -30,6 +41,25 @@ export interface IPipelineUIService {
   // =========================================================================
 
   대시보드_통계를_조회한다(): Promise<ServiceResponseWithData<DashboardStats>>;
+
+  // =========================================================================
+  // Raw Data
+  // =========================================================================
+
+  원시데이터_목록을_조회한다(params?: {
+    satelliteId?: string;
+    mode?: string;
+    mapped?: boolean;
+    limit?: number;
+  }): Promise<ServiceResponseWithData<PaginatedResponse<RawDataSummary>>>;
+
+  원시데이터_파이프라인을_매핑한다(rawDataId: string, pipelineId: string | null): Promise<ServiceResponseWithData<RawDataSummary>>;
+
+  HDF5_애트리뷰트_목록을_조회한다(params?: {
+    rawDataId?: string;
+  }): Promise<ServiceResponseWithData<Hdf5FileSummary[]>>;
+
+  HDF5_파일을_업로드한다(file: File, rawDataId?: string): Promise<ServiceResponseWithData<Hdf5FileSummary>>;
 
   // =========================================================================
   // Jobs
@@ -109,11 +139,20 @@ export interface IPipelineUIService {
   /** 파이프라인 복제. 이름에 "(복사)" 접미사 추가. */
   파이프라인을_복제한다(id: string): Promise<ServiceResponseWithData<PipelineDefinition>>;
 
-  /** 파이프라인 아카이브/복원 토글. */
-  파이프라인을_아카이브한다(id: string, archived: boolean): Promise<ServiceResponse>;
+  /** 파이프라인 아카이브/복원 토글. 아카이브 시 폐기 사유를 함께 저장한다. */
+  파이프라인을_아카이브한다(id: string, archived: boolean, archiveReason?: string): Promise<ServiceResponse>;
 
   /** EI-01: 파이프라인 수동 실행 (테스트/운영). 새 Job을 생성하여 파이프라인을 기동합니다. */
   파이프라인을_실행한다(pipelineId: string): Promise<ServiceResponseWithData<JobSummary>>;
+
+  /** 활성화된 파이프라인 자동 실행 규칙. pgmq 이벤트 수신 후 백엔드가 이 매핑으로 실행 대상을 결정한다. */
+  파이프라인_자동실행규칙을_조회한다(pipelineId?: string): Promise<ServiceResponseWithData<PipelineActivationRule[]>>;
+
+  /** pgmq 수신 이벤트와 매칭 조건, 실행 파이프라인을 하나의 자동 실행 규칙으로 저장한다. */
+  파이프라인_자동실행규칙을_저장한다(data: SavePipelineActivationRuleData): Promise<ServiceResponseWithData<PipelineActivationRule>>;
+
+  /** 파이프라인 자동 실행 연결 활성화/비활성화. 활성화된 경우에만 pgmq 이벤트 매칭 후 자동 실행된다. */
+  파이프라인_배포상태를_변경한다(pipelineId: string, active: boolean): Promise<ServiceResponseWithData<PipelineActivationRule>>;
 
   // =========================================================================
   // Processing Profiles
@@ -140,6 +179,7 @@ export interface IPipelineUIService {
 
   /** 제품 목록 조회 (UC27) */
   제품_목록을_조회한다(params?: {
+    rawDataId?: string;
     level?: string;
     satelliteId?: string;
     mode?: string;
@@ -167,4 +207,33 @@ export interface IPipelineUIService {
     level?: string;
     limit?: number;
   }): Promise<ServiceResponseWithData<ExecutionLog[]>>;
+
+  // =========================================================================
+  // Auth (UC43~UC46)
+  // =========================================================================
+
+  로그인한다(req: { username: string; password: string }): Promise<ServiceResponseWithData<Session>>;
+
+  로그아웃한다(): Promise<ServiceResponse>;
+
+  토큰을_갱신한다(): Promise<ServiceResponseWithData<Session>>;
+
+  본인_비밀번호를_변경한다(req: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<ServiceResponse>;
+
+  현재_사용자를_조회한다(): Promise<ServiceResponseWithData<User>>;
+
+  // =========================================================================
+  // User Management — Administrator only (UC47~UC50)
+  // =========================================================================
+
+  사용자목록을_조회한다(params?: UserListQuery): Promise<ServiceResponseWithData<PaginatedResponse<User>>>;
+
+  사용자를_생성한다(req: CreateUserRequest): Promise<ServiceResponseWithData<User>>;
+
+  사용자를_수정한다(id: string, req: UpdateUserRequest): Promise<ServiceResponseWithData<User>>;
+
+  사용자_비밀번호를_초기화한다(id: string): Promise<ServiceResponseWithData<{ temporaryPassword: string }>>;
 }

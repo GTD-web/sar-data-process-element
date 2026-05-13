@@ -19,7 +19,7 @@ export default function AlertsTab({ alerts, onAck, onSelectJob }: AlertsTabProps
     return (
       <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
         <CheckCircle className="w-8 h-8 mb-2 text-success" />
-        <span className="text-xs">미확인 Alert이 없습니다</span>
+        <span className="text-xs">No unacknowledged alerts</span>
       </div>
     );
   }
@@ -44,7 +44,7 @@ export default function AlertsTab({ alerts, onAck, onSelectJob }: AlertsTabProps
               onClick={() => onAck(alert.id)}
               className="px-2 py-0.5 rounded bg-accent/20 text-accent text-[10px] font-medium hover:bg-accent/30"
             >
-              확인
+              Acknowledge
             </button>
           </div>
         </div>
@@ -52,7 +52,7 @@ export default function AlertsTab({ alerts, onAck, onSelectJob }: AlertsTabProps
       {acked.length > 0 && (
         <>
           <div className="px-3 py-1.5 text-[10px] text-muted-foreground bg-muted/20">
-            확인됨 ({acked.length})
+            Acknowledged ({acked.length})
           </div>
           {acked.slice(0, 5).map((alert) => (
             <div key={alert.id} className="px-3 py-2 opacity-50">

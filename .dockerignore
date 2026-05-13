@@ -1,0 +1,23 @@
+# 빌드 컨텍스트는 sdpe repo root. frontend Dockerfile 만 필요한 것만 남긴다.
+# 명시적으로 필요한 것: frontend/, natives/csc-04-level-1-processor/, (수요일에) natives/csc-03-...
+**
+!frontend/**
+!natives/csc-04-level-1-processor/**
+# !natives/csc-03-... (수요일 도착 후 활성화)
+
+# frontend 안의 빌드 산출물/대용량은 제외
+frontend/node_modules
+frontend/.next
+frontend/.git
+frontend/docs
+frontend/e2e
+frontend/test-results
+frontend/playwright-report
+
+# natives 안의 캐시/대용량 제외
+natives/**/__pycache__
+natives/**/*.h5
+natives/**/*.tif
+natives/**/*.png
+natives/**/output
+natives/**/_demo

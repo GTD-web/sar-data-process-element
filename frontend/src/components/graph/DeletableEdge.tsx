@@ -5,11 +5,26 @@ import { Plus, Trash2 } from 'lucide-react';
 import { useEdgeHover } from './EdgeHoverContext';
 import * as t from '@/styles/design-tokens';
 
+function strokeToRgba(stroke: string, alpha: number): string {
+  if (stroke.startsWith('#') && (stroke.length === 7 || stroke.length === 4)) {
+    const hex = stroke.length === 4
+      ? '#' + stroke.slice(1).split('').map((c) => c + c).join('')
+      : stroke;
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return `rgba(52, 211, 153, ${alpha})`;
+}
+
 export type DeletableEdgeData = {
   stroke: string;
   strokeWidth: number;
   animated: boolean;
   editable: boolean;
+  markerVariant?: 'solid' | 'outline';
+  markerBackground?: string;
   sourceOrder: number;
   targetOrder: number;
   markerId?: string;
@@ -35,6 +50,9 @@ export function DeletableEdge({
   const editable = data?.editable ?? false;
   const hovered = useEdgeHover(id as string | undefined);
   const markerId = data?.markerId ?? `arrow-${id}`;
+  const markerVariant = data?.markerVariant ?? 'solid';
+  const markerBackground = data?.markerBackground ?? 'var(--background)';
+  const effectiveMarkerVariant = hovered && editable ? 'solid' : markerVariant;
 
   // n8n-style horizontal-fixed bezier: control points extend only horizontally
   const dx = Math.abs(targetX - sourceX);
@@ -87,8 +105,11 @@ export function DeletableEdge({
         >
           <path
             d="M 0 0 L 12 6 L 0 12 Z"
-            fill={currentStroke}
-            style={{ transition: 'fill 0.3s ease' }}
+            fill={effectiveMarkerVariant === 'outline' ? markerBackground : currentStroke}
+            stroke={currentStroke}
+            strokeWidth={effectiveMarkerVariant === 'outline' ? 1.6 : 0}
+            strokeLinejoin="round"
+            style={{ transition: 'fill 0.3s ease, stroke 0.3s ease' }}
           />
         </marker>
       </defs>
@@ -113,10 +134,10 @@ export function DeletableEdge({
           strokeWidth: showActions ? 3 : strokeWidth,
           transition: 'stroke 0.3s ease, stroke-width 0.3s ease, filter 0.3s ease',
           filter: showActions
-            ? 'drop-shadow(0 0 8px rgba(52, 211, 153, 0.6))'
+            ? `drop-shadow(0 0 8px ${strokeToRgba(t.edgeActive, 0.6)})`
             : stroke === t.edgeSuccess
-              ? 'drop-shadow(0 0 6px rgba(52, 211, 153, 0.5)) drop-shadow(0 0 14px rgba(52, 211, 153, 0.25))'
-              : undefined,
+              ? `drop-shadow(0 0 6px ${strokeToRgba(stroke, 0.5)}) drop-shadow(0 0 14px ${strokeToRgba(stroke, 0.25)})`
+              : `drop-shadow(0 0 4px ${strokeToRgba(stroke, 0.3)})`,
           pointerEvents: 'none',
         }}
       />
@@ -139,14 +160,14 @@ export function DeletableEdge({
             <button
               onClick={handleInsert}
               style={{ ...btnBase, background: t.surfaceRaised, color: t.textSecondary }}
-              title="노드 추가"
+              title="Add node"
             >
               <Plus size={14} strokeWidth={2.5} />
             </button>
             <button
               onClick={handleDelete}
               style={{ ...btnBase, background: t.surfaceRaised, color: t.textSecondary }}
-              title="연결 삭제"
+              title="Remove connection"
             >
               <Trash2 size={14} strokeWidth={2.5} />
             </button>

@@ -2,7 +2,7 @@
 
 import type { SarStage, PipelineNodeKind } from '@/types/pipeline';
 import { SAR_STAGE_LABELS, SAR_STAGE_TASKS, SAR_STAGE_TO_LEVEL, SAR_STAGE_DESCRIPTIONS, NODE_KIND_INFO, PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
-import { HardDrive, Cpu, Layers, Compass, Map, Crosshair, Package, Database, SlidersHorizontal } from 'lucide-react';
+import { HardDrive, Cpu, Layers, Compass, Map, Crosshair, Package, Database, SlidersHorizontal, Image as ImageIcon } from 'lucide-react';
 
 interface SarStageOption {
   kind: 'SAR';
@@ -11,7 +11,7 @@ interface SarStageOption {
 }
 
 interface FixedKindOption {
-  kind: 'CATALOG' | 'JOB_INIT';
+  kind: 'CATALOG' | 'JOB_INIT' | 'THUMBNAIL';
   icon: React.ElementType;
   label: string;
   csc: string;
@@ -20,7 +20,7 @@ interface FixedKindOption {
 type StepOption = SarStageOption | FixedKindOption;
 
 const STEP_OPTIONS: StepOption[] = [
-  { kind: 'JOB_INIT', icon: SlidersHorizontal, label: '작업 초기화', csc: 'CSU-08.02' },
+  { kind: 'JOB_INIT', icon: SlidersHorizontal, label: 'Job Initialization', csc: 'CSU-08.02' },
   { kind: 'SAR', sarStage: 'L0', icon: HardDrive },
   { kind: 'SAR', sarStage: 'L1A', icon: Cpu },
   { kind: 'SAR', sarStage: 'L1B', icon: Layers },
@@ -28,21 +28,37 @@ const STEP_OPTIONS: StepOption[] = [
   { kind: 'SAR', sarStage: 'L2A', icon: Map },
   { kind: 'SAR', sarStage: 'L2B', icon: Crosshair },
   { kind: 'SAR', sarStage: 'L3', icon: Package },
-  { kind: 'CATALOG', icon: Database, label: '카탈로그 등록', csc: 'CSC-07' },
+  { kind: 'THUMBNAIL', icon: ImageIcon, label: 'Quick-look Generation', csc: 'CSU-07.06' },
+  { kind: 'CATALOG', icon: Database, label: 'Catalog Registration', csc: 'CSC-07' },
 ];
 
 interface AddStepPanelProps {
   insertAfterOrder: number;
   insertBeforeOrder?: number;
+  asSeparateStart?: boolean;
+  /**
+   * 시작 노드(TRIGGER / FILE_INPUT) 직후 위치면 true.
+   * 작업 흐름상 시작 노드 다음엔 반드시 Job Initialization 이 와야 하므로
+   * 다른 옵션은 모두 숨긴다.
+   */
+  restrictToJobInit?: boolean;
   onSelect: (afterOrder: number, kind: PipelineNodeKind, sarStage?: SarStage) => void;
 }
 
-export default function AddStepPanel({ insertAfterOrder, insertBeforeOrder, onSelect }: AddStepPanelProps) {
-  const description = insertBeforeOrder !== undefined
-    ? `단계 #${insertAfterOrder}과 #${insertBeforeOrder} 사이에 추가할 단계를 선택하세요.`
+export default function AddStepPanel({ insertAfterOrder, insertBeforeOrder, asSeparateStart, restrictToJobInit, onSelect }: AddStepPanelProps) {
+  const description = asSeparateStart
+    ? 'Select a new start node that is not connected to the existing DAG.'
+    : restrictToJobInit
+    ? 'Only Job Initialization can be added directly after a start node.'
+    : insertBeforeOrder !== undefined
+    ? `Select a step to insert between #${insertAfterOrder} and #${insertBeforeOrder}.`
     : insertAfterOrder === 0
-      ? '파이프라인 맨 앞에 추가할 단계를 선택하세요.'
-      : `단계 #${insertAfterOrder} 뒤에 추가할 단계를 선택하세요.`;
+      ? 'Select a step to add at the start of the pipeline.'
+      : `Select a step to add after #${insertAfterOrder}.`;
+
+  const visibleOptions = restrictToJobInit
+    ? STEP_OPTIONS.filter((opt) => opt.kind === 'JOB_INIT')
+    : STEP_OPTIONS;
 
   return (
     <div className="p-4 space-y-3">
@@ -51,7 +67,7 @@ export default function AddStepPanel({ insertAfterOrder, insertBeforeOrder, onSe
       </div>
 
       <div className="space-y-2">
-        {STEP_OPTIONS.map((opt) => {
+        {visibleOptions.map((opt) => {
           const Icon = opt.icon;
 
           if (opt.kind === 'SAR') {

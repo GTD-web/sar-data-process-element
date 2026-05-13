@@ -15,13 +15,13 @@ CSC-08로부터 작업 할당(SI-04)을 수신하면, Range 압축(FI-02) → Az
 내부적으로 다음 CSU들로 구성됩니다.
 
 - **CSU-04.01** Range Compression
-- **CSU-04.02** RDA Azimuth Compression
-- **CSU-04.03** BPA Azimuth Compression
-- **CSU-04.04** SLC Formation
-- **CSU-04.05** Multi-look Processor
-- **CSU-04.06** GRD Converter
-- **CSU-04.07** GEC Processor
-- **CSU-04.08** MAP Projector
+- **CSU-04.02** Azimuth Compression (RDA)
+- **CSU-04.03** Azimuth Compression (BPA)
+- **CSU-04.04** Single Look Complex (SLC) Product
+- **CSU-04.05** Multi-look Processing
+- **CSU-04.06** Speckle Filtering
+- **CSU-04.07** Ground-range Projection
+- **CSU-04.08** Ground Range Detected (GRD) Product
 - **CSU-04.09** DEM Integration
 - **CSU-04.10** Geometric Terrain Correction
 - **CSU-04.11** Map Projection
@@ -47,7 +47,7 @@ CSC-08로부터 작업 할당(SI-04)을 수신하면, Range 압축(FI-02) → Az
 
 | 시나리오             | CSC-04 수행 내용                                                                                           | ICD 절 |
 | -------------------- | ---------------------------------------------------------------------------------------------------------- | ------ |
-| OPS-02 SAR 신호처리  | SI-04 수신 → Range 압축(FI-02) → Azimuth 압축(FI-03/04) → SLC → Multi-look → GRD/GEC/MAP → DEM 보정 → COG 출력 → SI-03 완료 이벤트 | 3.2    |
+| OPS-02 SAR 신호처리  | SI-04 수신 → Range 압축(FI-02) → Azimuth 압축(FI-03/04) → SLC → Multi-look → Speckle → Ground-range → GRD → DEM 보정 → GEC/MAP → COG 출력 → SI-03 완료 이벤트 | 3.2    |
 
 ---
 
@@ -92,11 +92,15 @@ sequenceDiagram
 
     CSC04->>CSC04: CSU-04.01 Range Compression (FI-02)
     CSC04->>CSC04: CSU-04.02/03 Azimuth Compression (FI-03 RDA / FI-04 BPA)
-    CSC04->>CSC04: CSU-04.04 SLC Formation
+    CSC04->>CSC04: CSU-04.04 SLC Product
     CSC04->>CSC04: CSU-04.05 Multi-look Processing
-    CSC04->>CSC04: CSU-04.06 GRD Conversion
+    CSC04->>CSC04: CSU-04.06 Speckle Filtering
+    CSC04->>CSC04: CSU-04.07 Ground-range Projection
+    CSC04->>CSC04: CSU-04.08 GRD Product
     CSC04->>DEM: CSU-04.09 DEM Integration (EI-02)
-    CSC04->>CSC04: CSU-04.07~08 GEC/MAP Processing
+    CSC04->>CSC04: CSU-04.10 Geometric Terrain Correction
+    CSC04->>CSC04: CSU-04.11 Map Projection
+    CSC04->>CSC04: CSU-04.12 Geocoded, Map Projected Product
 
     CSC04->>NAS: SI-02 Level-1 GeoTIFF/COG 저장
     CSC04->>Q_PE: SI-03 PROCESSING_COMPLETED

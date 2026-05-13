@@ -19,6 +19,7 @@ import numpy as np
 
 from csu_04_04_slc_formation import SARProcessor, load_metadata
 from shared.metadata import C, Meta, Re
+from shared.progress_reporter import StageReporter
 
 
 def _print_parameters(m: Meta, az_batch: int = 64, rng_chunk: int = 512):
@@ -94,6 +95,10 @@ def main():
     ap.add_argument("--az-batch", type=int, default=64, help="Azimuth-column batch size for range compression FFTs.")
     ap.add_argument("--vmin-db", type=float, default=-60.0, help="QuickLook dB floor (darker = below this)")
     ap.add_argument("--vmax-db", type=float, default=-5.0, help="QuickLook dB ceiling")
+    ap.add_argument("--az-start", type=int, default=None, metavar="N",
+                    help="Process only pulses [N, az_stop). Demo speed: skip warmup pulses.")
+    ap.add_argument("--az-stop", type=int, default=None, metavar="N",
+                    help="Process only pulses [az_start, N). Default = full raw azimuth length.")
     ap.add_argument("--dry-run", action="store_true", help="Print parameters only, do not process")
     args = ap.parse_args()
 
@@ -106,16 +111,40 @@ def main():
         print("ERROR: --decimate-range must be >= 1")
         return 1
 
+    # 시연 modal 의 staged-progress banner. 5 단계로 묶음:
+    #   0  Loading Raw Data            (HDF5 open + metadata)
+    #   1  Loading SAR Parameters      (block schedule, buffer plan)
+    #   2  Range + Azimuth Focusing    (block loop — RDA 내부에서 % 갱신)
+    #   3  Writing SLC GeoTIFF         (TIFF flush + metadata XML)
+    #   4  Generating QuickLook PNG    (two-pass strip reader)
+    reporter = StageReporter(
+        run_name="RDA_raw_to_SLC",
+        stages=[
+            "Loading Raw Data",
+            "Loading SAR Parameters",
+            "Range + Azimuth Focusing",
+            "Writing SLC GeoTIFF",
+            "Generating QuickLook PNG",
+        ],
+    )
+
+    reporter.start_stage(0)
     m = load_metadata(
         args.input,
         decimate_range=args.decimate_range,
         valid_lines=args.step,
         na_block_override=args.block,
         na_overlap_override=args.overlap,
+        az_start=args.az_start,
+        az_stop=args.az_stop,
     )
+    reporter.complete_stage(0)
+
+    reporter.start_stage(1)
     _print_parameters(m, az_batch=args.az_batch, rng_chunk=args.rng_chunk)
 
     if args.dry_run:
+        reporter.complete_stage(1)
         print("Dry-run complete.")
         return 0
 
@@ -131,7 +160,12 @@ def main():
         az_batch=args.az_batch,
         vmin_db=args.vmin_db,
         vmax_db=args.vmax_db,
+        az_start=args.az_start,
+        az_stop=args.az_stop,
+        reporter=reporter,
     )
+    reporter.complete_stage(1)
+    # stage 2-4 는 proc.run() 안에서 reporter 가 직접 start/complete 호출.
     result = proc.run()
     print("\nOutputs:")
     for k, v in result.items():
