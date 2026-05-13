@@ -144,7 +144,7 @@ function buildNodes(
   editable: boolean,
   onDeleteNode?: (order: number) => void,
   onAddAfter?: (afterOrder: number) => void,
-  onTrigger?: () => void,
+  onTrigger?: (order: number) => void,
   jobInitWarningReason?: string,
   onExecuteStep?: (order: number) => void,
   disabledNodeOrders?: Set<number>,
@@ -297,7 +297,7 @@ interface CanvasGraphProps {
   onAddNode?: (afterOrder: number, beforeOrder?: number) => void;
   onConnect?: (sourceOrder: number, targetOrder: number) => void;
   onDeleteEdge?: (sourceOrder: number, targetOrder: number) => void;
-  onTrigger?: () => void;
+  onTrigger?: (order: number) => void;
   /** JOB_INIT 노드에만 표시 — 예: 처리 프로파일 미선택 */
   jobInitWarningReason?: string;
   /** 새 파이프라인 생성 시 증가 → entry 노드로 자동 줌인 */

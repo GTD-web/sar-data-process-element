@@ -21,6 +21,8 @@ import PipelineUndeployConfirmDialog from '@/components/panels/PipelineUndeployC
 import PipelineDeployConfirmDialog from '@/components/panels/PipelineDeployConfirmDialog';
 import { toast } from '@/components/ui/Toast';
 import { Plus, GitBranch, Pencil, Check, X, Radio, Info, Archive } from 'lucide-react';
+import { resolveSarStage, executeStageStream } from '@/services/sar-execution.client';
+import type { RenderedLogLine } from '@/components/panels/NodeExecutionTerminal';
 import type {
   PipelineDefinition,
   PipelineStepDefinition,
@@ -286,6 +288,11 @@ export default function ConsolePage() {
   // 노드 order → 직전 실행 OUTPUT 캐시. 모달 close/open 사이에 결과(터미널 로그·QuickLook
   // ·파일 목록) 가 살아남도록 부모(여기) 가 보관한다.
   const [sarOutputsByOrder, setSarOutputsByOrder] = useState<Record<number, CachedSarOutput>>({});
+  // FILE_INPUT 노드 order → 업로드된 H5 의 uploadId/파일명/크기. downstream L1A 가 같은 파이프라인의
+  // FILE_INPUT 업로드를 재사용해 별도 업로드 없이 실행할 수 있도록 보관.
+  const [fileInputUploads, setFileInputUploads] = useState<Record<number, { uploadId: string; filename: string; sizeBytes: number }>>({});
+  // 노드 order → 자동 cascade 실행 진행 여부 (중복 트리거 방지).
+  const cascadeRunningRef = useRef<Set<number>>(new Set());
   const [archivePipelineTarget, setArchivePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [deletePipelineTarget, setDeletePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [undeployTarget, setUndeployTarget] = useState<PipelineDefinition | null>(null);
@@ -801,6 +808,167 @@ export default function ConsolePage() {
     setNodeDetailStep(step);
   }, [selectedPipeline]);
 
+  const handleFileInputUploadComplete = useCallback(
+    (stepOrder: number, uploadId: string, filename: string, sizeBytes: number) => {
+      setFileInputUploads((prev) => ({ ...prev, [stepOrder]: { uploadId, filename, sizeBytes } }));
+    },
+    [],
+  );
+
+  /**
+   * Pipeline Input(FILE_INPUT) 노드에서 "Run pipeline" 버튼을 누르면 호출.
+   * 업로드된 H5 를 입력으로 cascading 실행:
+   *  L1A (SLC)
+   *   → L1B[multilook]
+   *      → L1B[speckle, filter=...] (각 필터 노드마다 병렬 실행)
+   * 각 stage 실행 결과를 sarRunIdsByOrder + sarOutputsByOrder 에 캐시해 canvas 상태/모달 결과에 반영.
+   */
+  const handleAutoRunCascade = useCallback(async (entryOrder: number) => {
+    if (!selectedPipeline) return;
+    if (cascadeRunningRef.current.has(entryOrder)) {
+      toast.warning('Already running this pipeline.');
+      return;
+    }
+    const entry = selectedPipeline.steps.find((s) => s.order === entryOrder);
+    if (!entry) return;
+    if (entry.kind !== 'FILE_INPUT' || entry.inputLevel !== 'LEVEL_0') {
+      toast.error('Auto-run is only available from a Pipeline Input (L0) node.');
+      return;
+    }
+    const uploadInfo = fileInputUploads[entryOrder];
+    if (!uploadInfo) {
+      toast.error('Upload an H5 file in the Pipeline Input node first.');
+      return;
+    }
+
+    cascadeRunningRef.current.add(entryOrder);
+    try {
+      const stepByOrder = new Map(selectedPipeline.steps.map((s) => [s.order, s]));
+      const edges = selectedPipeline.edges;
+      const childrenOf = (o: number) => edges.filter((e) => e.source === o).map((e) => e.target);
+
+      /**
+       * 단일 SAR 노드 실행. uploadId(start) 또는 inputRunId(chain) 로 호출.
+       * 진행 중 stdout/stderr 를 logLines 에 누적하고, 완료 시 sarOutputsByOrder/sarRunIdsByOrder 에 저장.
+       * 반환: 성공 시 runId, 실패면 null.
+       */
+      const runStage = async (
+        stepOrder: number,
+        source: { uploadId?: string; inputRunId?: string },
+      ): Promise<string | null> => {
+        const step = stepByOrder.get(stepOrder);
+        if (!step || step.kind !== 'SAR' || !step.sarStage) return null;
+        const resolved = resolveSarStage(step.sarStage, step.sarSubStage);
+        if (!resolved) return null;
+        const startMs = Date.now();
+        const logLines: RenderedLogLine[] = [];
+        // 캐시 비우고 running 표시
+        setSarOutputsByOrder((prev) => {
+          const next = { ...prev };
+          delete next[stepOrder];
+          return next;
+        });
+        let completedRunId: string | null = null;
+        let errMsg: string | null = null;
+        try {
+          for await (const ev of executeStageStream(resolved.id, source, resolved.params)) {
+            if (ev.type === 'log') {
+              const stamp = new Date().toLocaleTimeString('en-GB');
+              const lvl = ev.level ?? (ev.stream === 'stderr' ? 'error' : 'info');
+              logLines.push({ level: lvl, text: ev.line, timestamp: stamp, delayMs: 0 });
+              // 진행 상황을 모달이 열려 있을 때 보이도록 주기적으로 캐시 push (간단히 매번 갱신)
+              setSarOutputsByOrder((prev) => ({
+                ...prev,
+                [stepOrder]: { logLines: [...logLines], runResult: null, runError: null, elapsedMs: Date.now() - startMs },
+              }));
+            } else if (ev.type === 'done') {
+              completedRunId = ev.runId;
+              if (ev.exitCode === 0) {
+                setSarRunIdsByOrder((prev) => ({ ...prev, [stepOrder]: ev.runId }));
+              } else {
+                errMsg = `Python exit code ${ev.exitCode}`;
+              }
+              setSarOutputsByOrder((prev) => ({
+                ...prev,
+                [stepOrder]: {
+                  logLines: [...logLines],
+                  runResult: ev,
+                  runError: errMsg,
+                  elapsedMs: Date.now() - startMs,
+                },
+              }));
+            } else if (ev.type === 'error') {
+              errMsg = ev.message;
+            }
+          }
+        } catch (err) {
+          errMsg = err instanceof Error ? err.message : String(err);
+          setSarOutputsByOrder((prev) => ({
+            ...prev,
+            [stepOrder]: { logLines: [...logLines], runResult: null, runError: errMsg, elapsedMs: Date.now() - startMs },
+          }));
+        }
+        if (errMsg) return null;
+        return completedRunId;
+      };
+
+      // 1) 첫 SAR 노드 (대개 L1A) — JOB_INIT 가 중간에 있으면 건너뛰고 첫 SAR 를 찾는다.
+      //    FILE_INPUT 의 직접 자식부터 BFS 로 첫 SAR 노드 1개를 찾는다.
+      const visited = new Set<number>();
+      const queue: number[] = [...childrenOf(entryOrder)];
+      let firstSarOrder: number | null = null;
+      while (queue.length > 0) {
+        const o = queue.shift()!;
+        if (visited.has(o)) continue;
+        visited.add(o);
+        const s = stepByOrder.get(o);
+        if (!s) continue;
+        if (s.kind === 'SAR') { firstSarOrder = o; break; }
+        queue.push(...childrenOf(o));
+      }
+      if (firstSarOrder === null) {
+        toast.error('No downstream SAR node found.');
+        return;
+      }
+
+      // 2) 첫 SAR 노드 실행 (uploadId 사용)
+      const r1 = await runStage(firstSarOrder, { uploadId: uploadInfo.uploadId });
+      if (!r1) {
+        toast.error('First SAR stage failed.');
+        return;
+      }
+
+      // 3) 그 다음부터는 BFS 로 SAR 노드들을 순차/병렬 실행.
+      //    같은 source 의 fan-out (예: Multi-look → 5 speckle) 은 병렬, 직렬은 await.
+      type Level = { order: number; inputRunId: string };
+      let frontier: Level[] = childrenOf(firstSarOrder)
+        .map((o) => ({ order: o, inputRunId: r1 }))
+        .filter((lv) => {
+          const s = stepByOrder.get(lv.order);
+          return s?.kind === 'SAR';
+        });
+      while (frontier.length > 0) {
+        // 같은 level (frontier) 의 노드들은 병렬 실행.
+        const results = await Promise.all(frontier.map((lv) => runStage(lv.order, { inputRunId: lv.inputRunId })));
+        const nextFrontier: Level[] = [];
+        results.forEach((rid, i) => {
+          if (!rid) return;
+          const myOrder = frontier[i]!.order;
+          for (const childOrder of childrenOf(myOrder)) {
+            const childStep = stepByOrder.get(childOrder);
+            if (childStep?.kind === 'SAR') {
+              nextFrontier.push({ order: childOrder, inputRunId: rid });
+            }
+          }
+        });
+        frontier = nextFrontier;
+      }
+      toast.success('Pipeline run finished.');
+    } finally {
+      cascadeRunningRef.current.delete(entryOrder);
+    }
+  }, [selectedPipeline, fileInputUploads]);
+
   /** 노드 상세 모달용 — 이전 노드 정보 계산 */
   const getPrevNodes = useCallback((stepOrder: number): PrevNodeInfo[] => {
     if (!selectedPipeline) return [];
@@ -909,6 +1077,7 @@ export default function ConsolePage() {
                 jobInitWarningReason={jobInitWarningReason}
                 focusEntryTrigger={focusEntryTrigger}
                 onNodeOpenDetail={handleNodeOpenDetail}
+                onTrigger={handleAutoRunCascade}
               />
               {/* 캔버스 좌측 상단 — 파이프라인 이름 */}
               {selectedPipeline && (
@@ -1059,6 +1228,29 @@ export default function ConsolePage() {
         const prevRunId = sourceOrders
           .map((o) => sarRunIdsByOrder[o])
           .find((id): id is string => Boolean(id));
+        // L1A 모달이면 upstream FILE_INPUT 의 업로드를 prevUploadId 로 전달해 재업로드 없이 실행 가능.
+        // BFS 로 upstream FILE_INPUT 노드까지 거슬러 올라가 fileInputUploads 에서 찾는다 (대개 직접 부모는 JOB_INIT 이므로).
+        const findUpstreamFileInputUpload = (): { uploadId: string; filename: string; sizeBytes: number } | undefined => {
+          if (!selectedPipeline) return undefined;
+          const stepByOrder = new Map(selectedPipeline.steps.map((s) => [s.order, s]));
+          const seen = new Set<number>();
+          const queue: number[] = [nodeDetailStep.order];
+          while (queue.length > 0) {
+            const o = queue.shift()!;
+            if (seen.has(o)) continue;
+            seen.add(o);
+            const s = stepByOrder.get(o);
+            if (s?.kind === 'FILE_INPUT' && s.inputLevel === 'LEVEL_0' && fileInputUploads[o]) {
+              return fileInputUploads[o];
+            }
+            for (const e of selectedPipeline.edges) {
+              if (e.target === o) queue.push(e.source);
+            }
+          }
+          return undefined;
+        };
+        const isL1A = nodeDetailStep.kind === 'SAR' && nodeDetailStep.sarStage === 'L1A';
+        const upstreamUpload = isL1A && !prevRunId ? findUpstreamFileInputUpload() : undefined;
         return (
           <NodeDetailModal
             step={nodeDetailStep}
@@ -1069,9 +1261,13 @@ export default function ConsolePage() {
             mode={undefined}
             prevNodes={getPrevNodes(nodeDetailStep.order)}
             prevRunId={prevRunId}
+            prevUploadId={upstreamUpload?.uploadId}
+            prevUploadFilename={upstreamUpload?.filename}
+            prevUploadSizeBytes={upstreamUpload?.sizeBytes}
             onSarRunComplete={(order, runId) => {
               setSarRunIdsByOrder((prev) => ({ ...prev, [order]: runId }));
             }}
+            onFileInputUploadComplete={handleFileInputUploadComplete}
             cachedOutput={sarOutputsByOrder[nodeDetailStep.order]}
             onSarOutputUpdate={(order, output) => {
               setSarOutputsByOrder((prev) => ({ ...prev, [order]: output }));

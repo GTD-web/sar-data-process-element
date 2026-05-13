@@ -56,7 +56,7 @@ export interface PipelineNodeData {
   enabledTasks?: string[];
   onDelete?: (order: number) => void;
   onAddAfter?: (afterOrder: number) => void;
-  onTrigger?: () => void;
+  onTrigger?: (order: number) => void;
   /** 개별 노드 실행 → 노드 상세 모달 열기 */
   onExecuteStep?: (order: number) => void;
   /** 설정 누락 등 — 해당 노드에만 표시 (예: JOB_INIT 프로파일 미선택) */
@@ -460,12 +460,13 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
           </div>
           {/* Hover: full execute button */}
           <button
-            onClick={(e) => { e.stopPropagation(); onTrigger!(); }}
+            onClick={(e) => { e.stopPropagation(); onTrigger!(order); }}
             className={cn(
               'node-trigger-btn flex items-center gap-2 pl-2.5 pr-3.5 py-2 rounded-lg text-[11px] font-semibold shadow-lg whitespace-nowrap',
               'bg-accent text-accent-foreground cursor-pointer hover:brightness-110 active:brightness-95',
             )}
-            title="Run the pipeline (check job initialization node for configuration warnings)"
+            data-testid={`entry-trigger-${order}`}
+            title="Run the pipeline from here (executes SLC → Multi-look → Speckle filters in cascade)"
           >
             <FlaskConical className="w-3.5 h-3.5" />
             Run pipeline

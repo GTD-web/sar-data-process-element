@@ -292,15 +292,29 @@ interface NodeDetailModalProps {
   prevNodes?: PrevNodeInfo[];
   /** 직전 SAR 실행의 runId (체이닝용). 없으면 이 노드는 시작 노드 (업로드 필요). */
   prevRunId?: string;
+  /**
+   * 직전 FILE_INPUT(L0) 노드에서 업로드된 H5 의 uploadId. L1A 모달이 이 값을 받으면
+   * 자체 업로드 UI 대신 "Pipeline Input 에서 받은 입력" 으로 처리한다.
+   */
+  prevUploadId?: string;
+  /** prevUploadId 로 전달된 H5 파일명 (표시용). */
+  prevUploadFilename?: string;
+  /** prevUploadId 로 전달된 H5 파일 크기 (표시용). */
+  prevUploadSizeBytes?: number;
   /** SAR stage 실제 실행 완료 시 부모(ConsolePage) 가 runId 보관하도록 호출. */
   onSarRunComplete?: (stepOrder: number, runId: string) => void;
+  /**
+   * FILE_INPUT 노드 업로드 완료 시 부모에 알리는 콜백. 부모는 uploadId 를
+   * 보관해 두었다가 downstream L1A 모달에 prevUploadId 로 전달한다.
+   */
+  onFileInputUploadComplete?: (stepOrder: number, uploadId: string, filename: string, sizeBytes: number) => void;
   /** 이 노드의 직전 실행 결과 캐시 (모달 close/open 사이에 살아남기 위함). */
   cachedOutput?: CachedSarOutput;
   /** 실행이 끝났을 때 부모에 결과를 캐시하라고 알리는 콜백. */
   onSarOutputUpdate?: (stepOrder: number, output: CachedSarOutput) => void;
 }
 
-export default function NodeDetailModal({ step, onClose, onSaveNode, availableProfiles, satelliteId, mode, prevNodes, prevRunId, onSarRunComplete, cachedOutput, onSarOutputUpdate }: NodeDetailModalProps) {
+export default function NodeDetailModal({ step, onClose, onSaveNode, availableProfiles, satelliteId, mode, prevNodes, prevRunId, prevUploadId, prevUploadFilename, prevUploadSizeBytes, onSarRunComplete, onFileInputUploadComplete, cachedOutput, onSarOutputUpdate }: NodeDetailModalProps) {
   // cachedOutput 이 있으면 모달이 열리는 즉시 'done' 상태로 hydrate — 직전 결과 보전.
   const [execState, setExecState] = useState<ExecState>(cachedOutput ? 'done' : 'idle');
   const [outputData, setOutputData] = useState<MockRecord | null>(null);
@@ -315,9 +329,20 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
   const logLinesRef = useRef<RenderedLogLine[]>(cachedOutput?.logLines ?? []);
 
   // ── 실제 SAR 실행 상태 (시연용) ─────────────────────────────────────────────
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [uploadId, setUploadId] = useState<string | null>(null);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
+  // prevUploadId 가 있으면 (FILE_INPUT 에서 받은 업로드를 그대로 사용) 곧바로 'done' 상태로 시작.
+  // L1A 모달은 자체 업로드 UI 대신 "Pipeline Input 에서 받은 입력" 카드를 노출하고 바로 실행 가능.
+  const initialUploadedFile = useMemo<File | null>(
+    () => (prevUploadId && prevUploadFilename
+      ? new File([], prevUploadFilename, { type: 'application/x-hdf' })
+      : null),
+    // size 는 표시용으로만 쓰이므로 별도 state 로 추적 (File 객체에 임의 size 주입 불가)
+    [prevUploadId, prevUploadFilename],
+  );
+  const [uploadedFile, setUploadedFile] = useState<File | null>(initialUploadedFile);
+  const [uploadId, setUploadId] = useState<string | null>(prevUploadId ?? null);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>(
+    prevUploadId ? 'done' : 'idle',
+  );
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   /** 드래그 중 시각 피드백 */
@@ -345,7 +370,15 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
    *   대체할 수도 있다.
    */
   const isL1bStage = sarStageId === 'L1B_MULTILOOK' || sarStageId === 'L1B_SPECKLE';
-  const needsH5Upload = sarStageId === 'L1A' && !prevRunId;
+  /**
+   * H5 raw 업로드 패널 노출 조건:
+   * - L1A 시작 노드: 직전 run 이 없을 때.
+   * - FILE_INPUT(LEVEL_0): Pipeline Input 으로서 H5 를 받아 downstream L1A 가 쓰도록.
+   * prevUploadId 가 있어도 (L1A 가 FILE_INPUT 에서 받은 입력을 그대로 쓸 때) 동일 패널을 노출
+   * — 이미 "uploaded" 상태로 표시되어 사용자에게 Replace 옵션도 함께 제공된다.
+   */
+  const isFileInputL0 = step.kind === 'FILE_INPUT' && step.inputLevel === 'LEVEL_0';
+  const needsH5Upload = (sarStageId === 'L1A' && !prevRunId) || isFileInputL0;
 
   /**
    * L1B INPUT mode 토글.
@@ -437,11 +470,15 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
       const res = await uploadH5(file, (p) => setUploadProgress(p));
       setUploadId(res.uploadId);
       setUploadStatus('done');
+      // FILE_INPUT 노드에서 업로드한 경우 부모에 uploadId 를 알려 downstream L1A 가 재사용.
+      if (isFileInputL0) {
+        onFileInputUploadComplete?.(step.order, res.uploadId, file.name, file.size);
+      }
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : String(err));
       setUploadStatus('error');
     }
-  }, []);
+  }, [isFileInputL0, onFileInputUploadComplete, step.order]);
 
   /** 드래그&드롭 핸들러. .h5 또는 application/x-hdf 만 받음. */
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -688,9 +725,16 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
       setRunError(null);
     }
     setOutputData(null);
-    setUploadedFile(null);
-    setUploadId(null);
-    setUploadStatus('idle');
+    // prevUploadId 가 있으면 (FILE_INPUT 에서 받은 입력을 L1A 가 그대로 쓸 때) "이미 업로드됨" 상태로 시작.
+    if (prevUploadId) {
+      setUploadedFile(prevUploadFilename ? new File([], prevUploadFilename, { type: 'application/x-hdf' }) : null);
+      setUploadId(prevUploadId);
+      setUploadStatus('done');
+    } else {
+      setUploadedFile(null);
+      setUploadId(null);
+      setUploadStatus('idle');
+    }
     setUploadProgress(null);
     setUploadError(null);
     setBundleSlc(null);
@@ -1079,8 +1123,11 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                           {uploadedFile?.name ?? 'uploaded.h5'}
                         </div>
                         <div className="text-[10px] text-muted-foreground font-mono">
-                          {((uploadedFile?.size ?? 0) / 1e6).toFixed(0)} MB · uploadId{' '}
+                          {(((uploadedFile?.size || prevUploadSizeBytes) ?? 0) / 1e6).toFixed(0)} MB · uploadId{' '}
                           <span>{uploadId?.slice(0, 8)}</span>
+                          {prevUploadId && uploadId === prevUploadId && (
+                            <span className="ml-2 text-accent">· from Pipeline Input</span>
+                          )}
                         </div>
                       </div>
                       <button

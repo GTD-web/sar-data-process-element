@@ -334,6 +334,38 @@ const DUAL_POL_BRANCH_EDGES: BranchedEdge[] = [
   { source: 10, target: 11 },
 ];
 
+/**
+ * CSC-04 시연 데모: FILE_INPUT(L0 H5) → JOB_INIT → SAR Focusing(L1A·SLC) →
+ * Multi-look(4×10) → Speckle filter 5종 fan-out (Lee/Enhanced Lee/Gamma-MAP/Boxcar/Median).
+ *
+ * 시연 흐름:
+ * 1) Pipeline Input 노드 모달에서 H5 raw 업로드
+ * 2) Pipeline Input 노드 호버 → "Run" 클릭 → 아래 5종 결과까지 자동 cascade
+ *    (L1A → Multi-look → 5종 Speckle 병렬 실행)
+ */
+const CSC04_DEMO_STEPS: StepDef[] = [
+  { kind: 'FILE_INPUT', inputLevel: 'LEVEL_0' },                                                        // 1
+  JOB_INIT_STEP,                                                                                        // 2
+  { kind: 'SAR', sarStage: 'L1A' },                                                                     // 3
+  { kind: 'SAR', sarStage: 'L1B', sarSubStage: { kind: 'multilook', rangeLooks: 4, azimuthLooks: 10 } }, // 4
+  { kind: 'SAR', sarStage: 'L1B', sarSubStage: { kind: 'speckle', filter: 'lee',          winX: 5, winY: 5 } }, // 5
+  { kind: 'SAR', sarStage: 'L1B', sarSubStage: { kind: 'speckle', filter: 'enhanced_lee', winX: 5, winY: 5 } }, // 6
+  { kind: 'SAR', sarStage: 'L1B', sarSubStage: { kind: 'speckle', filter: 'gamma_map',    winX: 5, winY: 5 } }, // 7
+  { kind: 'SAR', sarStage: 'L1B', sarSubStage: { kind: 'speckle', filter: 'boxcar',       winX: 5, winY: 5 } }, // 8
+  { kind: 'SAR', sarStage: 'L1B', sarSubStage: { kind: 'speckle', filter: 'median',       winX: 5, winY: 5 } }, // 9
+];
+const CSC04_DEMO_EDGES: BranchedEdge[] = [
+  { source: 1, target: 2 },
+  { source: 2, target: 3 },
+  { source: 3, target: 4 },
+  // fan-out: Multi-look(4) → 5종 Speckle (5..9)
+  { source: 4, target: 5 },
+  { source: 4, target: 6 },
+  { source: 4, target: 7 },
+  { source: 4, target: 8 },
+  { source: 4, target: 9 },
+];
+
 /** §5.4 Quick-look 조기 분기: L1A 완료 시점에 THUMBNAIL 발행(side-branch), 메인 흐름은 L3까지 계속 */
 const QUICK_LOOK_BRANCH_STEPS: StepDef[] = [
   TRIGGER_STEP,                           // 1
@@ -1490,6 +1522,7 @@ function generatePipelines(): PipelineDefinition[] {
     buildPipelineFromSteps('PL-START-FROM-L2', 'Start from L2 Processing', START_FROM_L2_STEPS, '2026-01-30T09:00:00Z'),
     buildPipelineFromSteps('PL-PARTIAL-REPROCESS-FROM-L1', 'Partial Reprocess from L1', PARTIAL_L1_STRIPMAP_STEPS, '2026-02-01T09:00:00Z'),
     buildPipelineFromSteps('PL-PARTIAL-REPROCESS-FROM-L2', 'Partial Reprocess from L2', PARTIAL_L2_STEPS, '2026-03-01T09:00:00Z'),
+    buildBranchedPipeline('PL-CSC04-DEMO', 'CSC-04 Demo (L0 → SLC → Speckle 5종)', CSC04_DEMO_STEPS, CSC04_DEMO_EDGES, '2026-05-13T09:00:00Z'),
     buildBranchedPipeline('PL-MULTI-LEVEL-BRANCHED', 'Multi-level Branched', MULTI_LEVEL_BRANCH_STEPS, MULTI_LEVEL_BRANCH_EDGES, '2026-03-20T09:00:00Z'),
     buildBranchedPipeline('PL-MULTI-LEVEL-CUSTOM-OUTPUT', 'Multi-level Branched (L3 Only Output)', MULTI_LEVEL_CUSTOM_OUTPUT_STEPS, MULTI_LEVEL_CUSTOM_OUTPUT_EDGES, '2026-03-22T09:00:00Z'),
     buildBranchedPipeline('PL-DUAL-POL-BRANCHED', 'Dual-Polarization Branched', DUAL_POL_BRANCH_STEPS, DUAL_POL_BRANCH_EDGES, '2026-03-25T09:00:00Z'),
