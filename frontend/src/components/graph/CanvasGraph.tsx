@@ -152,6 +152,7 @@ function buildNodes(
   onReprocessStep?: (order: number) => void,
   isJobMode?: boolean,
   suppressEntryInputWarning?: boolean,
+  onSimulate?: (order: number) => void,
 ): Node[] {
   const sources = new Set(pipelineEdges.map((e) => e.source));
   const targets = new Set(pipelineEdges.map((e) => e.target));
@@ -190,6 +191,7 @@ function buildNodes(
         editable, isLeaf: !sources.has(step.order), isHead: !targets.has(step.order),
         onDelete: onDeleteNode, onAddAfter,
         onTrigger: isEntryNode ? onTrigger : undefined,
+        onSimulate: isEntryNode ? onSimulate : undefined,
         onExecuteStep,
         warningReason,
         enabled: !disabledNodeOrders?.has(step.order),
@@ -298,6 +300,8 @@ interface CanvasGraphProps {
   onConnect?: (sourceOrder: number, targetOrder: number) => void;
   onDeleteEdge?: (sourceOrder: number, targetOrder: number) => void;
   onTrigger?: (order: number) => void;
+  /** 진입 노드 hover 보조 버튼 — 업로드 없이 cascade 흐름만 시뮬레이션. */
+  onSimulate?: (order: number) => void;
   /** JOB_INIT 노드에만 표시 — 예: 처리 프로파일 미선택 */
   jobInitWarningReason?: string;
   /** 새 파이프라인 생성 시 증가 → entry 노드로 자동 줌인 */
@@ -322,7 +326,7 @@ interface CanvasGraphProps {
   showControls?: boolean;
 }
 
-export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable = false, onNodeClick, onDeleteNode, onAddNode, onConnect: onConnectProp, onDeleteEdge, onTrigger, jobInitWarningReason, focusEntryTrigger = 0, onNodeOpenDetail, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode, suppressEntryInputWarning, showGlow = true, showMinimap = true, showControls = true }: CanvasGraphProps) {
+export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable = false, onNodeClick, onDeleteNode, onAddNode, onConnect: onConnectProp, onDeleteEdge, onTrigger, onSimulate, jobInitWarningReason, focusEntryTrigger = 0, onNodeOpenDetail, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode, suppressEntryInputWarning, showGlow = true, showMinimap = true, showControls = true }: CanvasGraphProps) {
   const graphScope = useMemo(() => sanitizeGraphScope(pipelineId), [pipelineId]);
   // 노드 위치는 드래그로 누적되는 사용자 편집 상태이므로 state로 유지.
   // 파이프라인 전환·스텝 추가/삭제 시에는 React 권장 "렌더 중 상태 조정" 패턴으로
@@ -417,7 +421,7 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
   }, [onNodeOpenDetail]);
 
   // Build nodes and edges WITHOUT hover dependency
-  const pipelineNodes = buildNodes(steps, pipelineEdges, positions, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode, suppressEntryInputWarning);
+  const pipelineNodes = buildNodes(steps, pipelineEdges, positions, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode, suppressEntryInputWarning, onSimulate);
   const allEdges = buildEdges(steps, pipelineEdges, graphScope, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave, isJobMode, disabledNodeOrders);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(pipelineNodes);
@@ -427,10 +431,10 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
   // positions는 deps에서 제외: 드래그로 positions만 바뀔 때는 ReactFlow가 내부적으로 위치를 관리하므로
   // setNodes를 다시 호출할 필요 없음 (effect는 최신 positions를 closure로 캡처).
   useEffect(() => {
-    setNodes(buildNodes(steps, pipelineEdges, positions, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode, suppressEntryInputWarning));
+    setNodes(buildNodes(steps, pipelineEdges, positions, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode, suppressEntryInputWarning, onSimulate));
     setEdges(buildEdges(steps, pipelineEdges, graphScope, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave, isJobMode, disabledNodeOrders));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [steps, pipelineEdges, graphScope, editable, onDeleteNode, onAddNode, onDeleteEdge, onTrigger, jobInitWarningReason, clearLeaveTimer, scheduleLeave, setNodes, setEdges, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode, suppressEntryInputWarning]);
+  }, [steps, pipelineEdges, graphScope, editable, onDeleteNode, onAddNode, onDeleteEdge, onTrigger, onSimulate, jobInitWarningReason, clearLeaveTimer, scheduleLeave, setNodes, setEdges, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode, suppressEntryInputWarning]);
 
   const onInit = useCallback((instance: { fitView: () => void }) => {
     setTimeout(() => instance.fitView(), 100);

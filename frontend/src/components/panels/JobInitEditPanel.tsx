@@ -19,6 +19,11 @@ interface JobInitEditPanelProps {
   satelliteId?: string;
   mode?: string;
   profiles: ProcessingProfile[];
+  /**
+   * 파이프라인이 주로 다루는 처리 단계 (예: 'L1A'). 사용자가 선택한 프로파일의 `processingStage`
+   * 와 다르면 mismatch 경고를 표시한다. 비어 있으면 mismatch 검사 생략.
+   */
+  expectedProcessingStage?: string;
   onSave: (step: PipelineStepDefinition) => void;
 }
 
@@ -54,7 +59,7 @@ function profileMatchesContext(profile: ProcessingProfile, satelliteId: string |
   );
 }
 
-export default function JobInitEditPanel({ step, satelliteId, mode, profiles, onSave }: JobInitEditPanelProps) {
+export default function JobInitEditPanel({ step, satelliteId, mode, profiles, expectedProcessingStage, onSave }: JobInitEditPanelProps) {
   const initial = step.jobInitConfig ?? DEFAULT_CONFIG;
 
   const [profileId, setProfileId] = useState(initial.profileId ?? '');
@@ -62,6 +67,8 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
   const [priority, setPriority] = useState(initial.priority);
   const [deadlineHours, setDeadlineHours] = useState<number | undefined>(initial.deadlineHours);
   const [overrideOpen, setOverrideOpen] = useState(false);
+  /** Apply 클릭 시 mismatch 가 발견되면 확인 다이얼로그를 띄운다. */
+  const [pendingMismatchConfirm, setPendingMismatchConfirm] = useState(false);
 
   const matchingProfiles = useMemo(
     () => profiles.filter((p) => profileMatchesContext(p, satelliteId, mode)),
@@ -109,7 +116,17 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
     );
   }, [step, polarization, profileId, priority, deadlineHours]);
 
-  const handleSave = () => {
+  /**
+   * 선택된 프로파일이 파이프라인의 expected stage 와 다른지. 양쪽 정보가 모두 있을 때만 검사.
+   * 사용자가 dropdown 에서 다른 stage 의 프로파일을 골랐다는 신호 — 잘못 고른 게 아닐 수도
+   * 있으므로 차단하지 않고 경고만 한다.
+   */
+  const profileStageMismatch =
+    !!expectedProcessingStage &&
+    !!selectedProfile?.processingStage &&
+    selectedProfile.processingStage !== expectedProcessingStage;
+
+  const commitSave = () => {
     // retryInterval은 ICD 3.5에서 시스템 차원으로 결정되는 값이라 본 패널에서는 편집하지 않는다.
     // 기존 값이 있으면 보존, 없으면 DEFAULT_CONFIG.retryInterval로 채운다.
     const config: JobInitConfig = {
@@ -120,6 +137,14 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
       retryInterval: initial.retryInterval ?? DEFAULT_CONFIG.retryInterval,
     };
     onSave({ ...step, jobInitConfig: config });
+  };
+
+  const handleSave = () => {
+    if (profileStageMismatch) {
+      setPendingMismatchConfirm(true);
+      return;
+    }
+    commitSave();
   };
 
   const polarizationOverridden = selectedTags
@@ -155,7 +180,7 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
 
         <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
           {/* Profile Select */}
-          <div>
+          <div data-testid="job-init-profile-select">
             <label className="text-[10px] text-muted-foreground block mb-1">Profile</label>
             {matchingProfiles.length > 0 ? (
               <CustomSelect<string>
@@ -174,6 +199,21 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
               </div>
             )}
           </div>
+
+          {/* Stage mismatch warning — 파이프라인 expected stage 와 프로파일 processingStage 가 다를 때만 */}
+          {profileStageMismatch && expectedProcessingStage && selectedProfile?.processingStage && (
+            <div
+              className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[10px] leading-relaxed text-amber-800 dark:text-amber-100/95"
+              data-testid="job-init-stage-mismatch"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-500 mt-0.5" strokeWidth={2.25} aria-hidden />
+              <p className="min-w-0">
+                This profile targets <span className="font-semibold">{selectedProfile.processingStage}</span>,
+                but the pipeline&apos;s first SAR stage is <span className="font-semibold">{expectedProcessingStage}</span>.
+                It may not match the current pipeline configuration.
+              </p>
+            </div>
+          )}
 
           {/* Profile-derived tags (readonly chips) */}
           {selectedProfile && selectedTags && (
@@ -317,6 +357,75 @@ export default function JobInitEditPanel({ step, satelliteId, mode, profiles, on
           Apply
         </button>
       </div>
+
+      {/* Mismatch 확인 다이얼로그 — Apply 시 expected stage 와 다른 프로파일이면 한 번 더 물어본다. */}
+      {pendingMismatchConfirm && selectedProfile && (
+        <div
+          className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setPendingMismatchConfirm(false)}
+        >
+          <div
+            className="w-full max-w-md bg-card border border-border rounded-xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            data-testid="job-init-mismatch-dialog"
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-500" />
+                <h2 className="text-sm font-semibold text-foreground">Profile may not match pipeline</h2>
+              </div>
+              <button
+                onClick={() => setPendingMismatchConfirm(false)}
+                className="p-1 rounded-md hover:bg-muted/50 transition-colors"
+                aria-label="Close"
+              >
+                <span className="text-[14px] text-muted-foreground leading-none">×</span>
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-[12px] text-foreground leading-relaxed">
+                The selected profile targets a different processing stage than this pipeline.
+                It may not match the current pipeline configuration. Apply anyway?
+              </p>
+              <div className="rounded-md border border-border bg-muted/30 px-3 py-2 space-y-1.5 text-[11px]">
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground shrink-0">Pipeline expects</span>
+                  <span className="font-mono font-semibold text-foreground">{expectedProcessingStage ?? '—'}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground shrink-0">Profile targets</span>
+                  <span className="font-mono font-semibold text-foreground">{selectedProfile.processingStage ?? '—'}</span>
+                </div>
+                <div className="flex justify-between gap-3 pt-1 border-t border-border/60">
+                  <span className="text-muted-foreground shrink-0">Profile</span>
+                  <span className="font-mono text-foreground truncate text-right">{selectedProfile.name}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 px-4 py-3 border-t border-border">
+              <button
+                onClick={() => setPendingMismatchConfirm(false)}
+                className="flex-1 py-1.5 rounded-md border border-border text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
+                data-testid="job-init-mismatch-cancel"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setPendingMismatchConfirm(false);
+                  commitSave();
+                }}
+                className="flex-1 py-1.5 rounded-md bg-amber-500 text-white text-xs font-medium hover:bg-amber-500/85 transition-colors"
+                data-testid="job-init-mismatch-confirm"
+              >
+                Apply anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

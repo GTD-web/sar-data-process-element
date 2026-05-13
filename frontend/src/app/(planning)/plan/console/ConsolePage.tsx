@@ -21,7 +21,7 @@ import PipelineUndeployConfirmDialog from '@/components/panels/PipelineUndeployC
 import PipelineDeployConfirmDialog from '@/components/panels/PipelineDeployConfirmDialog';
 import { toast } from '@/components/ui/Toast';
 import { Plus, GitBranch, Pencil, Check, X, Radio, Info, Archive } from 'lucide-react';
-import { resolveSarStage, executeStageStream } from '@/services/sar-execution.client';
+import { resolveSarStage, executeStageStream, simulateStageStream } from '@/services/sar-execution.client';
 import type { RenderedLogLine } from '@/components/panels/NodeExecutionTerminal';
 import type {
   PipelineDefinition,
@@ -43,7 +43,7 @@ import {
   SAR_STAGE_TO_CSC,
   SAR_STAGE_TO_LEVEL,
 } from '@/types/pipeline';
-import { selectDefaultProfileId, defaultL1BSubStage } from '@/lib/pipeline-defaults';
+import { selectDefaultProfileId, defaultL1BSubStage, inferPipelineProcessingStage } from '@/lib/pipeline-defaults';
 
 // ---------------------------------------------------------------------------
 // Pipeline Name Badge (canvas overlay)
@@ -830,8 +830,11 @@ export default function ConsolePage() {
    *   → L1B[multilook]
    *      → L1B[speckle, filter=...] (각 필터 노드마다 병렬 실행)
    * 각 stage 실행 결과를 sarRunIdsByOrder + sarOutputsByOrder 에 캐시해 canvas 상태/모달 결과에 반영.
+   *
+   * options.simulate === true 면 실제 backend 호출 없이 프론트엔드 simulator 로 cascade 흐름만 보여준다
+   * — 업로드 검증 스킵, 가짜 runId 사용, 산출 파일 없음.
    */
-  const handleAutoRunCascade = useCallback(async (entryOrder: number) => {
+  const handleAutoRunCascade = useCallback(async (entryOrder: number, options?: { simulate?: boolean }) => {
     if (!selectedPipeline) return;
     if (cascadeRunningRef.current.has(entryOrder)) {
       toast.warning('Already running this pipeline.');
@@ -843,11 +846,13 @@ export default function ConsolePage() {
       toast.error('Auto-run is only available from a Pipeline Input (L0) node.');
       return;
     }
+    const simulate = options?.simulate === true;
     const uploadInfo = fileInputUploads[entryOrder];
-    if (!uploadInfo) {
+    if (!simulate && !uploadInfo) {
       toast.error('Upload an H5 file in the Pipeline Input node first.');
       return;
     }
+    const streamStage = simulate ? simulateStageStream : executeStageStream;
 
     cascadeRunningRef.current.add(entryOrder);
     try {
@@ -882,7 +887,7 @@ export default function ConsolePage() {
         let completedRunId: string | null = null;
         let errMsg: string | null = null;
         try {
-          for await (const ev of executeStageStream(resolved.id, source, resolved.params)) {
+          for await (const ev of streamStage(resolved.id, source, resolved.params)) {
             if (ev.type === 'log') {
               const stamp = new Date().toLocaleTimeString('en-GB');
               const lvl = ev.level ?? (ev.stream === 'stderr' ? 'error' : 'info');
@@ -950,10 +955,11 @@ export default function ConsolePage() {
         return;
       }
 
-      // 2) 첫 SAR 노드 실행 (uploadId 사용)
-      const r1 = await runStage(firstSarOrder, { uploadId: uploadInfo.uploadId });
+      // 2) 첫 SAR 노드 실행 (uploadId 사용). simulate 모드면 가짜 uploadId 흘려보냄.
+      const firstUploadId = simulate ? 'demo-upload' : uploadInfo!.uploadId;
+      const r1 = await runStage(firstSarOrder, { uploadId: firstUploadId });
       if (!r1) {
-        toast.error('First SAR stage failed.');
+        toast.error(simulate ? 'Simulation failed.' : 'First SAR stage failed.');
         return;
       }
 
@@ -982,11 +988,17 @@ export default function ConsolePage() {
         });
         frontier = nextFrontier;
       }
-      toast.success('Pipeline run finished.');
+      toast.success(simulate ? 'Pipeline simulation finished.' : 'Pipeline run finished.');
     } finally {
       cascadeRunningRef.current.delete(entryOrder);
     }
   }, [selectedPipeline, fileInputUploads]);
+
+  /** Pipeline Input 노드 hover 보조 버튼 — 업로드 없이 cascade 흐름만 시뮬레이션. */
+  const handleSimulateCascade = useCallback(
+    (entryOrder: number) => handleAutoRunCascade(entryOrder, { simulate: true }),
+    [handleAutoRunCascade],
+  );
 
   /** 노드 상세 모달용 — 이전 노드 정보 계산 */
   const getPrevNodes = useCallback((stepOrder: number): PrevNodeInfo[] => {
@@ -1097,6 +1109,7 @@ export default function ConsolePage() {
                 focusEntryTrigger={focusEntryTrigger}
                 onNodeOpenDetail={handleNodeOpenDetail}
                 onTrigger={handleAutoRunCascade}
+                onSimulate={handleSimulateCascade}
               />
               {/* 캔버스 좌측 상단 — 파이프라인 이름 */}
               {selectedPipeline && (
@@ -1283,6 +1296,7 @@ export default function ConsolePage() {
             availableProfiles={profiles}
             satelliteId={undefined}
             mode={undefined}
+            expectedProcessingStage={selectedPipeline ? inferPipelineProcessingStage(selectedPipeline.steps) : undefined}
             prevNodes={getPrevNodes(nodeDetailStep.order)}
             prevRunId={prevRunId}
             prevUploadId={upstreamUpload?.uploadId}

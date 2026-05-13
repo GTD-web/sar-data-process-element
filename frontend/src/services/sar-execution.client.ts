@@ -263,3 +263,95 @@ export async function* executeStageStream(
     }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Demo simulator — H5 업로드 없이 cascade 흐름을 보여주기 위한 프론트엔드 stub.
+// executeStageStream 과 동일한 ExecuteEvent shape 을 emit 한다. 실제 산출 파일
+// (TIFF/PNG) 은 만들지 않으므로 `files: []`, `primary/meta` 는 undefined.
+// 캔버스 RUNNING tick 과 모달 로그 표시를 위해 stage 별 미리 정의된 로그 라인을
+// 일정 간격으로 흘려보낸 뒤 'done' 이벤트로 마감한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SIM_LINES_BY_STAGE: Record<SarStageId, string[]> = {
+  L1A: [
+    '[L1A] reading HDF5 raw header',
+    '[L1A] decoding doppler centroid',
+    '[L1A] range compression — chunk 1/4',
+    '[L1A] range compression — chunk 2/4',
+    '[L1A] range compression — chunk 3/4',
+    '[L1A] range compression — chunk 4/4',
+    '[L1A] azimuth compression',
+    '[L1A] writing SLC tiff + metadata',
+  ],
+  L1B_MULTILOOK: [
+    '[L1B/multilook] loading SLC tiff',
+    '[L1B/multilook] applying range/azimuth looks',
+    '[L1B/multilook] computing detected intensity',
+    '[L1B/multilook] writing MLD tiff + metadata',
+  ],
+  L1B_SPECKLE: [
+    '[L1B/speckle] loading MLD tiff',
+    '[L1B/speckle] sliding window statistics',
+    '[L1B/speckle] applying filter kernel',
+    '[L1B/speckle] writing filtered tiff + quicklook',
+  ],
+};
+
+const SIM_TOTAL_MS: Record<SarStageId, number> = {
+  L1A: 3000,
+  L1B_MULTILOOK: 1500,
+  L1B_SPECKLE: 1500,
+};
+
+function randomHex(n: number): string {
+  let out = '';
+  for (let i = 0; i < n; i++) out += Math.floor(Math.random() * 16).toString(16);
+  return out;
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((res) => setTimeout(res, ms));
+
+/**
+ * executeStageStream 과 동일한 시그니처. uploadId/inputRunId 는 받지만 사용하지 않는다
+ * (가짜 값이어도 OK). 데모 cascade 가 stage 마다 호출 → 사용자는 캔버스에서 RUNNING
+ * 노드 진행과 fan-out 병렬 실행 시각을 그대로 확인할 수 있다.
+ */
+export async function* simulateStageStream(
+  stage: SarStageId,
+  _source: { uploadId?: string; inputRunId?: string },
+  params?: Record<string, string | number | undefined>,
+): AsyncGenerator<ExecuteEvent, void, void> {
+  const lines = SIM_LINES_BY_STAGE[stage];
+  const total = SIM_TOTAL_MS[stage];
+  const perLine = Math.max(80, Math.floor(total / (lines.length + 1)));
+
+  // 첫 안내 라인 — 시뮬레이션 모드임을 명시.
+  yield {
+    type: 'log',
+    stream: 'stdout',
+    level: 'info',
+    line: `[simulate] stage=${stage} params=${JSON.stringify(params ?? {})} (no upload — demo mode)`,
+  };
+  await sleep(perLine);
+
+  for (const line of lines) {
+    yield { type: 'log', stream: 'stdout', level: 'info', line };
+    await sleep(perLine);
+  }
+
+  yield {
+    type: 'log',
+    stream: 'stdout',
+    level: 'info',
+    line: '[simulate] no output files produced — UI flow only',
+  };
+
+  yield {
+    type: 'done',
+    runId: `demo-${stage.toLowerCase()}-${randomHex(6)}`,
+    stage,
+    exitCode: 0,
+    args: ['--simulate'],
+    files: [],
+  };
+}
