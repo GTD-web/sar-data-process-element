@@ -296,6 +296,9 @@ export default function ConsolePage() {
   // 현재 실행 중인 SAR 노드 order → ISO 시작 시각. canvas 노드를 RUNNING + 실시간 경과 시간으로
   // 표시하기 위해 사용 — 빈 record 면 RUNNING 노드 없음.
   const [runningStartedAt, setRunningStartedAt] = useState<Record<number, string>>({});
+  // Cascade 실행 시 "실행됨" 표시만 필요한 비-SAR 노드 (FILE_INPUT 시작 노드, JOB_INIT). 실행 시간은
+  // 표시하지 않고 COMPLETED 상태만 노출한다.
+  const [auxCompletedOrders, setAuxCompletedOrders] = useState<Set<number>>(new Set());
   const [archivePipelineTarget, setArchivePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [deletePipelineTarget, setDeletePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [undeployTarget, setUndeployTarget] = useState<PipelineDefinition | null>(null);
@@ -375,7 +378,7 @@ export default function ConsolePage() {
         );
         const demoStatus: StepStatus | undefined = runningAt
           ? 'RUNNING'
-          : (cached ? (demoFailed ? 'FAILED' : 'COMPLETED') : undefined);
+          : (cached ? (demoFailed ? 'FAILED' : 'COMPLETED') : (auxCompletedOrders.has(s.order) ? 'COMPLETED' : undefined));
         return {
           order: s.order,
           kind: s.kind,
@@ -938,9 +941,11 @@ export default function ConsolePage() {
 
       // 1) 첫 SAR 노드 (대개 L1A) — JOB_INIT 가 중간에 있으면 건너뛰고 첫 SAR 를 찾는다.
       //    FILE_INPUT 의 직접 자식부터 BFS 로 첫 SAR 노드 1개를 찾는다.
+      //    BFS 도중 만나는 비-SAR 노드 (JOB_INIT 등) 는 "실행됨" 표시 대상으로 모은다.
       const visited = new Set<number>();
       const queue: number[] = [...childrenOf(entryOrder)];
       let firstSarOrder: number | null = null;
+      const auxCompletedThisRun: number[] = [entryOrder];
       while (queue.length > 0) {
         const o = queue.shift()!;
         if (visited.has(o)) continue;
@@ -948,12 +953,19 @@ export default function ConsolePage() {
         const s = stepByOrder.get(o);
         if (!s) continue;
         if (s.kind === 'SAR') { firstSarOrder = o; break; }
+        auxCompletedThisRun.push(o);
         queue.push(...childrenOf(o));
       }
       if (firstSarOrder === null) {
         toast.error('No downstream SAR node found.');
         return;
       }
+      // 시작 노드 + 경로상 JOB_INIT 노드를 COMPLETED 로 표시 (실행 시간은 표시 안 함).
+      setAuxCompletedOrders((prev) => {
+        const next = new Set(prev);
+        for (const o of auxCompletedThisRun) next.add(o);
+        return next;
+      });
 
       // 2) 첫 SAR 노드 실행 (uploadId 사용). simulate 모드면 가짜 uploadId 흘려보냄.
       const firstUploadId = simulate ? 'demo-upload' : uploadInfo!.uploadId;
@@ -1001,6 +1013,15 @@ export default function ConsolePage() {
   );
 
   /** 노드 상세 모달용 — 이전 노드 정보 계산 */
+  const describeStepRef = useCallback((s: { kind: PipelineNodeKind; sarStage?: SarStage }): { label: string; csc: string } => {
+    if (s.kind === 'TRIGGER') return { label: 'Raw Data Receive Trigger', csc: 'EI-01' };
+    if (s.kind === 'FILE_INPUT') return { label: 'Result File Input', csc: 'SI-07' };
+    if (s.kind === 'JOB_INIT') return { label: 'Job Initialization', csc: 'CSU-08.02' };
+    if (s.kind === 'CATALOG') return { label: 'Catalog Registration', csc: 'CSC-07' };
+    if (s.kind === 'SAR' && s.sarStage) return { label: SAR_STAGE_LABELS[s.sarStage], csc: SAR_STAGE_TO_CSC[s.sarStage] };
+    return { label: 'Node', csc: '—' };
+  }, []);
+
   const getPrevNodes = useCallback((stepOrder: number): PrevNodeInfo[] => {
     if (!selectedPipeline) return [];
     const sourceOrders = selectedPipeline.edges
@@ -1010,18 +1031,26 @@ export default function ConsolePage() {
     for (const order of sourceOrders) {
       const s = selectedPipeline.steps.find((st) => st.order === order);
       if (!s) continue;
-      let label: string;
-      let csc: string;
-      if (s.kind === 'TRIGGER') { label = 'Raw Data Receive Trigger'; csc = 'EI-01'; }
-      else if (s.kind === 'FILE_INPUT') { label = 'Result File Input'; csc = 'SI-07'; }
-      else if (s.kind === 'JOB_INIT') { label = 'Job Initialization'; csc = 'CSU-08.02'; }
-      else if (s.kind === 'CATALOG') { label = 'Catalog Registration'; csc = 'CSC-07'; }
-      else if (s.kind === 'SAR' && s.sarStage) { label = SAR_STAGE_LABELS[s.sarStage]; csc = SAR_STAGE_TO_CSC[s.sarStage]; }
-      else { label = 'Node'; csc = '—'; }
+      const { label, csc } = describeStepRef(s);
       results.push({ order: s.order, kind: s.kind, sarStage: s.sarStage, inputLevel: s.inputLevel, label, csc });
     }
     return results;
-  }, [selectedPipeline]);
+  }, [selectedPipeline, describeStepRef]);
+
+  const getNextNodes = useCallback((stepOrder: number): PrevNodeInfo[] => {
+    if (!selectedPipeline) return [];
+    const targetOrders = selectedPipeline.edges
+      .filter((e) => e.source === stepOrder)
+      .map((e) => e.target);
+    const results: PrevNodeInfo[] = [];
+    for (const order of targetOrders) {
+      const s = selectedPipeline.steps.find((st) => st.order === order);
+      if (!s) continue;
+      const { label, csc } = describeStepRef(s);
+      results.push({ order: s.order, kind: s.kind, sarStage: s.sarStage, inputLevel: s.inputLevel, label, csc });
+    }
+    return results;
+  }, [selectedPipeline, describeStepRef]);
 
   const handleRenamePipeline = useCallback(async (newName: string) => {
     if (!selectedPipelineId) return;
@@ -1298,6 +1327,7 @@ export default function ConsolePage() {
             mode={undefined}
             expectedProcessingStage={selectedPipeline ? inferPipelineProcessingStage(selectedPipeline.steps) : undefined}
             prevNodes={getPrevNodes(nodeDetailStep.order)}
+            nextNodes={getNextNodes(nodeDetailStep.order)}
             prevRunId={prevRunId}
             prevUploadId={upstreamUpload?.uploadId}
             prevUploadFilename={upstreamUpload?.filename}

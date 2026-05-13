@@ -31,7 +31,7 @@ import {
   Database,
   FileInput,
   Image as ImageIcon,
-  Sparkles,
+  // Sparkles, // Simulate 버튼 주석 처리에 따라 함께 비활성화
 } from 'lucide-react';
 
 export interface PipelineNodeData {
@@ -475,6 +475,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
               <FlaskConical className="w-3.5 h-3.5" />
               Run pipeline
             </button>
+            {/* Simulate 버튼은 시연용으로 일시 숨김 처리 (주석 처리만 유지)
             {onSimulate && (
               <button
                 onClick={(e) => { e.stopPropagation(); onSimulate(order); }}
@@ -489,6 +490,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
                 Simulate
               </button>
             )}
+            */}
           </div>
         </div>
       )}
