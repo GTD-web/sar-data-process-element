@@ -94,6 +94,10 @@ def main():
     ap.add_argument("--az-batch", type=int, default=64, help="Azimuth-column batch size for range compression FFTs.")
     ap.add_argument("--vmin-db", type=float, default=-60.0, help="QuickLook dB floor (darker = below this)")
     ap.add_argument("--vmax-db", type=float, default=-5.0, help="QuickLook dB ceiling")
+    ap.add_argument("--az-start", type=int, default=None, metavar="N",
+                    help="Process only pulses [N, az_stop). Demo speed: skip warmup pulses.")
+    ap.add_argument("--az-stop", type=int, default=None, metavar="N",
+                    help="Process only pulses [az_start, N). Default = full raw azimuth length.")
     ap.add_argument("--dry-run", action="store_true", help="Print parameters only, do not process")
     args = ap.parse_args()
 
@@ -112,6 +116,8 @@ def main():
         valid_lines=args.step,
         na_block_override=args.block,
         na_overlap_override=args.overlap,
+        az_start=args.az_start,
+        az_stop=args.az_stop,
     )
     _print_parameters(m, az_batch=args.az_batch, rng_chunk=args.rng_chunk)
 
@@ -131,6 +137,8 @@ def main():
         az_batch=args.az_batch,
         vmin_db=args.vmin_db,
         vmax_db=args.vmax_db,
+        az_start=args.az_start,
+        az_stop=args.az_stop,
     )
     result = proc.run()
     print("\nOutputs:")

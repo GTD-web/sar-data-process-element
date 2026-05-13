@@ -1,4 +1,4 @@
-"""Unit tests for CSU-04.05 speckle filter sub-step.
+"""Unit tests for CSU-04.06 Speckle Filtering.
 
 Filters are exercised through `apply_filter` so the dispatcher and the
 underlying numba/numpy path are both covered. JIT warm-up is paid once at
@@ -15,7 +15,7 @@ PROCESSOR_DIR = Path(__file__).resolve().parents[1]
 if str(PROCESSOR_DIR) not in sys.path:
     sys.path.insert(0, str(PROCESSOR_DIR))
 
-import csu_04_05_speckle_filter as sf
+import csu_04_06_speckle_filter as sf
 
 
 class FilterInvariantTests(unittest.TestCase):

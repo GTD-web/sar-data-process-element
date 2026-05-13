@@ -14,7 +14,7 @@ if str(PROCESSOR_DIR) not in sys.path:
 from raw import sar_rda_processorV4 as original
 import csu_04_04_slc_formation as split_slc
 import csu_04_05_multilook as ml
-import csu_04_05_speckle_filter as sf
+import csu_04_06_speckle_filter as sf
 
 try:
     import rasterio

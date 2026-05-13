@@ -20,8 +20,8 @@ csc-04-level-1-processor/
 ├── csu_04_01_range_compression.py     # CSU-04.01 Range Compression
 ├── csu_04_02_rda_azimuth.py           # CSU-04.02 RDA Azimuth Compression
 ├── csu_04_04_slc_formation.py         # CSU-04.04 SLC Formation (V4 분할본)
-├── csu_04_05_multilook.py             # CSU-04.05 Multi-look Processor
-├── csu_04_05_speckle_filter.py        # CSU-04.05 sub-step: speckle 필터
+├── csu_04_05_multilook.py             # CSU-04.05 Multi-look Processing
+├── csu_04_06_speckle_filter.py        # CSU-04.06 Speckle Filtering
 │
 ├── shared/                            # 공유 인프라
 │   ├── metadata.py                    #   Meta dataclass + load_metadata()
@@ -35,7 +35,7 @@ csc-04-level-1-processor/
 │   ├── test_csu04.py                  #   CSU-04.01/02/04 단위
 │   ├── test_csu04_h5.py               #   실제 H5 메타/_process_block 일치 + 소형 SLC→ML→필터 smoke
 │   ├── test_csu04_05_multilook.py     #   CSU-04.05 단위
-│   └── test_csu04_05_speckle.py       #   speckle 필터 단위
+│   └── test_csu04_06_speckle.py       #   CSU-04.06 단위
 │
 ├── verifications/                     # V4 ↔ 외부 GUI 처리기 비교 도구 + 보고서
 │   └── README.md                      #   비교 모드 정의, 정량 지표, 재현 방법
@@ -60,14 +60,13 @@ ICD 의 CSU 목록 (`interfaces/csc-4/README.md` §CSU 개요) 과 본 패키지
 | ICD CSU | 명칭 | 본 패키지 |
 | --- | --- | --- |
 | **CSU-04.01** | Range Compression | `csu_04_01_range_compression.py` |
-| **CSU-04.02** | RDA Azimuth Compression | `csu_04_02_rda_azimuth.py` |
-| CSU-04.03 | BPA Azimuth Compression | (TBD — Spotlight 전용) |
-| **CSU-04.04** | SLC Formation | `csu_04_04_slc_formation.py` (V4 분할), `raw/sar_rda_processorV7_numba.py` (V7 가속) |
-| **CSU-04.05** | Multi-look Processor | `csu_04_05_multilook.py` |
-| (sub-step) | Speckle Filtering | `csu_04_05_speckle_filter.py` |
-| CSU-04.06 | GRD Converter | (TBD) |
-| CSU-04.07 | GEC Processor | (TBD) |
-| CSU-04.08 | MAP Projector | (TBD) |
+| **CSU-04.02** | Azimuth Compression (RDA) | `csu_04_02_rda_azimuth.py` |
+| CSU-04.03 | Azimuth Compression (BPA) | (TBD — Spotlight 전용) |
+| **CSU-04.04** | Single Look Complex (SLC) Product | `csu_04_04_slc_formation.py` (V4 분할), `raw/sar_rda_processorV7_numba.py` (V7 가속) |
+| **CSU-04.05** | Multi-look Processing | `csu_04_05_multilook.py` |
+| **CSU-04.06** | Speckle Filtering | `csu_04_06_speckle_filter.py` |
+| CSU-04.07 | Ground-range Projection | (TBD) |
+| CSU-04.08 | Ground Range Detected (GRD) Product | (TBD) |
 | CSU-04.09 | DEM Integration | (TBD) |
 | CSU-04.10 | Geometric Terrain Correction | (TBD) |
 | CSU-04.11 | Map Projection | (TBD) |
@@ -96,10 +95,10 @@ python csu_04_05_multilook.py \
 # → mld/MLD_4R10A.tif + MLD_4R10A.xml + MLD_4R10A_ql.png
 ```
 
-### 3. Speckle 필터 (sub-step)
+### 3. Speckle 필터 (CSU-04.06)
 
 ```bash
-python csu_04_05_speckle_filter.py \
+python csu_04_06_speckle_filter.py \
   --input ./mld/MLD_4R10A.tif --filter lee --output ./flt
 # → flt/<input-name>_lee.tif
 ```

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-csu_04_05_speckle_filter.py
+csu_04_06_speckle_filter.py
 ===========================
-CSU-04.05 (sub-step) speckle filter for SAR GeoTIFF images produced by the
-CSC-04 RDA processor (V4/V7) or the multi-look stage.
+CSU-04.06 Speckle Filtering for SAR GeoTIFF images produced by the
+CSC-04 RDA processor (V4/V7) or the CSU-04.05 multi-look stage.
 
 Supported input formats
 -----------------------
@@ -24,13 +24,13 @@ Available filters
 
 Usage
 -----
-  python csu_04_05_speckle_filter.py --input image.tif --filter lee
-  python csu_04_05_speckle_filter.py --input image.tif --xml meta.xml \\
+  python csu_04_06_speckle_filter.py --input image.tif --filter lee
+  python csu_04_06_speckle_filter.py --input image.tif --xml meta.xml \\
          --filter enhanced_lee --win-x 7 --win-y 7 --looks 4 \\
          --output filtered/ --output-amplitude
 
   # Dry-run: print parameters only
-  python csu_04_05_speckle_filter.py --input image.tif --filter gamma_map --dry-run
+  python csu_04_06_speckle_filter.py --input image.tif --filter gamma_map --dry-run
 
 Notes
 -----
@@ -543,7 +543,7 @@ def update_xml(in_xml_path: Optional[str], out_xml_path: str,
 
     sf = _sub(root, "SpeckleFilter")
     _sub(sf, "AppliedDate",   datetime.now(UTC).isoformat().replace('+00:00', 'Z'))
-    _sub(sf, "Script",        "csu_04_05_speckle_filter.py")
+    _sub(sf, "Script",        "csu_04_06_speckle_filter.py")
     _sub(sf, "InputFile",     input_tiff)
     _sub(sf, "OutputFile",    output_tiff)
     _sub(sf, "OutputDomain",  "amplitude" if output_amplitude else "intensity")
@@ -616,7 +616,7 @@ def main() -> int:
         description="SAR Speckle Filter CLI",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         epilog=("Filters: boxcar | lee | enhanced_lee | gamma_map | median\n"
-                "Example: python csu_04_05_speckle_filter.py "
+                "Example: python csu_04_06_speckle_filter.py "
                 "--input slc.tif --xml meta.xml --filter lee --looks 4"))
 
     # I/O

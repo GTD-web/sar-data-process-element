@@ -70,6 +70,10 @@ class Meta:
     na_total: int
     nr: int
     nr_rep: int
+    # Azimuth subset offset into raw H5 (defaults 0). Lets a caller process only
+    # a slice of pulses [az_offset : az_offset + na_total) for demo speed.
+    # When 0 and na_total == raw shape, behavior is identical to no slicing.
+    az_offset: int = 0
     # GPS (interpolated to PRF rate, length na_total)
     v_mag: np.ndarray
     lat: np.ndarray
@@ -117,6 +121,8 @@ def load_metadata(
     valid_lines: Optional[int] = None,
     na_block_override: Optional[int] = None,
     na_overlap_override: Optional[int] = None,
+    az_start: Optional[int] = None,
+    az_stop: Optional[int] = None,
 ) -> Meta:
     """
     Read HDF5 attributes, interpolate GPS, compute all processing parameters.
@@ -127,6 +133,11 @@ def load_metadata(
     valid_lines        : override step (valid output lines per block). Default 1000.
     na_block_override  : set na_block directly; step = na_block - na_overlap.
     na_overlap_override: set na_overlap directly (default = na_syn at far range).
+    az_start, az_stop  : optional [start, stop) pulse index slice into raw H5.
+        Both default None meaning process the whole array. When set, na_total
+        becomes (az_stop - az_start) and m.az_offset = az_start so block reads
+        in csu_04_04_slc_formation can offset accordingly. Mirrors
+        Lumir_SAR_Processor_GUI's az0/az1 trick for demo-speed processing.
 
     Block layout priority
     ---------------------
@@ -167,7 +178,16 @@ def load_metadata(
         m.beamwidth = float(a["Beamwidth"])
         m.squint_angle = float(a["Squint Angle"])
         raw_ds = grp["Raw data"]
-        m.na_total = int(raw_ds.shape[0])
+        raw_total = int(raw_ds.shape[0])
+        # Apply az_start/az_stop slice if provided. Defaults preserve full range.
+        az_start_v = 0 if az_start is None else int(az_start)
+        az_stop_v = raw_total if az_stop is None else int(az_stop)
+        if not (0 <= az_start_v < az_stop_v <= raw_total):
+            raise ValueError(
+                f"invalid azimuth range [{az_start_v}, {az_stop_v}); raw H5 has {raw_total} pulses"
+            )
+        m.az_offset = az_start_v
+        m.na_total = az_stop_v - az_start_v
         m.nr = int(raw_ds.shape[1])
         rep_raw = grp["Replica"][:]
         m.nr_rep = int(rep_raw.shape[0])
@@ -185,10 +205,11 @@ def load_metadata(
         m.scene_start_utc = _read_utc_attr(grp, "Scene Sensing Start UTC")
         m.scene_stop_utc = _read_utc_attr(grp, "Scene Sensing Stop UTC")
 
-    # GPS → PRF-rate interpolation
+    # GPS → PRF-rate interpolation. GPS samples cover the full raw azimuth range,
+    # so anchor gps_idx to raw_total and evaluate at the requested subset only.
     n_gps = gps.shape[0]
-    gps_idx = np.linspace(0, m.na_total - 1, n_gps)
-    pidx = np.arange(m.na_total, dtype=np.float64)
+    gps_idx = np.linspace(0, raw_total - 1, n_gps)
+    pidx = np.arange(m.az_offset, m.az_offset + m.na_total, dtype=np.float64)
 
     def _interp(col):
         return interp1d(gps_idx, col, kind="cubic", fill_value="extrapolate")(pidx)
