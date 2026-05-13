@@ -279,6 +279,8 @@ export default function ConsolePage() {
   const [logPanelOpen, setLogPanelOpen] = useState(false);
   const [focusEntryTrigger, setFocusEntryTrigger] = useState(0);
   const [nodeDetailStep, setNodeDetailStep] = useState<PipelineStepDefinition | null>(null);
+  // SAR 시연: 노드 order → runId 매핑. 다음 노드가 inputRunId 로 직전 결과를 받는다.
+  const [sarRunIdsByOrder, setSarRunIdsByOrder] = useState<Record<number, string>>({});
   const [archivePipelineTarget, setArchivePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [deletePipelineTarget, setDeletePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [undeployTarget, setUndeployTarget] = useState<PipelineDefinition | null>(null);
@@ -350,6 +352,7 @@ export default function ConsolePage() {
           order: s.order,
           kind: s.kind,
           sarStage: s.sarStage,
+          sarSubStage: s.sarSubStage,
           inputLevel: s.inputLevel,
           // 입력 파일 sceneId/path 는 정의 단계의 관심사가 아니므로 Pipelines 탭 그래프에는 넘기지 않는다.
           // (Manual Pipelines 탭의 JobsPage 가 entry input 표시/편집을 담당.)
@@ -386,12 +389,17 @@ export default function ConsolePage() {
   const toStepUpdate = useCallback((step: PipelineStepDefinition): Omit<PipelineStepDefinition, 'order'> => ({
     kind: step.kind,
     sarStage: step.sarStage,
+    sarSubStage: step.sarSubStage,
     inputLevel: step.inputLevel,
     parentOrder: step.parentOrder,
     enabledTasks: step.enabledTasks,
     jobInitConfig: step.jobInitConfig,
     fileInputConfig: step.fileInputConfig,
+    catalogConfig: step.catalogConfig,
     disabled: step.disabled,
+    code: step.code,
+    codeLanguage: step.codeLanguage,
+    codeFilename: step.codeFilename,
   }), []);
 
   const handleToggleNodeActive = useCallback((order: number) => {
@@ -547,11 +555,15 @@ export default function ConsolePage() {
 
   const handleAddNode = useCallback(
     (afterOrder: number, beforeOrder?: number) => {
-      setConsoleMode({ type: 'addStep', afterOrder, beforeOrder });
-      
+      // 시작 노드(TRIGGER/FILE_INPUT) 직후에 추가하는 경우엔 JOB_INIT 만 허용.
+      // (작업 흐름상 시작 노드 다음은 반드시 작업 초기화여야 backend 가 잡을 큐에 넣을 수 있음.)
+      const afterStep = selectedPipeline?.steps.find((s) => s.order === afterOrder);
+      const restrictToJobInit = afterStep?.kind === 'TRIGGER' || afterStep?.kind === 'FILE_INPUT';
+      setConsoleMode({ type: 'addStep', afterOrder, beforeOrder, restrictToJobInit });
+
       setRightCollapsed(false);
     },
-    [],
+    [selectedPipeline],
   );
 
   const handleConfirmAddStep = useCallback(
@@ -1017,17 +1029,31 @@ export default function ConsolePage() {
 
 
       {/* 노드 상세 모달 — 더블클릭 또는 툴바 Play */}
-      {nodeDetailStep && (
-        <NodeDetailModal
-          step={nodeDetailStep}
-          onClose={() => setNodeDetailStep(null)}
-          onSaveNode={canvasEditable ? handleSaveNode : undefined}
-          availableProfiles={profiles}
-          satelliteId={undefined}
-          mode={undefined}
-          prevNodes={getPrevNodes(nodeDetailStep.order)}
-        />
-      )}
+      {nodeDetailStep && (() => {
+        // 직전 SAR 노드의 runId 가 있으면 모달에 prevRunId 로 전달 (체이닝).
+        // edge 의 source order 중 sarRunIdsByOrder 에 등록된 첫 번째를 사용.
+        const sourceOrders = selectedPipeline?.edges
+          .filter((e) => e.target === nodeDetailStep.order)
+          .map((e) => e.source) ?? [];
+        const prevRunId = sourceOrders
+          .map((o) => sarRunIdsByOrder[o])
+          .find((id): id is string => Boolean(id));
+        return (
+          <NodeDetailModal
+            step={nodeDetailStep}
+            onClose={() => setNodeDetailStep(null)}
+            onSaveNode={canvasEditable ? handleSaveNode : undefined}
+            availableProfiles={profiles}
+            satelliteId={undefined}
+            mode={undefined}
+            prevNodes={getPrevNodes(nodeDetailStep.order)}
+            prevRunId={prevRunId}
+            onSarRunComplete={(order, runId) => {
+              setSarRunIdsByOrder((prev) => ({ ...prev, [order]: runId }));
+            }}
+          />
+        );
+      })()}
 
       {archivePipelineTarget && (
         <PipelineArchiveConfirmDialog

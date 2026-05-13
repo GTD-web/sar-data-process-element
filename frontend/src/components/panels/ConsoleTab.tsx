@@ -12,7 +12,7 @@ import { formatKST } from '@/lib/utils';
 export type ConsoleMode =
   | { type: 'idle' }
   | { type: 'node'; step: PipelineStepDefinition }
-  | { type: 'addStep'; afterOrder: number; beforeOrder?: number; asSeparateStart?: boolean }
+  | { type: 'addStep'; afterOrder: number; beforeOrder?: number; asSeparateStart?: boolean; restrictToJobInit?: boolean }
   | { type: 'job'; job: JobDetail }
   | { type: 'trigger'; receivedAt: string; rawDataPath: string }
   | { type: 'jobInit'; processingProfile?: ProcessingProfileSummary; jobCreatedAt?: string; priority?: number; triggerSource?: TriggerSource }
@@ -62,6 +62,7 @@ export default function ConsoleTab({
         insertAfterOrder={mode.afterOrder}
         insertBeforeOrder={mode.beforeOrder}
         asSeparateStart={mode.asSeparateStart}
+        restrictToJobInit={mode.restrictToJobInit}
         onSelect={onConfirmAddStep}
       />
     );

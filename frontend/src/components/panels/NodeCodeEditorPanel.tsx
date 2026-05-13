@@ -75,16 +75,81 @@ export default function NodeCodeEditorPanel({ step, onSave, onCodeChange }: Node
   const [language, setLanguage] = useState<string>(initialLanguage);
   const [filename, setFilename] = useState<string>(initialFilename);
   const [dirty, setDirty] = useState(false);
+  /** 진짜 natives 소스를 가져오는 중 표시. step.code 가 있으면 fetch 안 함. */
+  const [sourceLoading, setSourceLoading] = useState(false);
+  /** /api/sar/source 가 응답한 실제 파일 출처 표시 (진짜 코드인지 mock fallback 인지). */
+  const [sourceOrigin, setSourceOrigin] = useState<'real' | 'mock' | 'user'>(
+    step.code ? 'user' : 'mock',
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const fb = getDefaultCode(step.sarStage);
-    const next = step.code ?? fb?.code ?? '';
-    setCode(next);
-    setLanguage(step.codeLanguage ?? fb?.language ?? 'python');
-    setFilename(step.codeFilename ?? fb?.filename ?? '');
-    setDirty(false);
-    onCodeChange?.(next);
+
+    // 사용자가 이미 편집한 코드(step.code) 가 있으면 그것 우선.
+    if (step.code) {
+      setCode(step.code);
+      setLanguage(step.codeLanguage ?? fb?.language ?? 'python');
+      setFilename(step.codeFilename ?? fb?.filename ?? '');
+      setDirty(false);
+      setSourceOrigin('user');
+      onCodeChange?.(step.code);
+      return;
+    }
+
+    // 진짜 natives 소스 fetch 시도.
+    let cancelled = false;
+    const stage = step.sarStage;
+    if (!stage) {
+      setCode('');
+      setLanguage('python');
+      setFilename('');
+      setDirty(false);
+      setSourceOrigin('mock');
+      onCodeChange?.('');
+      return;
+    }
+
+    setSourceLoading(true);
+    fetch(`/api/sar/source/${stage}`)
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.ok) {
+          const text = await res.text();
+          const fname = res.headers.get('x-filename') ?? fb?.filename ?? '';
+          setCode(text);
+          setLanguage('python');
+          setFilename(fname);
+          setSourceOrigin('real');
+          onCodeChange?.(text);
+        } else {
+          // 매핑 없는 stage 는 mock fallback
+          const fbCode = fb?.code ?? '';
+          setCode(fbCode);
+          setLanguage(fb?.language ?? 'python');
+          setFilename(fb?.filename ?? '');
+          setSourceOrigin('mock');
+          onCodeChange?.(fbCode);
+        }
+        setDirty(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        const fbCode = fb?.code ?? '';
+        setCode(fbCode);
+        setLanguage(fb?.language ?? 'python');
+        setFilename(fb?.filename ?? '');
+        setDirty(false);
+        setSourceOrigin('mock');
+        onCodeChange?.(fbCode);
+      })
+      .finally(() => {
+        if (!cancelled) setSourceLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [step.order, step.sarStage, step.code, step.codeLanguage, step.codeFilename, onCodeChange]);
 
   const handleUploadClick = useCallback(() => {
@@ -122,6 +187,12 @@ export default function NodeCodeEditorPanel({ step, onSave, onCodeChange }: Node
   }, [onCodeChange]);
 
   const handleSave = useCallback(() => {
+    // 진짜 natives 소스를 편집한 거면 confirm 으로 한 번 더 묻는다.
+    // 실제 디스크 파일은 변경하지 않고 in-memory step.code 에만 보관 (시연 안전장치).
+    const ok = window.confirm(
+      'Are you sure you want to apply these changes? This will modify the production code that runs in the actual environment.',
+    );
+    if (!ok) return;
     onSave({
       ...step,
       code,
@@ -129,7 +200,8 @@ export default function NodeCodeEditorPanel({ step, onSave, onCodeChange }: Node
       codeFilename: filename || undefined,
     });
     setDirty(false);
-    toast.success('Code saved.');
+    setSourceOrigin('user');
+    toast.success('These changes will take effect in the production environment.');
   }, [onSave, step, code, language, filename]);
 
   const handleClear = useCallback(() => {
@@ -180,6 +252,36 @@ export default function NodeCodeEditorPanel({ step, onSave, onCodeChange }: Node
             <span className="font-mono text-foreground/80">{filename}</span>
           ) : (
             <span className="italic">No file</span>
+          )}
+          {sourceLoading && (
+            <span className="ml-1 italic text-muted-foreground/60">loading…</span>
+          )}
+          {!sourceLoading && sourceOrigin === 'real' && (
+            <span
+              className="ml-1 rounded bg-success/15 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-success"
+              title="Live source from natives/csc-04/ inside the container"
+              data-testid="code-source-badge"
+            >
+              Live source
+            </span>
+          )}
+          {!sourceLoading && sourceOrigin === 'mock' && (
+            <span
+              className="ml-1 rounded bg-amber-500/15 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-600"
+              title="No real source mapped for this stage yet — showing placeholder"
+              data-testid="code-source-badge"
+            >
+              Mock
+            </span>
+          )}
+          {!sourceLoading && sourceOrigin === 'user' && (
+            <span
+              className="ml-1 rounded bg-accent/15 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-accent"
+              title="In-memory user edits — disk file is not modified"
+              data-testid="code-source-badge"
+            >
+              User edit
+            </span>
           )}
         </div>
 

@@ -1,9 +1,16 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { X, Play, Loader, CheckCircle, ChevronRight, Antenna, SlidersHorizontal, HardDrive, Cpu, Layers, Compass, Map as MapIcon, Crosshair, Package, Database, FileInput as FileInputIcon, Image as ImageIcon } from 'lucide-react';
+import { X, Play, Loader, CheckCircle, ChevronRight, Antenna, SlidersHorizontal, HardDrive, Cpu, Layers, Compass, Map as MapIcon, Crosshair, Package, Database, FileInput as FileInputIcon, Image as ImageIcon, Upload, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { PipelineStepDefinition, SarStage, TargetCsc, ProcessingProfile } from '@/types/pipeline';
+import {
+  resolveSarStage,
+  uploadH5,
+  executeStageStream,
+  type ExecuteResponse,
+  type UploadProgress,
+} from '@/services/sar-execution.client';
 import {
   SAR_STAGE_LABELS, SAR_STAGE_TASKS, SAR_STAGE_DESCRIPTIONS, NODE_KIND_INFO, SAR_STAGE_TO_CSC,
   CSC_VT_SECONDS, MAX_RETRY_COUNT, RETRY_INTERVAL_LABELS, PRODUCT_LEVEL_LABELS, QUEUE_NAME,
@@ -269,9 +276,13 @@ interface NodeDetailModalProps {
   mode?: string;
   /** 이전 노드 정보 목록 (edges 기반으로 ConsolePage에서 계산) */
   prevNodes?: PrevNodeInfo[];
+  /** 직전 SAR 실행의 runId (체이닝용). 없으면 이 노드는 시작 노드 (업로드 필요). */
+  prevRunId?: string;
+  /** SAR stage 실제 실행 완료 시 부모(ConsolePage) 가 runId 보관하도록 호출. */
+  onSarRunComplete?: (stepOrder: number, runId: string) => void;
 }
 
-export default function NodeDetailModal({ step, onClose, onSaveNode, availableProfiles, satelliteId, mode, prevNodes }: NodeDetailModalProps) {
+export default function NodeDetailModal({ step, onClose, onSaveNode, availableProfiles, satelliteId, mode, prevNodes, prevRunId, onSarRunComplete }: NodeDetailModalProps) {
   const [execState, setExecState] = useState<ExecState>('idle');
   const [outputData, setOutputData] = useState<MockRecord | null>(null);
   const [activeTab, setActiveTab] = useState<ModalTab>('info');
@@ -279,6 +290,88 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
   const [elapsedMs, setElapsedMs] = useState(0);
   const execTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── 실제 SAR 실행 상태 (시연용) ─────────────────────────────────────────────
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadId, setUploadId] = useState<string | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  /** 드래그 중 시각 피드백 */
+  const [isDragging, setIsDragging] = useState(false);
+  // 실행 결과는 SSE 'done' 이벤트로 채워진다 (stdout/stderr 는 stream 으로 logLines 에 쌓임).
+  const [runResult, setRunResult] = useState<Pick<ExecuteResponse, 'runId' | 'stage' | 'exitCode' | 'args' | 'primary' | 'meta' | 'files'> | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  /**
+   * 이 SAR 노드의 백엔드 stage id + 실행 params (sub-stage 반영).
+   * 매핑 안 되면 null → mock fallback.
+   */
+  const resolvedStage = useMemo(() => {
+    if (step.kind !== 'SAR' || !step.sarStage) return null;
+    return resolveSarStage(step.sarStage, step.sarSubStage);
+  }, [step.kind, step.sarStage, step.sarSubStage]);
+  const sarStageId = resolvedStage?.id ?? null;
+
+  /** 시작 SAR 노드 (직전 run 없음) → 업로드 필요. */
+  const needsUpload = sarStageId !== null && !prevRunId;
+  /**
+   * Execute 활성화 조건. 업로드가 끝나야(uploadStatus === 'done') Execute 활성.
+   * 체이닝(prevRunId)인 경우엔 입력이 이미 확보됐으니 항상 활성.
+   * → 업로드 중에 Execute 를 눌러서 헷갈리는 상황 방지.
+   */
+  const canRunReal = sarStageId !== null && (
+    prevRunId !== undefined ||
+    (uploadStatus === 'done' && uploadId !== null)
+  );
+
+  /** 파일 선택 또는 드롭 → 즉시 업로드 시작 (별도 Upload 버튼 단계 없음). */
+  const handleFilePick = useCallback(async (file: File) => {
+    setUploadedFile(file);
+    setUploadId(null);
+    setUploadProgress({ loaded: 0, total: file.size, bytesPerSec: 0 });
+    setUploadError(null);
+    setRunResult(null);
+    setRunError(null);
+    setUploadStatus('uploading');
+    try {
+      const res = await uploadH5(file, (p) => setUploadProgress(p));
+      setUploadId(res.uploadId);
+      setUploadStatus('done');
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : String(err));
+      setUploadStatus('error');
+    }
+  }, []);
+
+  /** 드래그&드롭 핸들러. .h5 또는 application/x-hdf 만 받음. */
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (uploadStatus === 'uploading') return;
+    setIsDragging(true);
+  }, [uploadStatus]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (uploadStatus === 'uploading') return;
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.h5') && file.type !== 'application/x-hdf') {
+      setUploadError(`Unsupported file type: ${file.name} (only .h5 allowed)`);
+      return;
+    }
+    void handleFilePick(file);
+  }, [uploadStatus, handleFilePick]);
 
   // ── SAR stage sub-function 사양 (readonly) ──
   // TASKS 활성/비활성 상태는 CODE 섹션의 코드 본문에서 자동 도출된다.
@@ -349,11 +442,60 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
     setOutputData(null);
     setLogLines([]);
     setElapsedMs(0);
+    setRunResult(null);
+    setRunError(null);
 
     const start = Date.now();
     elapsedTimerRef.current = setInterval(() => {
       setElapsedMs(Date.now() - start);
     }, 50);
+
+    // ── SAR 실제 실행 분기: 매핑 가능한 stage 이고 입력(uploadId 또는 prevRunId) 확보됐을 때만.
+    // SSE 스트림으로 라인 단위 stdout/stderr 를 받아 실시간으로 터미널에 흘려보낸다.
+    if (sarStageId && (uploadId || prevRunId)) {
+      try {
+        for await (const ev of executeStageStream(
+          sarStageId,
+          { uploadId: uploadId ?? undefined, inputRunId: prevRunId },
+          resolvedStage?.params,
+        )) {
+          if (ev.type === 'log') {
+            const stamp = new Date().toLocaleTimeString('en-GB');
+            // 서버가 분류한 level 우선 (INFO/WARNING/ERROR), 없으면 stream 기준 fallback.
+            const lvl = ev.level ?? (ev.stream === 'stderr' ? 'error' : 'info');
+            const newLine: RenderedLogLine = {
+              level: lvl,
+              text: ev.line,
+              timestamp: stamp,
+              delayMs: 0,
+            };
+            setLogLines((prev) => [...prev, newLine]);
+          } else if (ev.type === 'done') {
+            setRunResult(ev);
+            setExecState('done');
+            if (elapsedTimerRef.current) {
+              clearInterval(elapsedTimerRef.current);
+              elapsedTimerRef.current = null;
+            }
+            if (ev.exitCode === 0) {
+              onSarRunComplete?.(step.order, ev.runId);
+            } else {
+              setRunError(`Python exit code ${ev.exitCode}`);
+            }
+          } else if (ev.type === 'error') {
+            setRunError(ev.message);
+          }
+        }
+      } catch (err) {
+        setRunError(err instanceof Error ? err.message : String(err));
+        setExecState('done');
+        if (elapsedTimerRef.current) {
+          clearInterval(elapsedTimerRef.current);
+          elapsedTimerRef.current = null;
+        }
+      }
+      return;
+    }
 
     // SAR 노드면 stage별 mock 로그를 시간차를 두고 흘려보낸다.
     const script = step.kind === 'SAR' ? getStageLogScript(step.sarStage) : [];
@@ -393,7 +535,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
       }
     }, cumulative + 200);
     execTimeoutsRef.current.push(finishId);
-  }, [step, cancelStreaming]);
+  }, [step, cancelStreaming, sarStageId, resolvedStage, uploadId, prevRunId, onSarRunComplete]);
 
   // 모달 unmount / step 교체 시 진행 중 스트림 정리
   useEffect(() => () => cancelStreaming(), [cancelStreaming]);
@@ -403,6 +545,13 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
     setOutputData(null);
     setLogLines([]);
     setElapsedMs(0);
+    setUploadedFile(null);
+    setUploadId(null);
+    setUploadStatus('idle');
+    setUploadProgress(null);
+    setUploadError(null);
+    setRunResult(null);
+    setRunError(null);
   }, [step.order, step.kind, step.sarStage, cancelStreaming]);
 
   // ESC 키로 닫기
@@ -478,7 +627,144 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
             <span className="text-[10px] font-semibold tracking-widest text-muted-foreground">INPUT</span>
           </div>
           <div className="flex-1 overflow-y-auto min-h-0">
-            {prevNodes && prevNodes.length > 0 ? (
+            {/* SAR 시연: 시작 노드면 H5 업로드 UI 우선 표시 */}
+            {needsUpload ? (
+              <div
+                className="p-3 space-y-2.5"
+                data-testid="sar-upload-panel"
+                onDragOver={handleDragOver}
+                onDragEnter={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                {/* hidden file input — 항상 마운트, Choose/Change/Replace 버튼 모두 같은 ref 사용 */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".h5,application/x-hdf"
+                  className="hidden"
+                  data-testid="sar-h5-input"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void handleFilePick(f);
+                  }}
+                />
+
+                {uploadStatus !== 'done' ? (
+                  // ── 미업로드 / 업로드 중: dashed 박스 (드래그 시 강조) ─────
+                  <div
+                    className={cn(
+                      'rounded-md border border-dashed px-3 py-3 transition-colors',
+                      isDragging
+                        ? 'border-accent bg-accent/10'
+                        : 'border-accent/40 bg-accent/[0.03]',
+                    )}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-md bg-accent/10 flex items-center justify-center shrink-0">
+                        <Upload className="w-4 h-4 text-accent" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] font-semibold text-foreground">H5 raw data</div>
+                        {uploadedFile ? (
+                          <div className="text-[10px] text-muted-foreground font-mono truncate" data-testid="sar-picked-name" title={uploadedFile.name}>
+                            {uploadedFile.name} · {(uploadedFile.size / 1e6).toFixed(0)} MB
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-muted-foreground">
+                            {isDragging ? 'Drop the file here' : 'Drag & drop a file, or click to choose. Upload starts immediately on selection.'}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadStatus === 'uploading'}
+                        className="shrink-0 text-[10px] font-medium text-accent hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+                        data-testid="sar-pick-file"
+                      >
+                        {uploadedFile ? 'Change' : 'Choose file'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  // ── 업로드 완료 상태: 컴팩트 success 카드 (점선 박스 대체) ──
+                  <div
+                    className={cn(
+                      'rounded-md border bg-success/5 px-3 py-2.5 transition-colors',
+                      isDragging ? 'border-accent bg-accent/10' : 'border-success/40',
+                    )}
+                    data-testid="sar-upload-done"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <CheckCircle className="w-4 h-4 text-success shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className="text-[11px] font-semibold text-foreground truncate"
+                          data-testid="sar-picked-name"
+                          title={uploadedFile?.name}
+                        >
+                          {uploadedFile?.name ?? 'uploaded.h5'}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground font-mono">
+                          {((uploadedFile?.size ?? 0) / 1e6).toFixed(0)} MB · uploadId{' '}
+                          <span>{uploadId?.slice(0, 8)}</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="shrink-0 text-[10px] font-medium text-muted-foreground hover:text-foreground hover:underline"
+                        data-testid="sar-pick-file"
+                      >
+                        Replace
+                      </button>
+                    </div>
+                    <div className="mt-1.5 pl-[26px] text-[10px] text-muted-foreground/80">
+                      Click <span className="font-semibold text-foreground">Execute step</span> on the right to start processing.
+                    </div>
+                  </div>
+                )}
+
+                {/* 진행률 박스 — 파일 선택 즉시 업로드가 시작되므로 별도 Upload 버튼은 없음 */}
+                {uploadStatus === 'uploading' && uploadProgress && (() => {
+                  const pct = uploadProgress.total > 0
+                    ? Math.min(100, Math.round((uploadProgress.loaded / uploadProgress.total) * 100))
+                    : 0;
+                  const loadedMb = (uploadProgress.loaded / 1e6).toFixed(0);
+                  const totalMb = (uploadProgress.total / 1e6).toFixed(0);
+                  const speedMbps = (uploadProgress.bytesPerSec / 1e6).toFixed(1);
+                  const remainingSec = uploadProgress.bytesPerSec > 0
+                    ? Math.ceil((uploadProgress.total - uploadProgress.loaded) / uploadProgress.bytesPerSec)
+                    : 0;
+                  const eta = remainingSec >= 60
+                    ? `${Math.floor(remainingSec / 60)}m ${remainingSec % 60}s`
+                    : `${remainingSec}s`;
+                  return (
+                    <div className="rounded-md border border-accent/30 bg-accent/[0.06] px-2.5 py-2 space-y-1.5" data-testid="sar-uploading">
+                      <div className="flex items-center justify-between text-[10px] text-accent font-mono" data-testid="sar-progress-text">
+                        <span>{pct}% · {loadedMb}/{totalMb} MB</span>
+                        <span>{speedMbps} MB/s · ETA {eta}</span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-accent/15 overflow-hidden">
+                        <div
+                          className="h-full bg-accent transition-all duration-200 ease-linear"
+                          style={{ width: `${pct}%` }}
+                          data-testid="sar-progress-bar"
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {uploadError && (
+                  <div className="rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-[10px] text-destructive flex items-start gap-1.5" data-testid="sar-upload-error">
+                    <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
+                    <div className="min-w-0 break-words">{uploadError}</div>
+                  </div>
+                )}
+              </div>
+            ) : prevNodes && prevNodes.length > 0 ? (
               <div className="p-3 space-y-2">
                 {prevNodes.map((prev) => {
                   const PrevIcon = getNodeIcon(prev.kind, prev.sarStage);
@@ -498,6 +784,12 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                     </div>
                   );
                 })}
+                {sarStageId && prevRunId && (
+                  <div className="rounded-md border border-success/30 bg-success/10 px-2.5 py-2 text-[10px] text-success flex items-start gap-1.5" data-testid="sar-prev-run">
+                    <CheckCircle className="w-3 h-3 mt-0.5 shrink-0" />
+                    <div className="min-w-0 break-all">Chained from prev run <span className="font-mono">{prevRunId.slice(0, 8)}</span></div>
+                  </div>
+                )}
                 <div className="pt-2 text-[10px] text-muted-foreground/50 leading-relaxed">
                   The output of the previous node is passed as input to this node
                 </div>
@@ -829,37 +1121,108 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
         <div className="w-[30%] flex flex-col border-l border-border bg-background">
           <div className="shrink-0 h-10 flex items-center justify-between gap-2 pl-4 pr-2 border-b border-border">
             <span className="text-[10px] font-semibold tracking-widest text-muted-foreground">OUTPUT</span>
-            {step.kind === 'SAR' && (
-              <button
-                type="button"
-                disabled={isRunning}
-                onClick={handleExecute}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[10px] font-semibold transition-colors',
-                  'bg-emerald-500 text-white hover:bg-emerald-400 active:bg-emerald-600',
-                  'disabled:opacity-60 disabled:cursor-not-allowed',
-                )}
-              >
-                {isRunning
-                  ? <><Loader className="w-3 h-3 animate-spin" /> Running…</>
-                  : isDone
-                    ? <><CheckCircle className="w-3 h-3" /> Re-run</>
-                    : <><Play className="w-3 h-3" fill="currentColor" strokeWidth={0} /> Execute step</>
-                }
-              </button>
-            )}
+            {step.kind === 'SAR' && (() => {
+              // SAR 실제 실행 가능 여부: 매핑 stage 면 입력(uploadId/prevRunId) 필요.
+              // mock fallback stage 면 항상 가능.
+              const realRunDisabled = sarStageId !== null && !canRunReal;
+              const tooltip = realRunDisabled
+                ? (needsUpload
+                    ? (uploadStatus === 'uploading'
+                        ? 'Uploading… enabled when upload completes'
+                        : (uploadedFile ? 'Wait for upload to finish' : 'Choose an H5 file first'))
+                    : 'No input available')
+                : undefined;
+              return (
+                <button
+                  type="button"
+                  disabled={isRunning || realRunDisabled}
+                  onClick={handleExecute}
+                  title={tooltip}
+                  data-testid="sar-execute"
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[10px] font-semibold transition-colors',
+                    'bg-emerald-500 text-white hover:bg-emerald-400 active:bg-emerald-600',
+                    'disabled:opacity-60 disabled:cursor-not-allowed',
+                  )}
+                >
+                  {isRunning
+                    ? <><Loader className="w-3 h-3 animate-spin" /> Running…</>
+                    : isDone
+                      ? <><CheckCircle className="w-3 h-3" /> Re-run</>
+                      : <><Play className="w-3 h-3" fill="currentColor" strokeWidth={0} /> Execute step</>
+                  }
+                </button>
+              );
+            })()}
           </div>
           <div className="flex-1 min-h-0 flex flex-col">
             {step.kind === 'SAR' ? (
-              // SAR 노드: 항상 CLI 스타일 로그 터미널을 띄워둔다
-              <div className="flex-1 min-h-0">
-                <NodeExecutionTerminal
-                  lines={logLines}
-                  isRunning={isRunning}
-                  isDone={isDone}
-                  elapsedMs={elapsedMs}
-                  title={step.sarStage ? `${step.sarStage.toLowerCase()}-step` : 'sar-step'}
-                />
+              <div className="flex-1 min-h-0 flex flex-col" data-testid="sar-output">
+                {/* CLI 스타일 로그 터미널 — 항상 보임 */}
+                <div className={cn('min-h-0', runResult ? 'h-1/2' : 'flex-1')}>
+                  <NodeExecutionTerminal
+                    lines={logLines}
+                    isRunning={isRunning}
+                    isDone={isDone}
+                    elapsedMs={elapsedMs}
+                    title={step.sarStage ? `${step.sarStage.toLowerCase()}-step` : 'sar-step'}
+                  />
+                </div>
+                {/* 결과 또는 에러 — 둘 중 하나라도 있으면 결과 패널 노출 */}
+                {(runResult || runError) && (
+                  <div className="flex-1 min-h-0 overflow-y-auto border-t border-border" data-testid="sar-result">
+                    {runError && (
+                      <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-[10px] text-destructive flex items-start gap-1.5">
+                        <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
+                        <div className="min-w-0 break-words">{runError}</div>
+                      </div>
+                    )}
+                    {!runResult && (
+                      <div className="px-3 pb-3 text-[10px] text-muted-foreground">No execution result (see error above)</div>
+                    )}
+                    {runResult && (<>
+
+                    {(() => {
+                      const png = runResult.files.find((f) => f.kind === 'image');
+                      return png ? (
+                        <div className="p-3 space-y-2">
+                          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">QuickLook</div>
+                          <div className="rounded-md border border-border overflow-hidden bg-black flex items-center justify-center">
+                            { /* eslint-disable-next-line @next/next/no-img-element */ }
+                            <img
+                              src={png.url}
+                              alt={png.name}
+                              className="max-w-full h-auto"
+                              data-testid="sar-quicklook-img"
+                            />
+                          </div>
+                          <div className="text-[10px] text-muted-foreground font-mono break-all">{png.name} · {(png.sizeBytes / 1e6).toFixed(2)} MB</div>
+                        </div>
+                      ) : null;
+                    })()}
+                    <div className="px-3 pb-3 space-y-1.5">
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Outputs</div>
+                      <div className="space-y-1" data-testid="sar-files">
+                        {runResult.files.map((f) => (
+                          <a
+                            key={f.name}
+                            href={f.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 text-[11px] font-mono"
+                          >
+                            <span className="truncate text-foreground">{f.name}</span>
+                            <span className="shrink-0 text-muted-foreground">{(f.sizeBytes / 1e6).toFixed(2)} MB</span>
+                          </a>
+                        ))}
+                      </div>
+                      <div className="pt-1 text-[10px] text-muted-foreground">
+                        runId <span className="font-mono">{runResult.runId}</span> · exit {runResult.exitCode}
+                      </div>
+                    </div>
+                    </>)}
+                  </div>
+                )}
               </div>
             ) : (
               // 비-SAR 노드: 기존 mock 데이터 뷰

@@ -108,7 +108,14 @@ const MODE_DEFAULT_POLARIZATION: Record<string, string> = {
   Spotlight: 'HH',
 };
 
-type StepDef = { kind: PipelineNodeKind; sarStage?: SarStage; inputLevel?: ProductLevel; enabledTasks?: string[] };
+type StepDef = {
+  kind: PipelineNodeKind;
+  sarStage?: SarStage;
+  /** L1B 한정 sub-stage (Multi-look / Speckle / Ground-range / GRD). 없으면 multilook default. */
+  sarSubStage?: import('@/types/pipeline').SarSubStage;
+  inputLevel?: ProductLevel;
+  enabledTasks?: string[];
+};
 type BranchedEdge = { source: number; target: number };
 
 /** D-01: 파이프라인 첫 노드 — RAW_DATA_RECEIVED 트리거 (EI-01) */
@@ -223,32 +230,43 @@ const START_FROM_L2_STEPS: StepDef[] = [
 // 선형 파이프라인으로는 표현 불가능한 구성을 검증하기 위한 샘플.
 
 /** §5.1 다중 레벨 제품 생성: L1C → {L2A, L2B, L3} fan-out → CATALOG fan-in */
+/**
+ * §5.1 다중 레벨 제품 생성: L1A → L1B(multilook) → L1B(speckle lee) → L1B(speckle gamma) → L1C
+ * → {L2A, L2B, L3} fan-out → CATALOG fan-in.
+ *
+ * L1B 가 3개 직렬로 연결돼 있어 ICD CSU-04.05 (Multi-look) → CSU-04.06 (Speckle Filtering) 이
+ * 필터별로 직렬 중첩되는 흐름을 시각화한다 (lee → gamma_map).
+ */
 const MULTI_LEVEL_BRANCH_STEPS: StepDef[] = [
-  TRIGGER_STEP,                          // 1
-  JOB_INIT_STEP,                         // 2
-  { kind: 'SAR', sarStage: 'L0' },       // 3
-  { kind: 'SAR', sarStage: 'L1A' },      // 4
-  { kind: 'SAR', sarStage: 'L1B' },      // 5
-  { kind: 'SAR', sarStage: 'L1C' },      // 6
-  { kind: 'SAR', sarStage: 'L2A' },      // 7
-  { kind: 'SAR', sarStage: 'L2B' },      // 8
-  { kind: 'SAR', sarStage: 'L3' },       // 9
-  CATALOG_STEP,                          // 10
+  TRIGGER_STEP,                                                                          // 1
+  JOB_INIT_STEP,                                                                         // 2
+  { kind: 'SAR', sarStage: 'L0' },                                                       // 3
+  { kind: 'SAR', sarStage: 'L1A' },                                                      // 4
+  { kind: 'SAR', sarStage: 'L1B', sarSubStage: { kind: 'multilook', rangeLooks: 4, azimuthLooks: 10 } },         // 5
+  { kind: 'SAR', sarStage: 'L1B', sarSubStage: { kind: 'speckle',  filter: 'lee',       winX: 5, winY: 5 } },    // 6
+  { kind: 'SAR', sarStage: 'L1B', sarSubStage: { kind: 'speckle',  filter: 'gamma_map', winX: 5, winY: 5 } },    // 7
+  { kind: 'SAR', sarStage: 'L1C' },                                                      // 8
+  { kind: 'SAR', sarStage: 'L2A' },                                                      // 9
+  { kind: 'SAR', sarStage: 'L2B' },                                                      // 10
+  { kind: 'SAR', sarStage: 'L3' },                                                       // 11
+  CATALOG_STEP,                                                                          // 12
 ];
 const MULTI_LEVEL_BRANCH_EDGES: BranchedEdge[] = [
   { source: 1, target: 2 },
   { source: 2, target: 3 },
   { source: 3, target: 4 },
-  { source: 4, target: 5 },
-  { source: 5, target: 6 },
+  { source: 4, target: 5 },     // L1A → L1B[multilook]
+  { source: 5, target: 6 },     // L1B[multilook] → L1B[speckle lee]
+  { source: 6, target: 7 },     // L1B[speckle lee] → L1B[speckle gamma]
+  { source: 7, target: 8 },     // L1B[speckle gamma] → L1C
   // fan-out
-  { source: 6, target: 7 },
-  { source: 6, target: 8 },
-  { source: 6, target: 9 },
-  // fan-in
-  { source: 7, target: 10 },
+  { source: 8, target: 9 },
   { source: 8, target: 10 },
-  { source: 9, target: 10 },
+  { source: 8, target: 11 },
+  // fan-in
+  { source: 9, target: 12 },
+  { source: 10, target: 12 },
+  { source: 11, target: 12 },
 ];
 
 /**
@@ -1426,6 +1444,7 @@ function buildBranchedPipeline(
       order: i + 1,
       kind: s.kind,
       sarStage: s.sarStage,
+      ...(s.sarSubStage !== undefined && { sarSubStage: s.sarSubStage }),
       ...(s.inputLevel !== undefined && { inputLevel: s.inputLevel }),
       ...(s.enabledTasks !== undefined && { enabledTasks: s.enabledTasks }),
     };
@@ -2150,11 +2169,16 @@ class MockPipelineUIService implements IPipelineUIService {
         order: i + 1,
         kind: s.kind,
         sarStage: s.sarStage,
+        ...(s.sarSubStage !== undefined && { sarSubStage: s.sarSubStage }),
         ...(s.inputLevel !== undefined && { inputLevel: s.inputLevel }),
         ...(s.enabledTasks !== undefined && { enabledTasks: s.enabledTasks }),
         ...(s.jobInitConfig !== undefined && { jobInitConfig: s.jobInitConfig }),
         ...(s.fileInputConfig !== undefined && { fileInputConfig: s.fileInputConfig }),
+        ...(s.catalogConfig !== undefined && { catalogConfig: s.catalogConfig }),
         ...(s.disabled !== undefined && { disabled: s.disabled }),
+        ...(s.code !== undefined && { code: s.code }),
+        ...(s.codeLanguage !== undefined && { codeLanguage: s.codeLanguage }),
+        ...(s.codeFilename !== undefined && { codeFilename: s.codeFilename }),
       }));
     }
     if (data.edges !== undefined) {

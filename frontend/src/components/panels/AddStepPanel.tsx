@@ -36,17 +36,29 @@ interface AddStepPanelProps {
   insertAfterOrder: number;
   insertBeforeOrder?: number;
   asSeparateStart?: boolean;
+  /**
+   * 시작 노드(TRIGGER / FILE_INPUT) 직후 위치면 true.
+   * 작업 흐름상 시작 노드 다음엔 반드시 Job Initialization 이 와야 하므로
+   * 다른 옵션은 모두 숨긴다.
+   */
+  restrictToJobInit?: boolean;
   onSelect: (afterOrder: number, kind: PipelineNodeKind, sarStage?: SarStage) => void;
 }
 
-export default function AddStepPanel({ insertAfterOrder, insertBeforeOrder, asSeparateStart, onSelect }: AddStepPanelProps) {
+export default function AddStepPanel({ insertAfterOrder, insertBeforeOrder, asSeparateStart, restrictToJobInit, onSelect }: AddStepPanelProps) {
   const description = asSeparateStart
     ? 'Select a new start node that is not connected to the existing DAG.'
+    : restrictToJobInit
+    ? 'Only Job Initialization can be added directly after a start node.'
     : insertBeforeOrder !== undefined
     ? `Select a step to insert between #${insertAfterOrder} and #${insertBeforeOrder}.`
     : insertAfterOrder === 0
       ? 'Select a step to add at the start of the pipeline.'
       : `Select a step to add after #${insertAfterOrder}.`;
+
+  const visibleOptions = restrictToJobInit
+    ? STEP_OPTIONS.filter((opt) => opt.kind === 'JOB_INIT')
+    : STEP_OPTIONS;
 
   return (
     <div className="p-4 space-y-3">
@@ -55,7 +67,7 @@ export default function AddStepPanel({ insertAfterOrder, insertBeforeOrder, asSe
       </div>
 
       <div className="space-y-2">
-        {STEP_OPTIONS.map((opt) => {
+        {visibleOptions.map((opt) => {
           const Icon = opt.icon;
 
           if (opt.kind === 'SAR') {

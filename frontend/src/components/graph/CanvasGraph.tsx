@@ -151,12 +151,27 @@ function buildNodes(
   onToggleNodeActive?: (order: number) => void,
   onReprocessStep?: (order: number) => void,
   isJobMode?: boolean,
+  suppressEntryInputWarning?: boolean,
 ): Node[] {
   const sources = new Set(pipelineEdges.map((e) => e.source));
   const targets = new Set(pipelineEdges.map((e) => e.target));
+  // 시작 노드(TRIGGER/FILE_INPUT) 직후 후속 노드 중 JOB_INIT 가 아닌 것들 → 잘못된 연결.
+  // (작업 흐름상 시작 → JOB_INIT 이 강제. JOB_INIT 빠지면 backend 작업 큐에 안 들어감.)
+  const startOrders = new Set(steps.filter((s) => s.kind === 'TRIGGER' || s.kind === 'FILE_INPUT').map((s) => s.order));
+  const invalidAfterStart = new Set<number>();
+  for (const e of pipelineEdges) {
+    if (!startOrders.has(e.source)) continue;
+    const target = steps.find((s) => s.order === e.target);
+    if (target && target.kind !== 'JOB_INIT') invalidAfterStart.add(e.target);
+  }
   return steps.map((step) => {
     const isEntryNode = step.kind === 'TRIGGER' || step.kind === 'FILE_INPUT';
-    const warningReason = step.kind === 'JOB_INIT' && jobInitWarningReason ? jobInitWarningReason : undefined;
+    const warningReason =
+      step.kind === 'JOB_INIT' && jobInitWarningReason
+        ? jobInitWarningReason
+        : invalidAfterStart.has(step.order)
+          ? 'Invalid connection — a Job Initialization node must come between the start node and this step.'
+          : undefined;
     return {
       id: `step-${step.order}`,
       type: 'pipeline',
@@ -165,6 +180,7 @@ function buildNodes(
       data: {
         kind: step.kind,
         sarStage: step.sarStage,
+        sarSubStage: step.sarSubStage,
         inputLevel: step.inputLevel,
         fileInputSceneId: step.fileInputSceneId,
         fileInputFilePath: step.fileInputFilePath,
@@ -183,6 +199,7 @@ function buildNodes(
             ? onReprocessStep
             : undefined,
         isJobMode,
+        suppressEntryInputWarning,
       } satisfies PipelineNodeData,
     };
   });
@@ -295,6 +312,8 @@ interface CanvasGraphProps {
   onReprocessStep?: (order: number) => void;
   /** Job 선택 모드 — PENDING 노드를 회색으로 표시 */
   isJobMode?: boolean;
+  /** 진입 노드의 입력 파일 미지정 경고(아이콘/배지)를 숨긴다. Dashboard·Raw Data 등 정의 시각화 전용. */
+  suppressEntryInputWarning?: boolean;
   /** 노드 상태별 halo glow 표시 여부. 기본값 true. */
   showGlow?: boolean;
   /** 우하단 minimap 표시 여부. 기본값 true. */
@@ -303,7 +322,7 @@ interface CanvasGraphProps {
   showControls?: boolean;
 }
 
-export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable = false, onNodeClick, onDeleteNode, onAddNode, onConnect: onConnectProp, onDeleteEdge, onTrigger, jobInitWarningReason, focusEntryTrigger = 0, onNodeOpenDetail, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode, showGlow = true, showMinimap = true, showControls = true }: CanvasGraphProps) {
+export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable = false, onNodeClick, onDeleteNode, onAddNode, onConnect: onConnectProp, onDeleteEdge, onTrigger, jobInitWarningReason, focusEntryTrigger = 0, onNodeOpenDetail, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode, suppressEntryInputWarning, showGlow = true, showMinimap = true, showControls = true }: CanvasGraphProps) {
   const graphScope = useMemo(() => sanitizeGraphScope(pipelineId), [pipelineId]);
   // 노드 위치는 드래그로 누적되는 사용자 편집 상태이므로 state로 유지.
   // 파이프라인 전환·스텝 추가/삭제 시에는 React 권장 "렌더 중 상태 조정" 패턴으로
@@ -398,7 +417,7 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
   }, [onNodeOpenDetail]);
 
   // Build nodes and edges WITHOUT hover dependency
-  const pipelineNodes = buildNodes(steps, pipelineEdges, positions, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode);
+  const pipelineNodes = buildNodes(steps, pipelineEdges, positions, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode, suppressEntryInputWarning);
   const allEdges = buildEdges(steps, pipelineEdges, graphScope, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave, isJobMode, disabledNodeOrders);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(pipelineNodes);
@@ -408,10 +427,10 @@ export default function CanvasGraph({ pipelineId, steps, pipelineEdges, editable
   // positions는 deps에서 제외: 드래그로 positions만 바뀔 때는 ReactFlow가 내부적으로 위치를 관리하므로
   // setNodes를 다시 호출할 필요 없음 (effect는 최신 positions를 closure로 캡처).
   useEffect(() => {
-    setNodes(buildNodes(steps, pipelineEdges, positions, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode));
+    setNodes(buildNodes(steps, pipelineEdges, positions, editable, onDeleteNode, onAddNode, onTrigger, jobInitWarningReason, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode, suppressEntryInputWarning));
     setEdges(buildEdges(steps, pipelineEdges, graphScope, editable, onDeleteEdge, onAddNode, clearLeaveTimer, scheduleLeave, isJobMode, disabledNodeOrders));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [steps, pipelineEdges, graphScope, editable, onDeleteNode, onAddNode, onDeleteEdge, onTrigger, jobInitWarningReason, clearLeaveTimer, scheduleLeave, setNodes, setEdges, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode]);
+  }, [steps, pipelineEdges, graphScope, editable, onDeleteNode, onAddNode, onDeleteEdge, onTrigger, jobInitWarningReason, clearLeaveTimer, scheduleLeave, setNodes, setEdges, handleExecuteStep, disabledNodeOrders, onToggleNodeActive, onReprocessStep, isJobMode, suppressEntryInputWarning]);
 
   const onInit = useCallback((instance: { fitView: () => void }) => {
     setTimeout(() => instance.fitView(), 100);

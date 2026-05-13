@@ -99,11 +99,10 @@ const L1B_MULTILOOK_GRD = String.raw`"""CSC-04 L1B Multi-look / GRD pipeline.
 
 Implements the L1B portion of the CSC-04 ICD interface:
 
-  CSU-04.05 Multi-look Processor — range/azimuth boxcar averaging
-                                   (Multi-look Processing)
-  (sub-step) Speckle Filtering   — Lee / Frost / refined-Lee filtering
-  CSU-04.06 GRD Converter        — Ground-range Projection (slant→ground)
-  CSU-04.06 Amplitude/phase      — Amplitude/phase Product extraction
+  CSU-04.05 Multi-look Processing — range/azimuth boxcar averaging
+  CSU-04.06 Speckle Filtering    — Lee / Frost / refined-Lee filtering
+  CSU-04.07 Ground-range Projection — slant→ground projection
+  CSU-04.08 GRD Product           — Ground Range Detected product output
 
 OPS-02 (ICD §3.2). Produces a Cloud Optimized GeoTIFF at L1B (sigma0 GRD).
 

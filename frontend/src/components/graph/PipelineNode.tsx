@@ -4,8 +4,8 @@ import { memo, useState, useRef, useEffect, useCallback } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { cn } from '@/lib/utils';
 import { formatDuration } from '@/lib/utils';
-import type { StepStatus, SarStage, PipelineNodeKind, ProductLevel } from '@/types/pipeline';
-import { SAR_STAGE_LABELS, SAR_STAGE_TASKS, SAR_STAGE_TO_LEVEL, PRODUCT_LEVEL_LABELS } from '@/types/pipeline';
+import type { StepStatus, SarStage, PipelineNodeKind, ProductLevel, SarSubStage } from '@/types/pipeline';
+import { SAR_STAGE_LABELS, SAR_STAGE_TASKS, SAR_STAGE_TO_LEVEL, PRODUCT_LEVEL_LABELS, subStageLabel, subStageCsu } from '@/types/pipeline';
 import {
   CheckCircle,
   Circle,
@@ -37,6 +37,8 @@ import {
 export interface PipelineNodeData {
   kind?: PipelineNodeKind;
   sarStage?: SarStage;
+  /** L1B 한정. 같은 sarStage 라도 sub-stage 별로 노드 라벨/CSU 가 분기. */
+  sarSubStage?: SarSubStage;
   /** FILE_INPUT 노드 전용. 입력 파일의 처리 레벨. */
   inputLevel?: ProductLevel;
   /** TRIGGER/FILE_INPUT 노드 전용. 현재 선택된 입력 파일의 씬 식별자. */
@@ -68,6 +70,8 @@ export interface PipelineNodeData {
   onReprocess?: (order: number) => void;
   /** Job 선택 모드 — PENDING 노드를 회색으로 표시 */
   isJobMode?: boolean;
+  /** 진입 노드의 입력 파일 미지정 경고(아이콘/배지)를 숨긴다. Dashboard 등 정의 시각화 전용. */
+  suppressEntryInputWarning?: boolean;
   [key: string]: unknown;
 }
 
@@ -306,7 +310,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
     if (hoverLeaveTimerRef.current != null) window.clearTimeout(hoverLeaveTimerRef.current);
   }, []);
 
-  const { kind, sarStage, inputLevel, fileInputSceneId, fileInputFilePath, status, order, startedAt, durationMs, errorMessage, editable, isLeaf, enabledTasks, onDelete, onAddAfter, onTrigger, onExecuteStep, warningReason, enabled, onToggleActive, onReprocess, isJobMode } = nodeData;
+  const { kind, sarStage, inputLevel, fileInputSceneId, fileInputFilePath, status, order, startedAt, durationMs, errorMessage, editable, isLeaf, enabledTasks, onDelete, onAddAfter, onTrigger, onExecuteStep, warningReason, enabled, onToggleActive, onReprocess, isJobMode, suppressEntryInputWarning } = nodeData;
 
   // RUNNING 상태일 때만 1초 간격 tick 으로 경과 시간을 다시 그린다.
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -408,8 +412,16 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
     label = 'Quick-look generation';
     subLabel = 'CSU-07.06 · Early preview';
   } else if (isSAR && sarStage) {
-    label = SAR_STAGE_LABELS[sarStage];
-    subLabel = `${sarStage} · ${PRODUCT_LEVEL_LABELS[SAR_STAGE_TO_LEVEL[sarStage]]}`;
+    // L1B + sarSubStage 가 있으면 sub-stage 라벨이 우선 (예: 'Speckle Lee 5×5').
+    // sub-stage 없으면 기존 stage 라벨 (예: 'Multi-look (MLC/GRD)').
+    const sub = nodeData.sarSubStage;
+    if (sarStage === 'L1B' && sub) {
+      label = subStageLabel(sub);
+      subLabel = `${sarStage} · ${subStageCsu(sub)}`;
+    } else {
+      label = SAR_STAGE_LABELS[sarStage];
+      subLabel = `${sarStage} · ${PRODUCT_LEVEL_LABELS[SAR_STAGE_TO_LEVEL[sarStage]]}`;
+    }
   } else {
     label = 'Unknown';
     subLabel = '—';
@@ -435,7 +447,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
   // 진입 노드인데 입력 파일이 아직 지정되지 않았다면 노드 자체에 경고 표시.
   // 단 입력 파일 지정은 Manual Pipelines (isJobMode) 흐름의 관심사이므로, Pipelines 정의 탭에서는 끈다.
   // 외부에서 warningReason 이 이미 들어왔으면 그것을 우선.
-  const missingEntryInput = isJobMode && isEntryNode && !fileInputSceneId;
+  const missingEntryInput = isJobMode && isEntryNode && !fileInputSceneId && !suppressEntryInputWarning;
   const effectiveWarningReason = warningReason
     ?? (missingEntryInput
       ? (kind === 'TRIGGER'
@@ -616,7 +628,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
                 >
                   {fileInputSceneId}
                 </span>
-              ) : isJobMode ? (
+              ) : isJobMode && !suppressEntryInputWarning ? (
                 <span
                   className="inline-flex items-center gap-1 rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-amber-600 dark:text-amber-400"
                   title="No input file set — click the node to pick one"

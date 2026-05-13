@@ -207,6 +207,8 @@ export interface PipelineStep {
   parentOrder?: number | null;
   /** 표시 기본 필드. SAR 노드의 처리 스테이지. */
   sarStage?: SarStage;
+  /** L1B 한정 sub-stage (Multi-look / Speckle / Ground-range / GRD 분기). */
+  sarSubStage?: SarSubStage;
   /** FILE_INPUT 노드 전용. 파이프라인에 입력되는 기존 처리 결과의 레벨. */
   inputLevel?: ProductLevel;
   /** TRIGGER/FILE_INPUT 노드 전용. 시작 노드에 들어가는 입력 파일의 씬 식별자 (UI 표시용). */
@@ -370,11 +372,34 @@ export interface QueueHealth {
   depthHistory: QueueDepthPoint[];
 }
 
+/**
+ * L1B sub-stage. 한 L1B SarStage 안에 여러 CSU/필터가 있어 노드별로 어떤 처리인지
+ * 구분해야 할 때 사용. 같은 sarStage='L1B' 노드를 여러 개 직렬로 연결하면서
+ * 각 노드가 어떤 sub-operation 인지 그래프에서 직관적으로 표현하기 위함.
+ *
+ * - multilook: CSU-04.05 (한 파이프라인 안에서 보통 1번)
+ * - speckle  : CSU-04.06, 필터 종류별로 직렬 중첩 가능 (lee → gamma_map → ...)
+ * - ground-range / grd: CSU-04.07/08 (TBD, mock)
+ */
+export type SpeckleFilter = 'lee' | 'enhanced_lee' | 'gamma_map' | 'boxcar' | 'median';
+
+export type SarSubStage =
+  | { kind: 'multilook'; rangeLooks?: number; azimuthLooks?: number }
+  | { kind: 'speckle'; filter: SpeckleFilter; winX?: number; winY?: number }
+  | { kind: 'ground-range' }
+  | { kind: 'grd' };
+
 export interface PipelineStepDefinition {
   order: number;
   kind: PipelineNodeKind;
   /** SAR 노드의 처리 스테이지. kind='SAR'일 때 필수. */
   sarStage?: SarStage;
+  /**
+   * SAR L1B 한정 — 한 L1B 단계 안에서 어떤 CSU/필터를 수행하는지.
+   * 같은 sarStage='L1B' 노드라도 sub-stage 가 달라 라벨/실행이 분기된다.
+   * 미설정 시 default 는 multilook 으로 간주.
+   */
+  sarSubStage?: SarSubStage;
   /** FILE_INPUT 노드 전용. 파이프라인에 입력되는 기존 처리 결과의 레벨. */
   inputLevel?: ProductLevel;
   parentOrder?: number | null;

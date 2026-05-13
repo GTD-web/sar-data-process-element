@@ -6,7 +6,51 @@
 
 import type {
   SarStage, TargetCsc, ProductLevel, RetryInterval, TriggerSource, JobStatus, PipelineEventType,
+  SarSubStage, SpeckleFilter,
 } from './pipeline.types';
+
+// --- L1B Sub-stage Labels & CSU mapping ---
+
+/** Speckle 필터의 사람-친화 라벨. CSU-04.06 sub-step. */
+export const SPECKLE_FILTER_LABELS: Record<SpeckleFilter, string> = {
+  lee: 'Lee',
+  enhanced_lee: 'Enhanced Lee',
+  gamma_map: 'Gamma-MAP',
+  boxcar: 'Boxcar',
+  median: 'Median',
+};
+
+/** sarSubStage → 그래프 노드 라벨 ('Multi-look 4×10', 'Speckle Lee 5×5' 등). */
+export function subStageLabel(sub?: SarSubStage): string {
+  if (!sub) return 'Multi-look';
+  switch (sub.kind) {
+    case 'multilook': {
+      const r = sub.rangeLooks ?? 4;
+      const a = sub.azimuthLooks ?? 10;
+      return `Multi-look ${r}×${a}`;
+    }
+    case 'speckle': {
+      const wx = sub.winX ?? 5;
+      const wy = sub.winY ?? 5;
+      return `Speckle ${SPECKLE_FILTER_LABELS[sub.filter]} ${wx}×${wy}`;
+    }
+    case 'ground-range':
+      return 'Ground-range';
+    case 'grd':
+      return 'GRD';
+  }
+}
+
+/** sarSubStage → ICD CSU 번호. multilook=04.05, speckle=04.06 등. */
+export function subStageCsu(sub?: SarSubStage): string {
+  if (!sub) return 'CSU-04.05';
+  switch (sub.kind) {
+    case 'multilook':    return 'CSU-04.05';
+    case 'speckle':      return 'CSU-04.06';
+    case 'ground-range': return 'CSU-04.07';
+    case 'grd':          return 'CSU-04.08';
+  }
+}
 
 // --- SAR Stage Labels & Metadata ---
 
