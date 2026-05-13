@@ -14,7 +14,7 @@ import ReprocessConfirmDialog from '@/components/panels/ReprocessConfirmDialog';
 import CancelConfirmDialog from '@/components/panels/CancelConfirmDialog';
 import CreatePipelineDialog, { type CreatePipelineBasicData } from '@/components/panels/CreatePipelineDialog';
 import SelectStartNodeDialog, { type StartNodeSelection } from '@/components/panels/SelectStartNodeDialog';
-import NodeDetailModal, { type PrevNodeInfo } from '@/components/panels/NodeDetailModal';
+import NodeDetailModal, { type PrevNodeInfo, type CachedSarOutput } from '@/components/panels/NodeDetailModal';
 import PipelineArchiveConfirmDialog from '@/components/panels/PipelineArchiveConfirmDialog';
 import PipelineDeleteConfirmDialog from '@/components/panels/PipelineDeleteConfirmDialog';
 import PipelineUndeployConfirmDialog from '@/components/panels/PipelineUndeployConfirmDialog';
@@ -30,6 +30,8 @@ import type {
   JobSummary,
   PipelineStep,
   SarStage,
+  StepStatus,
+  SarSubStage,
   PipelineNodeKind,
   PipelineActivationRule,
 } from '@/types/pipeline';
@@ -39,7 +41,7 @@ import {
   SAR_STAGE_TO_CSC,
   SAR_STAGE_TO_LEVEL,
 } from '@/types/pipeline';
-import { selectDefaultProfileId } from '@/lib/pipeline-defaults';
+import { selectDefaultProfileId, defaultL1BSubStage } from '@/lib/pipeline-defaults';
 
 // ---------------------------------------------------------------------------
 // Pipeline Name Badge (canvas overlay)
@@ -281,6 +283,9 @@ export default function ConsolePage() {
   const [nodeDetailStep, setNodeDetailStep] = useState<PipelineStepDefinition | null>(null);
   // SAR 시연: 노드 order → runId 매핑. 다음 노드가 inputRunId 로 직전 결과를 받는다.
   const [sarRunIdsByOrder, setSarRunIdsByOrder] = useState<Record<number, string>>({});
+  // 노드 order → 직전 실행 OUTPUT 캐시. 모달 close/open 사이에 결과(터미널 로그·QuickLook
+  // ·파일 목록) 가 살아남도록 부모(여기) 가 보관한다.
+  const [sarOutputsByOrder, setSarOutputsByOrder] = useState<Record<number, CachedSarOutput>>({});
   const [archivePipelineTarget, setArchivePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [deletePipelineTarget, setDeletePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [undeployTarget, setUndeployTarget] = useState<PipelineDefinition | null>(null);
@@ -334,7 +339,6 @@ export default function ConsolePage() {
     : [];
   const canManage = previewRole === 'Administrator';
   const canvasEditable = canManage;
-  const disabledNodeOrders = new Set(selectedPipeline?.steps.filter((s) => s.disabled).map((s) => s.order) ?? []);
 
   const graphSteps: PipelineStep[] = selectedPipeline
     ? selectedPipeline.steps.map((s) => {
@@ -348,6 +352,17 @@ export default function ConsolePage() {
         const productLevel = s.kind === 'SAR' && s.sarStage
           ? SAR_STAGE_TO_LEVEL[s.sarStage]
           : 'LEVEL_0';
+        // 시연 흐름 — 모달에서 Execute 한 SAR 노드는 selectedJob 없이도 결과를
+        // sarOutputsByOrder 에 캐시한다. 그 결과를 canvas 노드의 status/durationMs 에 반영해
+        // CheckCircle (완료) / duration 표시를 띄운다. 우선순위: 실제 job > demo cache > PENDING.
+        const cached = sarOutputsByOrder[s.order];
+        const demoFailed = !!cached && (
+          cached.runError !== null
+          || (cached.runResult !== null && cached.runResult.exitCode !== 0)
+        );
+        const demoStatus: StepStatus | undefined = cached
+          ? (demoFailed ? 'FAILED' : 'COMPLETED')
+          : undefined;
         return {
           order: s.order,
           kind: s.kind,
@@ -358,10 +373,12 @@ export default function ConsolePage() {
           // (Manual Pipelines 탭의 JobsPage 가 entry input 표시/편집을 담당.)
           targetCsc,
           productLevel,
-          durationMs: jobStep?.durationMs,
-          errorMessage: jobStep?.errorMessage,
+          durationMs: jobStep?.durationMs ?? cached?.elapsedMs,
+          errorMessage: jobStep?.errorMessage ?? cached?.runError ?? undefined,
           enabledTasks: s.enabledTasks,
-          status: s.disabled && !selectedJob ? 'SKIPPED' : (jobStep?.status ?? 'PENDING'),
+          status: s.disabled && !selectedJob
+            ? 'SKIPPED'
+            : (jobStep?.status ?? demoStatus ?? 'PENDING'),
         };
       })
     : [];
@@ -401,18 +418,6 @@ export default function ConsolePage() {
     codeLanguage: step.codeLanguage,
     codeFilename: step.codeFilename,
   }), []);
-
-  const handleToggleNodeActive = useCallback((order: number) => {
-    if (!selectedPipeline) return;
-    const step = selectedPipeline.steps.find((s) => s.order === order);
-    if (!step || step.kind === 'TRIGGER' || step.kind === 'FILE_INPUT') return;
-
-    const nextSteps = selectedPipeline.steps.map((s) =>
-      s.order === order ? { ...toStepUpdate(s), disabled: !s.disabled } : toStepUpdate(s),
-    );
-    updatePipeline({ steps: nextSteps });
-    toast.success(step.disabled ? 'Node bypass removed.' : 'Node saved as bypassed.');
-  }, [selectedPipeline, toStepUpdate, updatePipeline]);
 
   // --- Canvas handlers ---
   const handleNodeClick = useCallback(
@@ -569,18 +574,29 @@ export default function ConsolePage() {
   const handleConfirmAddStep = useCallback(
     (afterOrder: number, kind: PipelineNodeKind, sarStage?: SarStage) => {
       if (!selectedPipeline) return;
-      const newStep: { kind: PipelineNodeKind; sarStage?: SarStage; jobInitConfig?: import('@/types/pipeline').JobInitConfig } =
-        kind === 'JOB_INIT'
-          ? {
-              kind,
-              jobInitConfig: {
-                polarization: '',
-                priority: 5,
-                retryInterval: 'IMMEDIATE' as const,
-                profileId: selectDefaultProfileId(profiles, selectedPipeline.steps),
-              },
-            }
-          : { kind, sarStage };
+      let newStep:
+        | { kind: PipelineNodeKind; sarStage?: SarStage; sarSubStage?: SarSubStage; jobInitConfig?: import('@/types/pipeline').JobInitConfig };
+      if (kind === 'JOB_INIT') {
+        newStep = {
+          kind,
+          jobInitConfig: {
+            polarization: '',
+            priority: 5,
+            retryInterval: 'IMMEDIATE' as const,
+            profileId: selectDefaultProfileId(profiles, selectedPipeline.steps),
+          },
+        };
+      } else if (kind === 'SAR' && sarStage === 'L1B') {
+        // L1B 는 sub-stage 마다 다른 처리를 수행한다 (multi-look / speckle / ground-range / grd).
+        // 같은 파이프라인 안에서 여러 L1B 가 직렬로 적용될 수 있도록, 기존 L1B 개수에 따라
+        // 서로 구분되는 sub-stage 를 기본값으로 부여한다 — 사용자는 상세 모달에서 바꿀 수 있다.
+        const existingL1BCount = selectedPipeline.steps.filter(
+          (s) => s.kind === 'SAR' && s.sarStage === 'L1B',
+        ).length;
+        newStep = { kind, sarStage, sarSubStage: defaultL1BSubStage(existingL1BCount) };
+      } else {
+        newStep = { kind, sarStage };
+      }
       const newSteps = [
         ...selectedPipeline.steps.map(toStepUpdate),
         newStep,
@@ -612,6 +628,10 @@ export default function ConsolePage() {
   const handleSaveNode = useCallback(
     (updated: PipelineStepDefinition) => {
       if (!selectedPipeline) return;
+      const prevStep = selectedPipeline.steps.find((s) => s.order === updated.order);
+      const isL1bKindChange =
+        updated.sarStage === 'L1B' &&
+        prevStep?.sarSubStage?.kind !== updated.sarSubStage?.kind;
       const newSteps = selectedPipeline.steps.map((s) =>
         s.order === updated.order
           ? toStepUpdate(updated)
@@ -619,7 +639,10 @@ export default function ConsolePage() {
       );
       updatePipeline({ steps: newSteps });
       setNodeDetailStep((prev) => (prev && prev.order === updated.order ? updated : prev));
-      toast.success('Settings applied successfully.');
+      // L1B kind changes show their own animated toast from L1BSubStageEditor — avoid double toast.
+      if (!isL1bKindChange) {
+        toast.success('Settings applied successfully.');
+      }
     },
     [selectedPipeline, updatePipeline, toStepUpdate],
   );
@@ -886,8 +909,6 @@ export default function ConsolePage() {
                 jobInitWarningReason={jobInitWarningReason}
                 focusEntryTrigger={focusEntryTrigger}
                 onNodeOpenDetail={handleNodeOpenDetail}
-                disabledNodeOrders={disabledNodeOrders}
-                onToggleNodeActive={handleToggleNodeActive}
               />
               {/* 캔버스 좌측 상단 — 파이프라인 이름 */}
               {selectedPipeline && (
@@ -1050,6 +1071,10 @@ export default function ConsolePage() {
             prevRunId={prevRunId}
             onSarRunComplete={(order, runId) => {
               setSarRunIdsByOrder((prev) => ({ ...prev, [order]: runId }));
+            }}
+            cachedOutput={sarOutputsByOrder[nodeDetailStep.order]}
+            onSarOutputUpdate={(order, output) => {
+              setSarOutputsByOrder((prev) => ({ ...prev, [order]: output }));
             }}
           />
         );

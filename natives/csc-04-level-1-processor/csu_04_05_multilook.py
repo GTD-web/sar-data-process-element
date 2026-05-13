@@ -252,8 +252,8 @@ def multilook(slc_path: str,
               azimuth_looks: int,
               strip_out_lines: int = 64,
               save_amplitude: bool = False,
-              vmin_db: float = -30.0,
-              vmax_db: float = 3.0) -> dict:
+              vmin_db: float = -45.0,
+              vmax_db: float = 0.0) -> dict:
     """
     Apply incoherent multi-look averaging to an SLC GeoTIFF.
 
@@ -452,8 +452,8 @@ def multilook(slc_path: str,
 
 def _write_quicklook(tif_path: str, ql_path: str,
                      is_amplitude: bool = False,
-                     vmin_db: float = -30.0,
-                     vmax_db: float = 3.0,
+                     vmin_db: float = -45.0,
+                     vmax_db: float = 0.0,
                      strip_rows: int = 512,
                      max_px: int = 4096) -> bool:
     """
@@ -713,10 +713,10 @@ def main() -> int:
     ap.add_argument('--amplitude', action='store_true',
                     help='Save square-root of intensity (amplitude) instead '
                          'of intensity. Default: save intensity.')
-    ap.add_argument('--vmin-db', type=float, default=-30.0,
-                    help='Quicklook dB floor.')
-    ap.add_argument('--vmax-db', type=float, default=3.0,
-                    help='Quicklook dB ceiling.')
+    ap.add_argument('--vmin-db', type=float, default=-45.0,
+                    help='Quicklook dB floor (relative to global max).')
+    ap.add_argument('--vmax-db', type=float, default=0.0,
+                    help='Quicklook dB ceiling (0 = global max).')
     ap.add_argument('--dry-run', action='store_true',
                     help='Print processing plan only; do not process.')
 

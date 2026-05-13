@@ -48,15 +48,16 @@ test.describe('CSC-04 데모 — H5 업로드 → L1A → L1B 체이닝', () => 
     const uploadPanel = page.getByTestId('sar-upload-panel');
     await expect(uploadPanel).toBeVisible();
 
-    // Parameters 탭 → CODE 섹션이 컨테이너 안 실제 csu_04_01 소스를 fetch 해서 보여줘야 한다.
+    // Parameters 탭 → CODE 섹션이 컨테이너 안 실제 csu_04_04 SLC formation 소스를
+    // fetch 해서 보여줘야 한다. (range_compress + azimuth_compress + SLC 누적 orchestrator)
     await page.getByRole('button', { name: 'Parameters' }).click();
     const sourceBadge = page.getByTestId('code-source-badge');
     await expect(sourceBadge).toBeVisible({ timeout: 10_000 });
     await expect(sourceBadge).toContainText('Live source');
     // 파일명도 진짜 patterns
-    await expect(page.getByText('csu_04_01_range_compression.py')).toBeVisible();
+    await expect(page.getByText('csu_04_04_slc_formation.py')).toBeVisible();
     // Monaco 안의 첫 라인(docstring) — Monaco view-line 셀렉터 사용
-    await expect(page.locator('.view-line').first()).toContainText('CSU-04.01 range compression');
+    await expect(page.locator('.view-line').first()).toContainText('CSU-04.04 SLC formation');
 
     // Save changes 흐름: 1) confirm 띄움 2) accept 시 토스트
     // Monaco 에 키보드 입력으로 dirty 트리거.
@@ -130,6 +131,10 @@ test.describe('CSC-04 데모 — H5 업로드 → L1A → L1B 체이닝', () => 
     await page.keyboard.press('Escape');
     await expect(uploadPanel).toBeHidden();
 
+    // L1A 노드(step-4) 의 canvas 상태 표시 — COMPLETED 체크 아이콘 + duration 텍스트
+    await expect(page.getByTestId('node-status-4')).toHaveAttribute('data-status', 'COMPLETED');
+    await expect(page.getByTestId('node-duration-4')).toBeVisible();
+
     // ── L1B[multilook] 모달 (체이닝) ─────────────────────────────────────
     await l1bNode.dblclick();
     // 시작 노드 아니므로 업로드 패널이 아니라 prev-run 표시가 떠야 한다.
@@ -150,6 +155,17 @@ test.describe('CSC-04 데모 — H5 업로드 → L1A → L1B 체이닝', () => 
     await expect(page.getByTestId('sar-files')).toContainText(/MLD_.*\.tif/);
     await expect(page.getByTestId('sar-files')).toContainText(/MLD_.*\.xml/);
 
+    // 캐시 verify 용으로 multilook 산출 QuickLook src 를 기억해둔다.
+    const multilookQuicklookSrc = await l1bQuicklook.getAttribute('src');
+
+    await page.keyboard.press('Escape');
+
+    // ── 재오픈 시 캐시 hydration — 직전 OUTPUT (터미널 로그 + QuickLook) 이 그대로 ──
+    await l1bNode.dblclick();
+    const cachedQuicklook = page.getByTestId('sar-quicklook-img');
+    await expect(cachedQuicklook).toBeVisible();
+    await expect(cachedQuicklook).toHaveAttribute('src', multilookQuicklookSrc ?? '');
+    await expect(page.getByTestId('sar-result')).toContainText(/exit 0/);
     await page.keyboard.press('Escape');
 
     // ── L1B[speckle lee] 모달 — multilook 결과를 입력으로 받아 lee 필터 적용 ──
@@ -162,5 +178,8 @@ test.describe('CSC-04 데모 — H5 업로드 → L1A → L1B 체이닝', () => 
     await expect(speckleResult).toContainText(/exit 0/);
     // speckle 산출 파일명 패턴 (lee 필터)
     await expect(page.getByTestId('sar-files')).toContainText(/_lee.*\.tif/);
+    // QuickLook PNG 도 함께 생성돼야 한다 (csu_04_06 의 matplotlib quicklook)
+    await expect(page.getByTestId('sar-files')).toContainText(/_lee.*_ql\.png/);
+    await expect(page.getByTestId('sar-quicklook-img')).toBeVisible();
   });
 });

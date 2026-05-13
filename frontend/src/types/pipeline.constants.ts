@@ -52,6 +52,22 @@ export function subStageCsu(sub?: SarSubStage): string {
   }
 }
 
+/**
+ * L1B 노드가 sub-stage 별로 실제 수행하는 task 만 골라낸다.
+ * 전체 L1B task 리스트(`SAR_STAGE_TASKS.L1B`) 는 4 CSU 가 한 stage 에 묶여 있던
+ * 옛 모델 기준이므로, sub-stage 가 정해진 L1B 노드는 그 CSU 가 수행하는 task 만
+ * 노출돼야 Parameters 탭이 코드/실행 흐름과 일치한다.
+ */
+export function l1bSubStageTasks(sub?: SarSubStage): string[] {
+  if (!sub) return ['Multi-look Processing'];
+  switch (sub.kind) {
+    case 'multilook':    return ['Multi-look Processing'];
+    case 'speckle':      return ['Speckle Filtering'];
+    case 'ground-range': return ['Ground-range Projection'];
+    case 'grd':          return ['Amplitude/phase Product'];
+  }
+}
+
 // --- SAR Stage Labels & Metadata ---
 
 export const SAR_STAGE_LABELS: Record<SarStage, string> = {

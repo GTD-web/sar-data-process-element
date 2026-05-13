@@ -680,6 +680,7 @@ def main() -> int:
     filt_tag  = f"{args.filter}_{win_x}x{win_y}"
     out_tiff  = str(out_dir / f"{stem}_{filt_tag}.tif")
     out_xml   = str(out_dir / f"{stem}_{filt_tag}_metadata.xml")
+    out_ql    = str(out_dir / f"{stem}_{filt_tag}_ql.png")
 
     # ── Load image (metadata only for dry-run) ────────────────────────────
     log.info("Loading %s …", in_path)
@@ -727,9 +728,40 @@ def main() -> int:
                output_amplitude= args.output_amplitude,
                elapsed_s       = elapsed)
 
+    # ── Quicklook PNG (dB-stretched grayscale) — mirrors csu_04_05 ───────────
+    # csu_04_05 multilook 처럼 글로벌 max 로 정규화한 뒤 dB stretch 한다.
+    # (absolute dB 로 찍으면 SAR 강도값이 통상 vmax 위라 거의 다 흰색으로 saturate 됨 — image 3 버그)
+    ql_written = False
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        data = filtered.astype(np.float32)
+        # 출력 도메인 별 스케일:
+        #   amplitude(=√intensity) 이면 20·log10(amp/gmax), intensity 이면 10·log10(I/gmax).
+        is_amp = bool(args.output_amplitude)
+        scale_factor = 20.0 if is_amp else 10.0
+        gmax = float(np.nanmax(data))
+        if not np.isfinite(gmax) or gmax <= 0.0:
+            log.warning("Quicklook skipped — filtered output has no positive values (gmax=%s)", gmax)
+        else:
+            vmin_db, vmax_db = -45.0, 0.0
+            with np.errstate(divide='ignore', invalid='ignore'):
+                db_img = scale_factor * np.log10(np.maximum(data / gmax, 1e-30))
+            db_img = np.clip(db_img, vmin_db, vmax_db)
+            plt.imsave(out_ql, db_img, cmap='gray', vmin=vmin_db, vmax=vmax_db)
+            ql_written = True
+            log.info("Quicklook → %s  (%dx%d px,  %s,  vmin=%.0f  vmax=%.0f dB)",
+                     out_ql, db_img.shape[1], db_img.shape[0],
+                     "20·log10" if is_amp else "10·log10", vmin_db, vmax_db)
+    except Exception as exc:  # noqa: BLE001 — matplotlib import 실패/IO 실패 모두 비치명적
+        log.warning("Quicklook write failed (non-fatal): %s", exc)
+
     print("\nOutputs:")
     print(f"  tiff : {out_tiff}")
     print(f"  xml  : {out_xml}")
+    if ql_written:
+        print(f"  png  : {out_ql}")
     return 0
 
 

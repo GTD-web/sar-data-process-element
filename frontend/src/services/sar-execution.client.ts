@@ -128,6 +128,53 @@ export async function uploadH5(
   });
 }
 
+export interface BundleUploadResponse {
+  runId: string;
+  primary: string;
+  meta?: string;
+  sizeBytes: number;
+}
+
+/**
+ * L1B 직접 업로드 — SLC/MLD TIFF (+ 선택적 metadata XML) 를 multipart 로 보내고
+ * 서버가 "가상의 prev run" 으로 등록해 돌려주는 runId 를 받는다.
+ * 호출 측은 이 runId 를 execute 시 inputRunId 로 넘긴다.
+ */
+export async function uploadBundle(
+  primary: File,
+  meta?: File,
+  onProgress?: (p: UploadProgress) => void,
+): Promise<BundleUploadResponse> {
+  return new Promise<BundleUploadResponse>((resolve, reject) => {
+    const form = new FormData();
+    form.append('primary', primary);
+    if (meta) form.append('meta', meta);
+    const xhr = new XMLHttpRequest();
+    const startedAt = performance.now();
+    xhr.upload.onprogress = (e) => {
+      if (!e.lengthComputable || !onProgress) return;
+      const elapsedSec = (performance.now() - startedAt) / 1000;
+      const bytesPerSec = elapsedSec > 0 ? e.loaded / elapsedSec : 0;
+      onProgress({ loaded: e.loaded, total: e.total, bytesPerSec });
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText) as BundleUploadResponse);
+        } catch (err) {
+          reject(new Error(`upload-bundle: invalid JSON response: ${err instanceof Error ? err.message : String(err)}`));
+        }
+      } else {
+        reject(new Error(`upload-bundle failed: HTTP ${xhr.status} ${xhr.responseText}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('upload-bundle network error'));
+    xhr.onabort = () => reject(new Error('upload-bundle aborted'));
+    xhr.open('POST', '/api/sar/upload-bundle');
+    xhr.send(form);
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Streaming execute (SSE)
 // 서버는 줄 단위 stdout/stderr 를 SSE 로 흘리고, 마지막에 'done' 이벤트로

@@ -17,7 +17,6 @@ import {
   Zap,
   FlaskConical,
   Play,
-  Power,
   RotateCcw,
   AlertTriangle,
   Antenna,
@@ -207,10 +206,9 @@ const NodeWarningHint = memo(function NodeWarningHint({ text }: { text: string }
 
 /**
  * n8n 스타일 노드 위 툴바 — 호버 시 표시
- * - Play: 개별 노드 실행 → 노드 상세 모달 (더블클릭과 동일)
- * - Power: 활성화/비활성화 토글 (진입 노드 제외)
+ * - Play: 개별 노드 실행 → 노드 상세 모달 (더블클릭과 동일). 진입 노드(TRIGGER/FILE_INPUT)는 제외 —
+ *   파이프라인 전체 실행은 Pipeline Execution 탭의 Manual Pipelines 에서 진행한다.
  * - Trash: 노드 삭제 (non-entry 노드만)
- * 파이프라인 전체 실행은 진입 노드 좌측의 별도 버튼이 담당.
  */
 const NodeHoverToolbar = memo(function NodeHoverToolbar({
   showDelete,
@@ -218,8 +216,6 @@ const NodeHoverToolbar = memo(function NodeHoverToolbar({
   onExecute,
   isVisible,
   isEntryNode,
-  isEnabled,
-  onToggle,
   onReprocess,
 }: {
   showDelete: boolean;
@@ -227,12 +223,15 @@ const NodeHoverToolbar = memo(function NodeHoverToolbar({
   onExecute?: () => void;
   isVisible: boolean;
   isEntryNode: boolean;
-  isEnabled: boolean;
-  onToggle?: () => void;
   onReprocess?: () => void;
 }) {
   const btnClass =
     'nodrag w-7 h-7 rounded-md flex items-center justify-center text-[#a0a0a0] hover:text-[#f5f5f5] hover:bg-white/10 transition-colors cursor-pointer';
+
+  // 진입 노드는 hover Play 도, Reprocess 도, Delete 도 없으면 빈 툴바가 되므로 아예 숨긴다.
+  const showPlay = !isEntryNode && !!onExecute;
+  const hasAnyButton = showPlay || !!onReprocess || showDelete;
+  if (!hasAnyButton) return null;
 
   return (
     <div
@@ -243,14 +242,16 @@ const NodeHoverToolbar = memo(function NodeHoverToolbar({
         isVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
       )}
     >
-      <button
-        type="button"
-        className={btnClass}
-        title="Run node (view details)"
-        onClick={(e) => { e.stopPropagation(); onExecute?.(); }}
-      >
-        <Play className="w-3.5 h-3.5" fill="currentColor" strokeWidth={0} />
-      </button>
+      {showPlay && (
+        <button
+          type="button"
+          className={btnClass}
+          title="Run node (view details)"
+          onClick={(e) => { e.stopPropagation(); onExecute?.(); }}
+        >
+          <Play className="w-3.5 h-3.5" fill="currentColor" strokeWidth={0} />
+        </button>
+      )}
       {onReprocess && (
         <button
           type="button"
@@ -259,16 +260,6 @@ const NodeHoverToolbar = memo(function NodeHoverToolbar({
           onClick={(e) => { e.stopPropagation(); onReprocess(); }}
         >
           <RotateCcw className="w-3.5 h-3.5" />
-        </button>
-      )}
-      {!isEntryNode && (
-        <button
-          type="button"
-          className={cn(btnClass, !isEnabled && 'text-muted-foreground')}
-          title={isEnabled ? 'Disable (bypass)' : 'Enable'}
-          onClick={(e) => { e.stopPropagation(); onToggle?.(); }}
-        >
-          <Power className="w-3.5 h-3.5" />
         </button>
       )}
       {showDelete && (
@@ -310,7 +301,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
     if (hoverLeaveTimerRef.current != null) window.clearTimeout(hoverLeaveTimerRef.current);
   }, []);
 
-  const { kind, sarStage, inputLevel, fileInputSceneId, fileInputFilePath, status, order, startedAt, durationMs, errorMessage, editable, isLeaf, enabledTasks, onDelete, onAddAfter, onTrigger, onExecuteStep, warningReason, enabled, onToggleActive, onReprocess, isJobMode, suppressEntryInputWarning } = nodeData;
+  const { kind, sarStage, inputLevel, fileInputSceneId, fileInputFilePath, status, order, startedAt, durationMs, errorMessage, editable, isLeaf, enabledTasks, onDelete, onAddAfter, onTrigger, onExecuteStep, warningReason, enabled, onReprocess, isJobMode, suppressEntryInputWarning } = nodeData;
 
   // RUNNING 상태일 때만 1초 간격 tick 으로 경과 시간을 다시 그린다.
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -412,16 +403,9 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
     label = 'Quick-look generation';
     subLabel = 'CSU-07.06 · Early preview';
   } else if (isSAR && sarStage) {
-    // L1B + sarSubStage 가 있으면 sub-stage 라벨이 우선 (예: 'Speckle Lee 5×5').
-    // sub-stage 없으면 기존 stage 라벨 (예: 'Multi-look (MLC/GRD)').
-    const sub = nodeData.sarSubStage;
-    if (sarStage === 'L1B' && sub) {
-      label = subStageLabel(sub);
-      subLabel = `${sarStage} · ${subStageCsu(sub)}`;
-    } else {
-      label = SAR_STAGE_LABELS[sarStage];
-      subLabel = `${sarStage} · ${PRODUCT_LEVEL_LABELS[SAR_STAGE_TO_LEVEL[sarStage]]}`;
-    }
+    // 노드 이름/sub-label 은 stage 단위로 고정 — L1B 의 sub-stage 정보는 카드 하단 (filter 라인) 에서 분리해 표시한다.
+    label = SAR_STAGE_LABELS[sarStage];
+    subLabel = `${sarStage} · ${PRODUCT_LEVEL_LABELS[SAR_STAGE_TO_LEVEL[sarStage]]}`;
   } else {
     label = 'Unknown';
     subLabel = '—';
@@ -500,8 +484,6 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
               onExecute={onExecuteStep ? () => onExecuteStep(order) : undefined}
               isVisible={isHovering || isSelected}
               isEntryNode={isEntryNode}
-              isEnabled={isEnabled}
-              onToggle={onToggleActive ? () => onToggleActive(order) : undefined}
               onReprocess={onReprocess ? () => onReprocess(order) : undefined}
             />
           )}
@@ -545,7 +527,11 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
               <NodeWarningHint text={effectiveWarningReason} />
             )}
             {showStatusBadge && (
-              <div className="absolute -top-3 -left-3 z-10">
+              <div
+                className="absolute -top-3 -left-3 z-10"
+                data-testid={`node-status-${order}`}
+                data-status={status}
+              >
                 <StatusIcon
                   className={cn(
                     'w-4 h-4',
@@ -644,15 +630,28 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
           {!isEnabled && (
             <div className="text-[9px] font-semibold text-muted-foreground/50 mt-0.5 tracking-wide uppercase">Bypassed</div>
           )}
-          {taskCount > 0 && isEnabled && (
+          {/*
+           * L1B 노드는 같은 stage 라도 sub-stage (multi-look/speckle/...) 마다 처리가 다르다.
+           * 직렬로 여러 L1B 가 연결됐을 때 어떤 필터인지 한눈에 보이도록, 단순 task 수 대신
+           * sub-stage 라벨 (예: 'Multi-look 4×10', 'Speckle Lee 5×5') 을 노출한다.
+           */}
+          {isSAR && sarStage === 'L1B' && nodeData.sarSubStage && isEnabled ? (
+            <div
+              className="text-[9px] font-semibold text-accent"
+              data-testid="l1b-substage-chip"
+              title={`Sub-stage: ${subStageLabel(nodeData.sarSubStage)} (${subStageCsu(nodeData.sarSubStage)})`}
+            >
+              {subStageLabel(nodeData.sarSubStage)}
+            </div>
+          ) : taskCount > 0 && isEnabled ? (
             <div className={`text-[9px] ${hasPartialTasks ? 'text-accent font-semibold' : 'text-muted-foreground/60'}`}>
               {hasPartialTasks ? `${activeTaskCount}/${taskCount} tasks` : `${taskCount} tasks`}
             </div>
-          )}
+          ) : null}
           {runningElapsedMs !== null ? (
-            <div className="text-[9px] text-accent font-mono">{formatDuration(runningElapsedMs)}</div>
+            <div className="text-[9px] text-accent font-mono" data-testid={`node-duration-${order}`}>{formatDuration(runningElapsedMs)}</div>
           ) : durationMs !== undefined ? (
-            <div className="text-[9px] text-success font-mono">{formatDuration(durationMs)}</div>
+            <div className="text-[9px] text-success font-mono" data-testid={`node-duration-${order}`}>{formatDuration(durationMs)}</div>
           ) : null}
           {errorMessage && (
             <div className="text-[9px] text-destructive truncate" title={errorMessage}>{errorMessage}</div>

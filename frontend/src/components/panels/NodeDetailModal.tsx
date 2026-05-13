@@ -7,20 +7,22 @@ import type { PipelineStepDefinition, SarStage, TargetCsc, ProcessingProfile } f
 import {
   resolveSarStage,
   uploadH5,
+  uploadBundle,
   executeStageStream,
   type ExecuteResponse,
   type UploadProgress,
 } from '@/services/sar-execution.client';
 import {
-  SAR_STAGE_LABELS, SAR_STAGE_TASKS, SAR_STAGE_DESCRIPTIONS, NODE_KIND_INFO, SAR_STAGE_TO_CSC,
+  SAR_STAGE_LABELS, SAR_STAGE_TASKS, SAR_STAGE_DESCRIPTIONS, NODE_KIND_INFO, SAR_STAGE_TO_CSC, l1bSubStageTasks,
   CSC_VT_SECONDS, MAX_RETRY_COUNT, RETRY_INTERVAL_LABELS, PRODUCT_LEVEL_LABELS, QUEUE_NAME,
 } from '@/types/pipeline';
 import JobInitEditPanel from './JobInitEditPanel';
 import NodeCodeEditorPanel from './NodeCodeEditorPanel';
 import CatalogConfigPanel from './CatalogConfigPanel';
+import L1BSubStageEditor from './L1BSubStageEditor';
 import NodeExecutionTerminal, { type RenderedLogLine } from './NodeExecutionTerminal';
 import { getStageLogScript } from './node-execution-logs';
-import { getDefaultCode, isTaskActiveInCode, TASK_KEYWORDS_BY_STAGE } from './node-code-defaults';
+import { getDefaultCode, getL1BSubStageCode, isTaskActiveInCode, TASK_KEYWORDS_BY_STAGE } from './node-code-defaults';
 import type { PipelineNodeKind, ProductLevel } from '@/types/pipeline';
 
 /** 이전 노드 요약 정보 — INPUT 패널에 표시 */
@@ -263,6 +265,18 @@ function supportsCodeEditor(step: PipelineStepDefinition): boolean {
   );
 }
 
+/**
+ * 모달이 닫혀도 부모(ConsolePage) 가 마지막 실행 결과를 들고 있을 수 있게 하는 캐시 페이로드.
+ * 모달은 mount 시 cachedOutput 이 있으면 곧바로 'done' 상태로 hydrate 한다 — 사용자가
+ * 같은 노드를 다시 열면 직전 OUTPUT (터미널 로그 + QuickLook + 파일 목록) 이 그대로 보인다.
+ */
+export interface CachedSarOutput {
+  logLines: RenderedLogLine[];
+  runResult: Pick<ExecuteResponse, 'runId' | 'stage' | 'exitCode' | 'args' | 'primary' | 'meta' | 'files'> | null;
+  runError: string | null;
+  elapsedMs: number;
+}
+
 interface NodeDetailModalProps {
   step: PipelineStepDefinition;
   onClose: () => void;
@@ -280,16 +294,25 @@ interface NodeDetailModalProps {
   prevRunId?: string;
   /** SAR stage 실제 실행 완료 시 부모(ConsolePage) 가 runId 보관하도록 호출. */
   onSarRunComplete?: (stepOrder: number, runId: string) => void;
+  /** 이 노드의 직전 실행 결과 캐시 (모달 close/open 사이에 살아남기 위함). */
+  cachedOutput?: CachedSarOutput;
+  /** 실행이 끝났을 때 부모에 결과를 캐시하라고 알리는 콜백. */
+  onSarOutputUpdate?: (stepOrder: number, output: CachedSarOutput) => void;
 }
 
-export default function NodeDetailModal({ step, onClose, onSaveNode, availableProfiles, satelliteId, mode, prevNodes, prevRunId, onSarRunComplete }: NodeDetailModalProps) {
-  const [execState, setExecState] = useState<ExecState>('idle');
+export default function NodeDetailModal({ step, onClose, onSaveNode, availableProfiles, satelliteId, mode, prevNodes, prevRunId, onSarRunComplete, cachedOutput, onSarOutputUpdate }: NodeDetailModalProps) {
+  // cachedOutput 이 있으면 모달이 열리는 즉시 'done' 상태로 hydrate — 직전 결과 보전.
+  const [execState, setExecState] = useState<ExecState>(cachedOutput ? 'done' : 'idle');
   const [outputData, setOutputData] = useState<MockRecord | null>(null);
   const [activeTab, setActiveTab] = useState<ModalTab>('info');
-  const [logLines, setLogLines] = useState<RenderedLogLine[]>([]);
-  const [elapsedMs, setElapsedMs] = useState(0);
+  const [logLines, setLogLines] = useState<RenderedLogLine[]>(cachedOutput?.logLines ?? []);
+  const [elapsedMs, setElapsedMs] = useState(cachedOutput?.elapsedMs ?? 0);
   const execTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // 최신 logLines/elapsedMs 를 done 핸들러에서 캡쳐하기 위한 ref. setState 가 stale closure
+  // 였을 때도 onSarOutputUpdate 가 정확한 마지막 상태를 caller 에 넘길 수 있어야 한다.
+  const logLinesRef = useRef<RenderedLogLine[]>(cachedOutput?.logLines ?? []);
+  useEffect(() => { logLinesRef.current = logLines; }, [logLines]);
 
   // ── 실제 SAR 실행 상태 (시연용) ─────────────────────────────────────────────
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -300,8 +323,8 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
   /** 드래그 중 시각 피드백 */
   const [isDragging, setIsDragging] = useState(false);
   // 실행 결과는 SSE 'done' 이벤트로 채워진다 (stdout/stderr 는 stream 으로 logLines 에 쌓임).
-  const [runResult, setRunResult] = useState<Pick<ExecuteResponse, 'runId' | 'stage' | 'exitCode' | 'args' | 'primary' | 'meta' | 'files'> | null>(null);
-  const [runError, setRunError] = useState<string | null>(null);
+  const [runResult, setRunResult] = useState<Pick<ExecuteResponse, 'runId' | 'stage' | 'exitCode' | 'args' | 'primary' | 'meta' | 'files'> | null>(cachedOutput?.runResult ?? null);
+  const [runError, setRunError] = useState<string | null>(cachedOutput?.runError ?? null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   /**
@@ -314,16 +337,91 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
   }, [step.kind, step.sarStage, step.sarSubStage]);
   const sarStageId = resolvedStage?.id ?? null;
 
-  /** 시작 SAR 노드 (직전 run 없음) → 업로드 필요. */
-  const needsUpload = sarStageId !== null && !prevRunId;
   /**
-   * Execute 활성화 조건. 업로드가 끝나야(uploadStatus === 'done') Execute 활성.
-   * 체이닝(prevRunId)인 경우엔 입력이 이미 확보됐으니 항상 활성.
-   * → 업로드 중에 Execute 를 눌러서 헷갈리는 상황 방지.
+   * 시작 SAR 노드 (직전 run 없음) 분기:
+   * - L1A 는 H5 raw 를 직접 업로드받는다.
+   * - L1B (multilook/speckle) 는 기본적으로 prevRun (L1A 산출) 을 input 으로 받지만,
+   *   "Upload file" 토글로 사용자가 직접 SLC/MLD TIFF (+XML) 를 올려서 prev run 을
+   *   대체할 수도 있다.
    */
-  const canRunReal = sarStageId !== null && (
-    prevRunId !== undefined ||
-    (uploadStatus === 'done' && uploadId !== null)
+  const isL1bStage = sarStageId === 'L1B_MULTILOOK' || sarStageId === 'L1B_SPECKLE';
+  const needsH5Upload = sarStageId === 'L1A' && !prevRunId;
+
+  /**
+   * L1B INPUT mode 토글.
+   * - 'upstream' : prevRun (chain) — 가능할 때만 default.
+   * - 'upload'   : 사용자가 SLC/MLD TIFF (+XML) 직접 업로드.
+   * 다른 stage 노드면 의미 없음.
+   */
+  const [l1bInputMode, setL1bInputMode] = useState<'upstream' | 'upload'>(
+    prevRunId ? 'upstream' : 'upload',
+  );
+  /** L1B upload 모드 — bundle 업로드 상태/결과. uploadedBundleRunId 가 inputRunId 로 쓰임. */
+  const [bundleSlc, setBundleSlc] = useState<File | null>(null);
+  const [bundleMeta, setBundleMeta] = useState<File | null>(null);
+  const [bundleStatus, setBundleStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
+  const [bundleProgress, setBundleProgress] = useState<UploadProgress | null>(null);
+  const [bundleError, setBundleError] = useState<string | null>(null);
+  const [uploadedBundleRunId, setUploadedBundleRunId] = useState<string | null>(null);
+  const bundleSlcInputRef = useRef<HTMLInputElement | null>(null);
+  const bundleMetaInputRef = useRef<HTMLInputElement | null>(null);
+
+  /** multilook 은 XML 필수, speckle 은 SLC(=MLD TIFF) 단독. */
+  const bundleRequiresMeta = sarStageId === 'L1B_MULTILOOK';
+
+  /**
+   * Execute 활성화 조건.
+   * - L1A: 업로드가 끝나야 활성.
+   * - L1B / upstream 모드: prevRunId 있으면 활성.
+   * - L1B / upload 모드: bundle 업로드 완료 → uploadedBundleRunId 가 있으면 활성.
+   */
+  const canRunReal =
+    sarStageId !== null &&
+    (
+      (sarStageId === 'L1A' && uploadStatus === 'done' && uploadId !== null) ||
+      (isL1bStage && l1bInputMode === 'upstream' && prevRunId !== undefined) ||
+      (isL1bStage && l1bInputMode === 'upload' && uploadedBundleRunId !== null)
+    );
+  /** execute 호출 시 사용할 inputRunId — upstream 이면 prev, upload 면 uploaded bundle. */
+  const effectiveInputRunId =
+    isL1bStage && l1bInputMode === 'upload' ? uploadedBundleRunId ?? undefined : prevRunId;
+
+  /**
+   * L1B bundle 파일 선택 시 호출. SLC TIFF 가 정해지고 (multilook 이면) XML 도 정해진 시점에
+   * 자동으로 업로드를 트리거한다. 한쪽만 정해진 상태에선 대기.
+   */
+  const triggerBundleUpload = useCallback(
+    async (slc: File, meta: File | null) => {
+      if (bundleRequiresMeta && !meta) return; // wait for XML
+      setBundleError(null);
+      setUploadedBundleRunId(null);
+      setBundleProgress({ loaded: 0, total: slc.size + (meta?.size ?? 0), bytesPerSec: 0 });
+      setBundleStatus('uploading');
+      try {
+        const res = await uploadBundle(slc, meta ?? undefined, (p) => setBundleProgress(p));
+        setUploadedBundleRunId(res.runId);
+        setBundleStatus('done');
+      } catch (err) {
+        setBundleError(err instanceof Error ? err.message : String(err));
+        setBundleStatus('error');
+      }
+    },
+    [bundleRequiresMeta],
+  );
+
+  const handleBundleSlcPick = useCallback(
+    (file: File) => {
+      setBundleSlc(file);
+      void triggerBundleUpload(file, bundleMeta);
+    },
+    [bundleMeta, triggerBundleUpload],
+  );
+  const handleBundleMetaPick = useCallback(
+    (file: File) => {
+      setBundleMeta(file);
+      if (bundleSlc) void triggerBundleUpload(bundleSlc, file);
+    },
+    [bundleSlc, triggerBundleUpload],
   );
 
   /** 파일 선택 또는 드롭 → 즉시 업로드 시작 (별도 Upload 버튼 단계 없음). */
@@ -376,16 +474,25 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
   // ── SAR stage sub-function 사양 (readonly) ──
   // TASKS 활성/비활성 상태는 CODE 섹션의 코드 본문에서 자동 도출된다.
   // 사용자가 비활성화하려면 CODE에서 해당 코드를 주석 처리한다.
-  const allTasks = useMemo(
-    () => (step.kind === 'SAR' && step.sarStage ? SAR_STAGE_TASKS[step.sarStage] : []),
-    [step.kind, step.sarStage],
-  );
+  // L1B 는 sub-stage 가 결정한 CSU 한 개의 task 만 노출 — 나머지 stage 는 stage 단위 task 리스트.
+  const allTasks = useMemo(() => {
+    if (step.kind !== 'SAR' || !step.sarStage) return [];
+    if (step.sarStage === 'L1B') return l1bSubStageTasks(step.sarSubStage);
+    return SAR_STAGE_TASKS[step.sarStage];
+  }, [step.kind, step.sarStage, step.sarSubStage]);
 
   // 에디터 본문 — 저장 전이라도 실시간으로 task 활성 상태를 반영한다.
+  // L1B 는 sub-stage 마다 코드가 다르므로 sub-stage 별 default 를 우선 적용한다
+  // (sub-stage 가 바뀌면 step.code 도 같이 갈아끼우는 흐름이므로 자연스럽게 새 코드가 노출됨).
   const initialCode = useMemo(() => {
     if (step.kind !== 'SAR') return '';
-    return step.code ?? getDefaultCode(step.sarStage)?.code ?? '';
-  }, [step.kind, step.sarStage, step.code]);
+    if (step.code) return step.code;
+    if (step.sarStage === 'L1B') {
+      const subDefault = getL1BSubStageCode(step.sarSubStage);
+      if (subDefault) return subDefault.code;
+    }
+    return getDefaultCode(step.sarStage)?.code ?? '';
+  }, [step.kind, step.sarStage, step.sarSubStage, step.code]);
   const [currentCode, setCurrentCode] = useState<string>(initialCode);
 
   useEffect(() => {
@@ -450,13 +557,18 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
       setElapsedMs(Date.now() - start);
     }, 50);
 
-    // ── SAR 실제 실행 분기: 매핑 가능한 stage 이고 입력(uploadId 또는 prevRunId) 확보됐을 때만.
+    // 새 실행 시작 — 캐시된 직전 결과는 더 이상 표시할 게 아니므로 ref 도 비운다.
+    logLinesRef.current = [];
+
+    // ── SAR 실제 실행 분기: 매핑 가능한 stage 이고 입력(uploadId 또는 inputRunId) 확보됐을 때만.
     // SSE 스트림으로 라인 단위 stdout/stderr 를 받아 실시간으로 터미널에 흘려보낸다.
-    if (sarStageId && (uploadId || prevRunId)) {
+    if (sarStageId && (uploadId || effectiveInputRunId)) {
+      let streamErrorMsg: string | null = null;
+      let completedRunResult: Pick<ExecuteResponse, 'runId' | 'stage' | 'exitCode' | 'args' | 'primary' | 'meta' | 'files'> | null = null;
       try {
         for await (const ev of executeStageStream(
           sarStageId,
-          { uploadId: uploadId ?? undefined, inputRunId: prevRunId },
+          { uploadId: uploadId ?? undefined, inputRunId: effectiveInputRunId },
           resolvedStage?.params,
         )) {
           if (ev.type === 'log') {
@@ -469,8 +581,11 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
               timestamp: stamp,
               delayMs: 0,
             };
-            setLogLines((prev) => [...prev, newLine]);
+            // ref 도 같이 sync — done 핸들러에서 최신 logLines 캡쳐가 필요하기 때문.
+            logLinesRef.current = [...logLinesRef.current, newLine];
+            setLogLines(logLinesRef.current);
           } else if (ev.type === 'done') {
+            completedRunResult = ev;
             setRunResult(ev);
             setExecState('done');
             if (elapsedTimerRef.current) {
@@ -480,20 +595,30 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
             if (ev.exitCode === 0) {
               onSarRunComplete?.(step.order, ev.runId);
             } else {
-              setRunError(`Python exit code ${ev.exitCode}`);
+              streamErrorMsg = `Python exit code ${ev.exitCode}`;
+              setRunError(streamErrorMsg);
             }
           } else if (ev.type === 'error') {
-            setRunError(ev.message);
+            streamErrorMsg = ev.message;
+            setRunError(streamErrorMsg);
           }
         }
       } catch (err) {
-        setRunError(err instanceof Error ? err.message : String(err));
+        streamErrorMsg = err instanceof Error ? err.message : String(err);
+        setRunError(streamErrorMsg);
         setExecState('done');
         if (elapsedTimerRef.current) {
           clearInterval(elapsedTimerRef.current);
           elapsedTimerRef.current = null;
         }
       }
+      // 캐시 업데이트 — 사용자가 모달을 닫았다가 다시 열면 직전 결과를 그대로 본다.
+      onSarOutputUpdate?.(step.order, {
+        logLines: logLinesRef.current,
+        runResult: completedRunResult,
+        runError: streamErrorMsg,
+        elapsedMs: Date.now() - start,
+      });
       return;
     }
 
@@ -535,24 +660,46 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
       }
     }, cumulative + 200);
     execTimeoutsRef.current.push(finishId);
-  }, [step, cancelStreaming, sarStageId, resolvedStage, uploadId, prevRunId, onSarRunComplete]);
+  }, [step, cancelStreaming, sarStageId, resolvedStage, uploadId, effectiveInputRunId, onSarRunComplete, onSarOutputUpdate]);
 
   // 모달 unmount / step 교체 시 진행 중 스트림 정리
   useEffect(() => () => cancelStreaming(), [cancelStreaming]);
   useEffect(() => {
     cancelStreaming();
-    setExecState('idle');
+    // step 이 바뀌면 캐시 hit/miss 에 따라 OUTPUT 영역만 분기. 입력 패널 (upload/bundle) 상태는
+    // 새 node 진입이므로 무조건 초기화 — 캐시는 결과 표시용일 뿐 입력 재현은 의도하지 않는다.
+    if (cachedOutput) {
+      setExecState('done');
+      setLogLines(cachedOutput.logLines);
+      logLinesRef.current = cachedOutput.logLines;
+      setElapsedMs(cachedOutput.elapsedMs);
+      setRunResult(cachedOutput.runResult);
+      setRunError(cachedOutput.runError);
+    } else {
+      setExecState('idle');
+      setLogLines([]);
+      logLinesRef.current = [];
+      setElapsedMs(0);
+      setRunResult(null);
+      setRunError(null);
+    }
     setOutputData(null);
-    setLogLines([]);
-    setElapsedMs(0);
     setUploadedFile(null);
     setUploadId(null);
     setUploadStatus('idle');
     setUploadProgress(null);
     setUploadError(null);
-    setRunResult(null);
-    setRunError(null);
-  }, [step.order, step.kind, step.sarStage, cancelStreaming]);
+    setBundleSlc(null);
+    setBundleMeta(null);
+    setBundleStatus('idle');
+    setBundleProgress(null);
+    setBundleError(null);
+    setUploadedBundleRunId(null);
+    setL1bInputMode(prevRunId ? 'upstream' : 'upload');
+    // cachedOutput 은 새 step 진입 시점에 한 번만 반영. step 동일한 채로 cachedOutput 이
+    // 갱신될 땐 (우리가 직접 update 한 경우) 재 hydrate 하지 않는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step.order, step.kind, step.sarStage, prevRunId, cancelStreaming]);
 
   // ESC 키로 닫기
   useEffect(() => {
@@ -587,8 +734,12 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
 
         <div className="flex-1" />
 
-        {/* Execute step — SAR 노드는 OUTPUT 헤더에 위치하므로 모달 헤더에서 제외 */}
-        {step.kind !== 'SAR' && (
+        {/*
+         * Execute step — SAR 노드는 OUTPUT 헤더에 위치하므로 모달 헤더에서 제외.
+         * TRIGGER/FILE_INPUT/JOB_INIT 는 개별 실행 개념이 없으므로 제외
+         * (시작 노드 입력 지정과 Job 초기화는 Pipeline Execution 탭에서 처리).
+         */}
+        {(step.kind === 'CATALOG' || step.kind === 'THUMBNAIL') && (
           <button
             type="button"
             disabled={isRunning}
@@ -627,8 +778,225 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
             <span className="text-[10px] font-semibold tracking-widest text-muted-foreground">INPUT</span>
           </div>
           <div className="flex-1 overflow-y-auto min-h-0">
-            {/* SAR 시연: 시작 노드면 H5 업로드 UI 우선 표시 */}
-            {needsUpload ? (
+            {/* SAR 시연: L1B 는 토글 (upstream/upload), L1A 는 H5 업로드, 그 외는 prev nodes */}
+            {isL1bStage ? (
+              <div className="p-3 space-y-3" data-testid="sar-l1b-input-panel">
+                {/* 토글 — Upstream(prev run) vs Upload file */}
+                <div className="grid grid-cols-2 gap-1 rounded-md bg-muted/40 p-1" role="tablist" aria-label="L1B input source">
+                  {[
+                    { id: 'upstream' as const, label: 'Upstream run' },
+                    { id: 'upload' as const, label: 'Upload file' },
+                  ].map((opt) => {
+                    const active = l1bInputMode === opt.id;
+                    const disabled = opt.id === 'upstream' && !prevRunId;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        disabled={disabled}
+                        onClick={() => setL1bInputMode(opt.id)}
+                        data-testid={`l1b-mode-${opt.id}`}
+                        title={disabled ? 'No upstream run available. Execute L1A first.' : undefined}
+                        className={cn(
+                          'h-7 rounded text-[11px] font-medium transition-colors',
+                          active
+                            ? 'bg-card text-foreground shadow-sm border border-border'
+                            : 'text-muted-foreground hover:text-foreground',
+                          disabled && 'opacity-40 cursor-not-allowed hover:text-muted-foreground',
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {l1bInputMode === 'upstream' ? (
+                  prevRunId ? (
+                    <div className="space-y-2" data-testid="sar-l1b-upstream">
+                      {prevNodes && prevNodes.length > 0 && prevNodes.map((prev) => {
+                        const PrevIcon = getNodeIcon(prev.kind, prev.sarStage);
+                        return (
+                          <div
+                            key={prev.order}
+                            className="flex items-center gap-2.5 p-2.5 rounded-lg border border-border bg-muted/20"
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
+                              <PrevIcon className="w-4 h-4 text-accent" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[11px] font-semibold text-foreground leading-tight truncate">{prev.label}</div>
+                              <div className="text-[10px] text-muted-foreground">{prev.csc} · #{prev.order}</div>
+                            </div>
+                            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />
+                          </div>
+                        );
+                      })}
+                      <div className="rounded-md border border-success/30 bg-success/10 px-2.5 py-2 text-[10px] text-success flex items-start gap-1.5" data-testid="sar-prev-run">
+                        <CheckCircle className="w-3 h-3 mt-0.5 shrink-0" />
+                        <div className="min-w-0 break-all">Chained from prev run <span className="font-mono">{prevRunId.slice(0, 8)}</span></div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3" data-testid="sar-needs-upstream">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                        <div className="min-w-0 space-y-1">
+                          <div className="text-[11px] font-semibold text-foreground">No upstream run yet</div>
+                          <div className="text-[10px] leading-relaxed text-muted-foreground">
+                            Execute the upstream L1A node first to chain its SLC GeoTIFF + metadata
+                            XML into this stage — or switch to <span className="font-semibold text-foreground">Upload file</span> to provide them directly.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  // ── Upload file 모드: SLC TIFF (+ multilook 이면 XML) 직접 업로드 ──
+                  <div className="space-y-2" data-testid="sar-l1b-upload">
+                    <input
+                      ref={bundleSlcInputRef}
+                      type="file"
+                      accept=".tif,.tiff,image/tiff"
+                      className="hidden"
+                      data-testid="sar-bundle-slc-input"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = '';
+                        if (f) handleBundleSlcPick(f);
+                      }}
+                    />
+                    <input
+                      ref={bundleMetaInputRef}
+                      type="file"
+                      accept=".xml,application/xml,text/xml"
+                      className="hidden"
+                      data-testid="sar-bundle-meta-input"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = '';
+                        if (f) handleBundleMetaPick(f);
+                      }}
+                    />
+
+                    {/* SLC/MLD TIFF slot */}
+                    <div
+                      className={cn(
+                        'rounded-md border px-3 py-2.5 transition-colors',
+                        bundleSlc
+                          ? 'border-success/40 bg-success/5'
+                          : 'border-dashed border-accent/40 bg-accent/[0.03]',
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-md bg-accent/10 flex items-center justify-center shrink-0">
+                          {bundleSlc ? <CheckCircle className="w-4 h-4 text-success" /> : <Upload className="w-4 h-4 text-accent" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[11px] font-semibold text-foreground">
+                            {sarStageId === 'L1B_SPECKLE' ? 'MLD TIFF' : 'SLC TIFF'}
+                          </div>
+                          {bundleSlc ? (
+                            <div className="text-[10px] text-muted-foreground font-mono truncate" title={bundleSlc.name}>
+                              {bundleSlc.name} · {(bundleSlc.size / 1e6).toFixed(1)} MB
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-muted-foreground">.tif / .tiff — click to choose</div>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => bundleSlcInputRef.current?.click()}
+                          disabled={bundleStatus === 'uploading'}
+                          className="shrink-0 text-[10px] font-medium text-accent hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+                          data-testid="sar-bundle-slc-pick"
+                        >
+                          {bundleSlc ? 'Change' : 'Choose'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* metadata XML slot — multilook 만 */}
+                    {bundleRequiresMeta && (
+                      <div
+                        className={cn(
+                          'rounded-md border px-3 py-2.5 transition-colors',
+                          bundleMeta
+                            ? 'border-success/40 bg-success/5'
+                            : 'border-dashed border-accent/40 bg-accent/[0.03]',
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-md bg-accent/10 flex items-center justify-center shrink-0">
+                            {bundleMeta ? <CheckCircle className="w-4 h-4 text-success" /> : <Upload className="w-4 h-4 text-accent" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[11px] font-semibold text-foreground">Metadata XML</div>
+                            {bundleMeta ? (
+                              <div className="text-[10px] text-muted-foreground font-mono truncate" title={bundleMeta.name}>
+                                {bundleMeta.name} · {(bundleMeta.size / 1e3).toFixed(0)} KB
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-muted-foreground">.xml — required for multi-look</div>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => bundleMetaInputRef.current?.click()}
+                            disabled={bundleStatus === 'uploading'}
+                            className="shrink-0 text-[10px] font-medium text-accent hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+                            data-testid="sar-bundle-meta-pick"
+                          >
+                            {bundleMeta ? 'Change' : 'Choose'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* progress / status */}
+                    {bundleStatus === 'uploading' && bundleProgress && (() => {
+                      const pct = bundleProgress.total > 0
+                        ? Math.min(100, Math.round((bundleProgress.loaded / bundleProgress.total) * 100))
+                        : 0;
+                      return (
+                        <div className="rounded-md border border-accent/30 bg-accent/[0.06] px-2.5 py-2 space-y-1.5" data-testid="sar-bundle-uploading">
+                          <div className="text-[10px] text-accent font-mono">{pct}% · uploading…</div>
+                          <div className="h-1.5 w-full rounded-full bg-accent/15 overflow-hidden">
+                            <div className="h-full bg-accent transition-all duration-200 ease-linear" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {bundleStatus === 'done' && uploadedBundleRunId && (
+                      <div className="rounded-md border border-success/30 bg-success/10 px-2.5 py-2 text-[10px] text-success flex items-start gap-1.5" data-testid="sar-bundle-done">
+                        <CheckCircle className="w-3 h-3 mt-0.5 shrink-0" />
+                        <div className="min-w-0 break-all">
+                          Ready · synthetic runId <span className="font-mono">{uploadedBundleRunId.slice(0, 8)}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {bundleError && (
+                      <div className="rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-[10px] text-destructive flex items-start gap-1.5" data-testid="sar-bundle-error">
+                        <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
+                        <div className="min-w-0 break-words">{bundleError}</div>
+                      </div>
+                    )}
+
+                    {bundleStatus === 'idle' && !bundleSlc && (
+                      <p className="text-[10px] leading-relaxed text-muted-foreground/70 pt-1">
+                        {bundleRequiresMeta
+                          ? 'Pick both the SLC TIFF and metadata XML — upload starts once both are chosen.'
+                          : 'Pick an MLD TIFF — upload starts immediately on selection.'}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : needsH5Upload ? (
               <div
                 className="p-3 space-y-2.5"
                 data-testid="sar-upload-panel"
@@ -1000,6 +1368,13 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
 
             {/* ── Parameters 탭 — 편집 가능 ── */}
             <div className={cn('h-full flex flex-col min-h-0', activeTab !== 'parameters' && 'hidden')}>
+              {/* L1B 한정 sub-stage(필터) 선택 — 같은 stage 노드가 여러 개여도 어떤 처리를 하는지 명확히 구분되도록 */}
+              {step.kind === 'SAR' && step.sarStage === 'L1B' && onSaveNode && (
+                <div className="shrink-0">
+                  <L1BSubStageEditor step={step} onSave={onSaveNode} />
+                </div>
+              )}
+
               {/* SAR: stage sub-function — CODE 본문에서 자동 도출되는 readonly 상태 표시 */}
               {step.kind === 'SAR' && allTasks.length > 0 && (
                 <div className="shrink-0 px-5 py-4 space-y-2">
@@ -1126,11 +1501,19 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
               // mock fallback stage 면 항상 가능.
               const realRunDisabled = sarStageId !== null && !canRunReal;
               const tooltip = realRunDisabled
-                ? (needsUpload
+                ? (needsH5Upload
                     ? (uploadStatus === 'uploading'
                         ? 'Uploading… enabled when upload completes'
                         : (uploadedFile ? 'Wait for upload to finish' : 'Choose an H5 file first'))
-                    : 'No input available')
+                    : isL1bStage
+                      ? (l1bInputMode === 'upstream'
+                          ? 'Run the upstream L1A node first — or switch INPUT to "Upload file"'
+                          : bundleStatus === 'uploading'
+                            ? 'Uploading… enabled when upload completes'
+                            : bundleRequiresMeta && (!bundleSlc || !bundleMeta)
+                              ? 'Choose both the SLC TIFF and metadata XML'
+                              : 'Choose the input TIFF first')
+                      : 'No input available')
                 : undefined;
               return (
                 <button
@@ -1246,15 +1629,19 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                   <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground/60 px-6 text-center">
                     <ChevronRight className="w-6 h-6 opacity-30 -scale-x-100" />
                     <span className="text-[12px]">No output data</span>
-                    <button
-                      type="button"
-                      onClick={handleExecute}
-                      className="mt-1 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-destructive text-white hover:brightness-110 transition-all flex items-center gap-1.5"
-                    >
-                      <Play className="w-3 h-3" fill="currentColor" strokeWidth={0} />
-                      Execute step
-                    </button>
-                    <span className="text-[10px] text-muted-foreground/40">or configure mock data</span>
+                    {(step.kind === 'CATALOG' || step.kind === 'THUMBNAIL') && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleExecute}
+                          className="mt-1 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-destructive text-white hover:brightness-110 transition-all flex items-center gap-1.5"
+                        >
+                          <Play className="w-3 h-3" fill="currentColor" strokeWidth={0} />
+                          Execute step
+                        </button>
+                        <span className="text-[10px] text-muted-foreground/40">or configure mock data</span>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

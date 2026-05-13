@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { Upload, Save, Trash2, FileCode2, Code2 } from 'lucide-react';
 import { toast } from '@/components/ui/Toast';
 import type { PipelineStepDefinition } from '@/types/pipeline';
-import { getDefaultCode } from './node-code-defaults';
+import { getDefaultCode, getL1BSubStageCode } from './node-code-defaults';
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
   ssr: false,
@@ -65,8 +65,10 @@ interface NodeCodeEditorPanelProps {
 }
 
 export default function NodeCodeEditorPanel({ step, onSave, onCodeChange }: NodeCodeEditorPanelProps) {
-  // step에 코드가 없으면 stage별 기본 코드(목 데이터)로 보여준다.
-  const fallback = getDefaultCode(step.sarStage);
+  // step에 코드가 없으면 sub-stage 별 기본 코드(L1B) 또는 stage 별 기본 코드(목 데이터)로 보여준다.
+  const fallback =
+    (step.sarStage === 'L1B' && getL1BSubStageCode(step.sarSubStage)) ||
+    getDefaultCode(step.sarStage);
   const initialCode = step.code ?? fallback?.code ?? '';
   const initialLanguage = step.codeLanguage ?? fallback?.language ?? 'python';
   const initialFilename = step.codeFilename ?? fallback?.filename ?? '';
@@ -84,7 +86,10 @@ export default function NodeCodeEditorPanel({ step, onSave, onCodeChange }: Node
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const fb = getDefaultCode(step.sarStage);
+    // L1B 는 sub-stage 마다 fallback 이 다르고, 다른 stage 는 기존 stage 단위 fallback.
+    const fb =
+      (step.sarStage === 'L1B' && getL1BSubStageCode(step.sarSubStage)) ||
+      getDefaultCode(step.sarStage);
 
     // 사용자가 이미 편집한 코드(step.code) 가 있으면 그것 우선.
     if (step.code) {
@@ -110,8 +115,14 @@ export default function NodeCodeEditorPanel({ step, onSave, onCodeChange }: Node
       return;
     }
 
+    // L1B 는 sub-stage 까지 같이 보내서 04.05/04.06 중 정확한 CSU 파일을 받는다.
+    const subStage = stage === 'L1B' ? step.sarSubStage?.kind : undefined;
+    const url = subStage
+      ? `/api/sar/source/${stage}?subStage=${encodeURIComponent(subStage)}`
+      : `/api/sar/source/${stage}`;
+
     setSourceLoading(true);
-    fetch(`/api/sar/source/${stage}`)
+    fetch(url)
       .then(async (res) => {
         if (cancelled) return;
         if (res.ok) {
@@ -123,7 +134,7 @@ export default function NodeCodeEditorPanel({ step, onSave, onCodeChange }: Node
           setSourceOrigin('real');
           onCodeChange?.(text);
         } else {
-          // 매핑 없는 stage 는 mock fallback
+          // 매핑 없는 stage / sub-stage 는 mock fallback (L1B 04.07/04.08 포함)
           const fbCode = fb?.code ?? '';
           setCode(fbCode);
           setLanguage(fb?.language ?? 'python');
@@ -150,7 +161,8 @@ export default function NodeCodeEditorPanel({ step, onSave, onCodeChange }: Node
     return () => {
       cancelled = true;
     };
-  }, [step.order, step.sarStage, step.code, step.codeLanguage, step.codeFilename, onCodeChange]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- sub-stage kind 만 deps에 포함 (filter/window 변경 시 코드 재페치 불필요)
+  }, [step.order, step.sarStage, step.sarSubStage?.kind, step.code, step.codeLanguage, step.codeFilename, onCodeChange]);
 
   const handleUploadClick = useCallback(() => {
     fileInputRef.current?.click();

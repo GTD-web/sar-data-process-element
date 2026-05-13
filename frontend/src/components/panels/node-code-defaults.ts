@@ -1,4 +1,4 @@
-import type { SarStage } from '@/types/pipeline';
+import type { SarStage, SarSubStage } from '@/types/pipeline';
 
 export interface NodeCodeDefault {
   code: string;
@@ -1292,6 +1292,250 @@ __all__ = [
 ]
 `;
 
+// ────────────────────────────────────────────────────────────────────────────
+// L1B sub-stage defaults — sub-stage 별로 코드/파일명을 분리해서 노출.
+// multilook / speckle 은 natives/csc-04-level-1-processor 의 실제 알고리즘 발췌
+// (full file 은 700+ 라인이라 모달엔 핵심 부분만). ground-range / grd 는 백엔드
+// 미구현이라 mock 으로 동작 흐름만 묘사 — 실행 시에도 mock fallback 으로 빠진다.
+// ────────────────────────────────────────────────────────────────────────────
+
+const L1B_MULTILOOK_CODE = String.raw`"""CSU-04.05 Multi-look Processing.
+
+Incoherent multi-look averaging in range and azimuth, matching SNAP/ESA convention.
+
+  Intensity            : I(r, a) = |SLC(r, a)|^2 = re^2 + im^2
+  Multi-looked output  : MLD(R, A) = (1 / RL·AL) Σ_{k,l} I(R·RL+k, A·AL+l)
+
+Strip-based reading bounds peak RAM regardless of scene size.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+import time
+
+import numpy as np
+import rasterio
+
+
+def multilook(slc_path: str,
+              xml_path: str,
+              output_dir: str,
+              range_looks: int,
+              azimuth_looks: int,
+              strip_out_lines: int = 64,
+              save_amplitude: bool = False) -> dict:
+    """Apply incoherent multi-look averaging to an SLC GeoTIFF."""
+    RL, AL = range_looks, azimuth_looks
+    if RL < 1 or AL < 1:
+        raise ValueError(f"multi-look factors must be >= 1 (got RL={RL}, AL={AL})")
+
+    out_dir = Path(output_dir); out_dir.mkdir(parents=True, exist_ok=True)
+    out_tif = out_dir / f"MLD_{RL}R{AL}A.tif"
+    t0 = time.time()
+
+    with rasterio.open(slc_path) as src:
+        slc_rows, slc_cols = src.height, src.width
+        na_ml = slc_rows // AL
+        nr_ml = slc_cols // RL
+        na_used, nr_used = na_ml * AL, nr_ml * RL
+
+        kw = dict(driver='GTiff', height=na_ml, width=nr_ml, count=1,
+                  dtype='float32', compress='zstd', predictor=2)
+        with rasterio.open(str(out_tif), 'w', **kw) as dst:
+            strip_in = strip_out_lines * AL
+            written = 0
+            for r0 in range(0, na_used, strip_in):
+                r1 = min(r0 + strip_in, na_used)
+                n_in = ((r1 - r0) // AL) * AL
+                if n_in == 0:
+                    continue
+                win = rasterio.windows.Window(0, r0, nr_used, n_in)
+                re = src.read(1, window=win).astype(np.float32)
+                im = src.read(2, window=win).astype(np.float32)
+
+                # ── Intensity & range multi-look (mean over RL columns) ────
+                intensity = re * re + im * im
+                intensity = intensity.reshape(n_in, nr_ml, RL).mean(axis=2)
+
+                # ── Azimuth multi-look (mean over AL rows) ─────────────────
+                n_out = n_in // AL
+                ml_strip = intensity.reshape(n_out, AL, nr_ml).mean(axis=1)
+                if save_amplitude:
+                    ml_strip = np.sqrt(np.maximum(ml_strip, 0.0))
+
+                out_win = rasterio.windows.Window(0, written, nr_ml, n_out)
+                dst.write(ml_strip.astype(np.float32), 1, window=out_win)
+                written += n_out
+
+    return {"mld": str(out_tif), "elapsed_s": time.time() - t0,
+            "shape": [na_ml, nr_ml], "range_looks": RL, "azimuth_looks": AL}
+
+
+__all__ = ["multilook"]
+`;
+
+const L1B_SPECKLE_CODE = String.raw`"""CSU-04.06 Speckle Filtering.
+
+Five intensity-domain filters (boxcar / lee / enhanced_lee / gamma_map / median).
+All operate on float32 intensity (|SLC|^2 or the CSU-04.05 multi-look output).
+"""
+from __future__ import annotations
+
+import math
+import numpy as np
+from scipy.ndimage import uniform_filter as _uniform, median_filter as _median
+
+
+def boxcar_filter(img: np.ndarray, win_x: int = 5, win_y: int = 5, **_) -> np.ndarray:
+    """Simple mean filter (intensity domain)."""
+    return _uniform(img.astype(np.float64), size=(win_y, win_x),
+                    mode='reflect').astype(np.float32)
+
+
+def lee_filter(img: np.ndarray, win_x: int = 5, win_y: int = 5,
+               looks: float = 1.0, **_) -> np.ndarray:
+    """Classic Lee MMSE: sigma2_noise = 1 / ENL."""
+    sigma2_noise = 1.0 / max(looks, 1e-3)
+    img64 = img.astype(np.float64)
+    m1 = _uniform(img64,       size=(win_y, win_x), mode='reflect')
+    m2 = _uniform(img64 ** 2,  size=(win_y, win_x), mode='reflect')
+    var = np.maximum(0.0, m2 - m1 ** 2)
+    denom = var + m1 ** 2 * sigma2_noise
+    b = np.where(denom > 0, var / denom, 0.0).clip(0.0, 1.0)
+    return (m1 + b * (img64 - m1)).astype(np.float32)
+
+
+def enhanced_lee_filter(img: np.ndarray, win_x: int = 5, win_y: int = 5,
+                        looks: float = 1.0, damping: float = 1.0, **_) -> np.ndarray:
+    """Edge-preserving Enhanced Lee — damps smoothing across edges."""
+    enl = max(looks, 1e-3)
+    cu, cmax = 1.0 / math.sqrt(enl), math.sqrt(1.0 + 2.0 / enl)
+    img64 = img.astype(np.float64)
+    m1 = _uniform(img64,      size=(win_y, win_x), mode='reflect')
+    m2 = _uniform(img64 ** 2, size=(win_y, win_x), mode='reflect')
+    var = np.maximum(0.0, m2 - m1 ** 2)
+    ci = np.where(m1 > 0, np.sqrt(var) / m1, 0.0)
+    w = np.exp(-damping * (ci - cu) / np.maximum(cmax - ci, 1e-12))
+    out = np.where(ci <= cu, m1,
+                   np.where(ci >= cmax, img64, m1 * w + img64 * (1.0 - w)))
+    return out.astype(np.float32)
+
+
+def gamma_map_filter(img: np.ndarray, win_x: int = 5, win_y: int = 5,
+                     looks: float = 1.0, **_) -> np.ndarray:
+    """Gamma-MAP — better contrast preservation than Lee."""
+    enl = max(looks, 1e-3)
+    img64 = img.astype(np.float64)
+    m1 = _uniform(img64,      size=(win_y, win_x), mode='reflect')
+    m2 = _uniform(img64 ** 2, size=(win_y, win_x), mode='reflect')
+    var = np.maximum(0.0, m2 - m1 ** 2)
+    cu2 = 1.0 / enl
+    ci2 = np.where(m1 > 0, var / (m1 ** 2), 0.0)
+    alpha = np.where(ci2 > cu2, (enl + 1.0) ** 2 / (ci2 - cu2 + 1e-12), 0.0)
+    d = np.maximum(0.0, (alpha - enl - 1.0) ** 2
+                       + 4.0 * alpha * enl * img64 / np.maximum(m1, 1e-30))
+    b = np.where(ci2 > cu2,
+                 ((alpha - enl - 1.0 + np.sqrt(d)) / (2.0 * alpha)).clip(0, 1),
+                 0.0)
+    return np.where(ci2 <= cu2, m1, b * img64 + (1.0 - b) * m1).astype(np.float32)
+
+
+def median_filter(img: np.ndarray, win_x: int = 5, win_y: int = 5, **_) -> np.ndarray:
+    """2-D median filter (preserves point targets)."""
+    return _median(img.astype(np.float32), size=(win_y, win_x),
+                   mode='reflect').astype(np.float32)
+
+
+FILTER_FNS = {
+    "boxcar":       boxcar_filter,
+    "lee":          lee_filter,
+    "enhanced_lee": enhanced_lee_filter,
+    "gamma_map":    gamma_map_filter,
+    "median":       median_filter,
+}
+
+
+def apply_speckle_filter(img: np.ndarray, name: str,
+                         win_x: int = 5, win_y: int = 5,
+                         looks: float = 1.0) -> np.ndarray:
+    """Dispatch to the requested speckle reducer."""
+    fn = FILTER_FNS.get(name)
+    if fn is None:
+        raise ValueError(f"unknown filter '{name}'")
+    return fn(img, win_x=win_x, win_y=win_y, looks=looks)
+
+
+__all__ = ["apply_speckle_filter", "FILTER_FNS"]
+`;
+
+const L1B_GROUND_RANGE_CODE = String.raw`"""CSU-04.07 Ground-range Projection — MOCK.
+
+Slant-range → ground-range resampling on the reference ellipsoid.
+Backend implementation TBC (ICD §3.2). This stub exists so the pipeline can
+flow end-to-end during demos; the executor falls back to mock output.
+"""
+from __future__ import annotations
+
+from typing import Tuple
+import numpy as np
+
+
+def project_to_ground_range(slant_image: np.ndarray,
+                            slant_spacing_m: float,
+                            look_angle_deg: float = 30.0) -> Tuple[np.ndarray, float]:
+    """Slant→ground-range resample on the reference ellipsoid (mock)."""
+    sin_look = max(np.sin(np.deg2rad(look_angle_deg)), 1e-3)
+    ground_spacing = slant_spacing_m / sin_look
+
+    h, w = slant_image.shape
+    gr_w = max(2, int(round(w * (slant_spacing_m / ground_spacing))))
+    src_x = np.linspace(0.0, w - 1.0, num=gr_w)
+    cols = np.clip(np.round(src_x).astype(np.int32), 0, w - 1)
+
+    # ── Ground-range projection (mock nearest-neighbour resample) ───────────
+    gr = slant_image[:, cols].astype(np.float32)
+    return gr, ground_spacing
+
+
+__all__ = ["project_to_ground_range"]
+`;
+
+const L1B_GRD_CODE = String.raw`"""CSU-04.08 GRD Product — MOCK.
+
+Bundles Multi-look + Speckle + Ground-range output into a Ground Range
+Detected GeoTIFF. Backend implementation TBC. Stub for the demo flow.
+"""
+from __future__ import annotations
+
+import numpy as np
+import rasterio
+
+
+def compute_amplitude(intensity: np.ndarray) -> np.ndarray:
+    """Amplitude = sqrt(intensity)."""
+    return np.sqrt(np.maximum(intensity, 0.0)).astype(np.float32)
+
+
+def compute_phase(slc: np.ndarray) -> np.ndarray:
+    """Interferometric phase (rad) — only meaningful when complex SLC is at hand."""
+    return np.angle(slc).astype(np.float32)
+
+
+def write_grd_geotiff(amplitude: np.ndarray, phase: np.ndarray,
+                      profile: dict, out_path: str) -> str:
+    """Write the amplitude/phase pair as a 2-band GRD COG (mock metadata)."""
+    out_profile = {**profile, "count": 2, "dtype": "float32",
+                   "driver": "COG", "compress": "deflate",
+                   "blockxsize": 512, "blockysize": 512}
+    with rasterio.open(out_path, "w", **out_profile) as dst:
+        dst.write(amplitude, 1)
+        dst.write(phase, 2)
+    return out_path
+
+
+__all__ = ["compute_amplitude", "compute_phase", "write_grd_geotiff"]
+`;
+
 export const NODE_CODE_DEFAULTS_BY_STAGE: Partial<Record<SarStage, NodeCodeDefault>> = {
   L0: {
     code: L0_LEVEL_0_PROCESSING,
@@ -1333,6 +1577,43 @@ export const NODE_CODE_DEFAULTS_BY_STAGE: Partial<Record<SarStage, NodeCodeDefau
 export function getDefaultCode(stage: SarStage | undefined): NodeCodeDefault | null {
   if (!stage) return null;
   return NODE_CODE_DEFAULTS_BY_STAGE[stage] ?? null;
+}
+
+/**
+ * L1B sub-stage 별 코드/파일명.
+ * `getDefaultCode(L1B)` 는 4 개 CSU 가 한 파일에 통합된 옛 기본값을 반환하므로,
+ * sub-stage 가 정해진 L1B 노드는 이 함수로 sub-stage 전용 코드를 가져온다.
+ *
+ * - multilook  : CSU-04.05 — 실제 native 알고리즘 발췌
+ * - speckle    : CSU-04.06 — 실제 native 알고리즘 (5 필터 dispatch)
+ * - ground-range / grd : CSU-04.07/08 — 백엔드 미구현, mock 동작
+ */
+const L1B_SUB_STAGE_DEFAULTS: Record<SarSubStage['kind'], NodeCodeDefault> = {
+  multilook: {
+    code: L1B_MULTILOOK_CODE,
+    language: 'python',
+    filename: 'csu_04_05_multilook.py',
+  },
+  speckle: {
+    code: L1B_SPECKLE_CODE,
+    language: 'python',
+    filename: 'csu_04_06_speckle_filter.py',
+  },
+  'ground-range': {
+    code: L1B_GROUND_RANGE_CODE,
+    language: 'python',
+    filename: 'csu_04_07_ground_range.py',
+  },
+  grd: {
+    code: L1B_GRD_CODE,
+    language: 'python',
+    filename: 'csu_04_08_grd_product.py',
+  },
+};
+
+export function getL1BSubStageCode(subStage: SarSubStage | undefined): NodeCodeDefault | null {
+  if (!subStage) return null;
+  return L1B_SUB_STAGE_DEFAULTS[subStage.kind] ?? null;
 }
 
 /**
