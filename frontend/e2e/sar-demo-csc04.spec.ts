@@ -104,9 +104,6 @@ test.describe('CSC-04 데모 — H5 업로드 → L1A → L1B 체이닝', () => 
     // SSE 로 라인이 실시간으로 흘러야 한다 — done 보다 먼저 일부 stdout 라인이 떠야 정상.
     // main.py 의 첫 print: "SAR RDA Processor v3.0 — Parameters" 줄이 나오는지로 검증.
     await expect(page.getByText(/SAR RDA Processor v3\.0/)).toBeVisible({ timeout: 90_000 });
-    // Staged-progress banner — 5단계 ✓ / → / ○ 식 UI 가 stdout 으로 흘러나와야 한다.
-    await expect(page.getByText(/Processing Stages \(Total: 5\):/).first()).toBeVisible({ timeout: 90_000 });
-    await expect(page.getByText(/Range \+ Azimuth Focusing/).first()).toBeVisible();
 
     // 결과 패널 + QuickLook image
     const result = page.getByTestId('sar-result');

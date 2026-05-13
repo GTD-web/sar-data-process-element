@@ -149,7 +149,6 @@ class SARProcessor:
         vmax_db: float = -5.0,
         az_start: Optional[int] = None,
         az_stop: Optional[int] = None,
-        reporter: Optional[object] = None,
     ):
         self.workers = workers
         self.rng_chunk = rng_chunk
@@ -158,8 +157,6 @@ class SARProcessor:
         self.vmax_db = vmax_db
         self.out_dir = Path(output_dir)
         os.makedirs(self.out_dir, exist_ok=True)
-        # 시연 modal 의 staged-progress UI 용. None 이면 평소대로 평이한 로그만.
-        self.reporter = reporter
 
         self.meta = load_metadata(
             h5_path,
@@ -262,24 +259,6 @@ class SARProcessor:
             eta = (time.time() - t0) / done * (n_blk - done) if done < n_blk else 0
             log.info("[%d/%d]  az %d-%d  fdc=%.1f Hz  written=%d  ETA %.0fs", done, n_blk, az0, az0 + na_actual, fdc, written, eta)
 
-            # Staged-progress UI 갱신 — 10% milestone 마다만 (또는 마지막 block).
-            if self.reporter is not None:
-                pct_now = int(done * 100 / n_blk) if n_blk > 0 else 0
-                last = getattr(self, "_last_progress_pct", -1)
-                if pct_now >= last + 10 or done == n_blk:
-                    self.reporter.progress(
-                        pct_now,
-                        label="Azimuth block focusing",
-                        done=done,
-                        total=n_blk,
-                    )
-                    self._last_progress_pct = pct_now
-
-        # 시연 — block 처리 진입.
-        if self.reporter is not None:
-            self.reporter.start_stage(2)
-            self._last_progress_pct = -1
-
         # ── Block dispatch ────────────────────────────────────────────────────
         if self.workers == 1:
             for k, blk in enumerate(self.schedule):
@@ -303,26 +282,15 @@ class SARProcessor:
                         _accumulate_and_flush(next_k, az0_p, foc_p, fdc_p)
                         next_k += 1
 
-        if self.reporter is not None:
-            self.reporter.complete_stage(2)
-            self.reporter.start_stage(3)
-
         tif_writer.close()
         log.info("All blocks written — total time: %.1f s", time.time() - t0)
 
         fdc_mean = float(np.mean(list(fdc_log.values()))) if fdc_log else 0.0
         write_metadata_xml(m, fdc_mean, fdc_log, n_blk, str(out_xml))
 
-        if self.reporter is not None:
-            self.reporter.complete_stage(3)
-            self.reporter.start_stage(4)
-
         # ── Quicklook (two-pass strip reader, no full image in RAM) ──────────
         ql_written = _write_quicklook_from_slc(str(out_slc), str(out_ql), vmin_db=self.vmin_db, vmax_db=self.vmax_db)
         log.info("Done → %s", self.out_dir)
-
-        if self.reporter is not None:
-            self.reporter.complete_stage(4)
 
         result = {"slc": str(out_slc), "xml": str(out_xml)}
         if ql_written:
