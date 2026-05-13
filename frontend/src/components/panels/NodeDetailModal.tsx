@@ -309,10 +309,10 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
   const [elapsedMs, setElapsedMs] = useState(cachedOutput?.elapsedMs ?? 0);
   const execTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // 최신 logLines/elapsedMs 를 done 핸들러에서 캡쳐하기 위한 ref. setState 가 stale closure
-  // 였을 때도 onSarOutputUpdate 가 정확한 마지막 상태를 caller 에 넘길 수 있어야 한다.
+  // 최신 logLines 를 done 핸들러에서 stale 없이 캡쳐하기 위한 ref. 갱신은 항상
+  // functional setLogLines 콜백 안에서 next 값 그대로 대입 — React 의 auto-batching
+  // 과 별도 useEffect 동기화가 stream 중간 라인을 덮어쓰지 않게.
   const logLinesRef = useRef<RenderedLogLine[]>(cachedOutput?.logLines ?? []);
-  useEffect(() => { logLinesRef.current = logLines; }, [logLines]);
 
   // ── 실제 SAR 실행 상태 (시연용) ─────────────────────────────────────────────
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -581,9 +581,13 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
               timestamp: stamp,
               delayMs: 0,
             };
-            // ref 도 같이 sync — done 핸들러에서 최신 logLines 캡쳐가 필요하기 때문.
-            logLinesRef.current = [...logLinesRef.current, newLine];
-            setLogLines(logLinesRef.current);
+            // functional setter — React 가 큐에 쌓인 prev 를 차례로 흘려보내므로 줄 누락이 없다.
+            // ref 는 setter 안에서 next 값을 그대로 받아 동기화 (done 핸들러 캡쳐용).
+            setLogLines((prev) => {
+              const next = [...prev, newLine];
+              logLinesRef.current = next;
+              return next;
+            });
           } else if (ev.type === 'done') {
             completedRunResult = ev;
             setRunResult(ev);

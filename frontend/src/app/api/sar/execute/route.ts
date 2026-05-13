@@ -103,7 +103,12 @@ export async function POST(req: NextRequest): Promise<Response> {
         controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
       };
 
-      const proc = spawn('python3', [cfg.script, ...args]);
+      // -u: stdout/stderr 를 unbuffered 모드로 — 시연 SSE 가 print() 출력을
+      // 라인 단위로 곧바로 받기 위해. 안 그러면 block buffering 으로 인해
+      // 사용자 print() 가 process 종료 직전에야 한꺼번에 나타날 수 있다.
+      const proc = spawn('python3', ['-u', cfg.script, ...args], {
+        env: { ...process.env, PYTHONUNBUFFERED: '1' },
+      });
 
       // stdout/stderr 를 라인 단위로 분해해서 push.
       let stdoutBuf = '';
