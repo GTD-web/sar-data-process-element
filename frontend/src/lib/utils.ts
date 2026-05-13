@@ -6,6 +6,9 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatDuration(ms: number): string {
+  // 1초 미만은 ms 로 노출해 "0s" 로 뭉개지지 않도록 — Speckle 필터처럼 빠른 stage 가 0s 로
+  // 보이는 것을 막는다.
+  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`;
   const totalSec = Math.floor(ms / 1000);
   const h = Math.floor(totalSec / 3600);
   const m = Math.floor((totalSec % 3600) / 60);

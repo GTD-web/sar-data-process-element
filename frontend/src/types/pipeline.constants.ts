@@ -82,7 +82,7 @@ export const SAR_STAGE_LABELS: Record<SarStage, string> = {
 
 export const SAR_STAGE_TASKS: Record<SarStage, string[]> = {
   L0:  ['De-packetizer', 'BAQ De-compression', 'Range Line Reconstructor', 'Auxiliary Data Extractor', 'Calibration', 'HDF5 Converter'],
-  L1A: ['Range Compression', 'Azimuth Compression', 'Autofocusing', 'Multi-mode Support', 'SLC Product'],
+  L1A: ['Range Compression', 'Azimuth Compression', 'SLC Product'],
   L1B: ['Multi-look Processing', 'Speckle Filtering', 'Ground-range Projection', 'Amplitude/phase Product'],
   L1C: ['DEM Integration', 'Geometric Correction', 'Geometric Terrain Correction', 'Map Projection'],
   L2A: ['Incidence Angle Map', 'NESZ Map', 'Number-of-looks Map', 'Layover and Shadow Masks'],

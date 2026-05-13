@@ -749,6 +749,16 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step.order, step.kind, step.sarStage, prevRunId, cancelStreaming]);
 
+  // cachedOutput 의 runResult/runError 가 외부(cascade)에서 비동기로 갱신될 때 modal 도 따라가도록 sync.
+  // 모달이 열려 있는 중에 cascade 가 stage 를 끝내면 QuickLook 이미지·파일 목록이 곧바로 보인다.
+  // (기존 useEffect 는 step 교체 시점에만 hydrate 하므로 같은 step 의 결과 갱신은 놓침.)
+  useEffect(() => {
+    if (!cachedOutput) return;
+    setRunResult(cachedOutput.runResult);
+    setRunError(cachedOutput.runError);
+    if (cachedOutput.runResult || cachedOutput.runError) setExecState('done');
+  }, [cachedOutput]);
+
   // ESC 키로 닫기
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -1125,7 +1135,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                         <div className="text-[10px] text-muted-foreground font-mono">
                           {(((uploadedFile?.size || prevUploadSizeBytes) ?? 0) / 1e6).toFixed(0)} MB · uploadId{' '}
                           <span>{uploadId?.slice(0, 8)}</span>
-                          {prevUploadId && uploadId === prevUploadId && (
+                          {prevUploadId && uploadId === prevUploadId && !isFileInputL0 && (
                             <span className="ml-2 text-accent">· from Pipeline Input</span>
                           )}
                         </div>

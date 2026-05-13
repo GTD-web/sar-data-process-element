@@ -293,6 +293,9 @@ export default function ConsolePage() {
   const [fileInputUploads, setFileInputUploads] = useState<Record<number, { uploadId: string; filename: string; sizeBytes: number }>>({});
   // 노드 order → 자동 cascade 실행 진행 여부 (중복 트리거 방지).
   const cascadeRunningRef = useRef<Set<number>>(new Set());
+  // 현재 실행 중인 SAR 노드 order → ISO 시작 시각. canvas 노드를 RUNNING + 실시간 경과 시간으로
+  // 표시하기 위해 사용 — 빈 record 면 RUNNING 노드 없음.
+  const [runningStartedAt, setRunningStartedAt] = useState<Record<number, string>>({});
   const [archivePipelineTarget, setArchivePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [deletePipelineTarget, setDeletePipelineTarget] = useState<PipelineDefinition | null>(null);
   const [undeployTarget, setUndeployTarget] = useState<PipelineDefinition | null>(null);
@@ -363,13 +366,16 @@ export default function ConsolePage() {
         // sarOutputsByOrder 에 캐시한다. 그 결과를 canvas 노드의 status/durationMs 에 반영해
         // CheckCircle (완료) / duration 표시를 띄운다. 우선순위: 실제 job > demo cache > PENDING.
         const cached = sarOutputsByOrder[s.order];
-        const demoFailed = !!cached && (
+        const runningAt = runningStartedAt[s.order];
+        // RUNNING: cascade 가 시작하면서 runningStartedAt 을 설정, 완료(또는 실패) 시 제거.
+        // runResult/runError 가 있어도 runningStartedAt 이 남아 있다면 그쪽이 우선이다.
+        const demoFailed = !!cached && !runningAt && (
           cached.runError !== null
           || (cached.runResult !== null && cached.runResult.exitCode !== 0)
         );
-        const demoStatus: StepStatus | undefined = cached
-          ? (demoFailed ? 'FAILED' : 'COMPLETED')
-          : undefined;
+        const demoStatus: StepStatus | undefined = runningAt
+          ? 'RUNNING'
+          : (cached ? (demoFailed ? 'FAILED' : 'COMPLETED') : undefined);
         return {
           order: s.order,
           kind: s.kind,
@@ -380,7 +386,9 @@ export default function ConsolePage() {
           // (Manual Pipelines 탭의 JobsPage 가 entry input 표시/편집을 담당.)
           targetCsc,
           productLevel,
-          durationMs: jobStep?.durationMs ?? cached?.elapsedMs,
+          // RUNNING 중에는 startedAt 만 넘기고 durationMs 는 비워둔다 (노드가 startedAt 기반으로 실시간 tick).
+          startedAt: runningAt ?? jobStep?.startedAt,
+          durationMs: runningAt ? undefined : (jobStep?.durationMs ?? cached?.elapsedMs),
           errorMessage: jobStep?.errorMessage ?? cached?.runError ?? undefined,
           enabledTasks: s.enabledTasks,
           status: s.disabled && !selectedJob
@@ -861,13 +869,16 @@ export default function ConsolePage() {
         const resolved = resolveSarStage(step.sarStage, step.sarSubStage);
         if (!resolved) return null;
         const startMs = Date.now();
+        const startedAtIso = new Date(startMs).toISOString();
         const logLines: RenderedLogLine[] = [];
-        // 캐시 비우고 running 표시
+        // 캐시 비우고 running 표시 — runningStartedAt 에 등록하면 canvas 노드가 RUNNING 으로 전환되고
+        // PipelineNode 내부 1초 tick 이 startedAt 기준 실시간 경과 시간을 계산해 보여준다.
         setSarOutputsByOrder((prev) => {
           const next = { ...prev };
           delete next[stepOrder];
           return next;
         });
+        setRunningStartedAt((prev) => ({ ...prev, [stepOrder]: startedAtIso }));
         let completedRunId: string | null = null;
         let errMsg: string | null = null;
         try {
@@ -907,6 +918,14 @@ export default function ConsolePage() {
             ...prev,
             [stepOrder]: { logLines: [...logLines], runResult: null, runError: errMsg, elapsedMs: Date.now() - startMs },
           }));
+        } finally {
+          // RUNNING 해제 — canvas 노드가 RUNNING → COMPLETED/FAILED 로 전환되고 최종 durationMs 가 노출.
+          setRunningStartedAt((prev) => {
+            if (!(stepOrder in prev)) return prev;
+            const next = { ...prev };
+            delete next[stepOrder];
+            return next;
+          });
         }
         if (errMsg) return null;
         return completedRunId;
@@ -1250,7 +1269,12 @@ export default function ConsolePage() {
           return undefined;
         };
         const isL1A = nodeDetailStep.kind === 'SAR' && nodeDetailStep.sarStage === 'L1A';
-        const upstreamUpload = isL1A && !prevRunId ? findUpstreamFileInputUpload() : undefined;
+        const isFileInputL0 = nodeDetailStep.kind === 'FILE_INPUT' && nodeDetailStep.inputLevel === 'LEVEL_0';
+        // FILE_INPUT 모달은 자기 자신이 보관한 업로드를, L1A 모달은 upstream FILE_INPUT 의 업로드를 prevUpload 로 받는다.
+        // 둘 다 다시 열렸을 때 "이미 업로드됨" 상태로 hydrate 되도록 일관 처리.
+        const upstreamUpload = isFileInputL0
+          ? fileInputUploads[nodeDetailStep.order]
+          : (isL1A && !prevRunId ? findUpstreamFileInputUpload() : undefined);
         return (
           <NodeDetailModal
             step={nodeDetailStep}
