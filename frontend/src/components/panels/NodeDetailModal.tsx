@@ -144,6 +144,51 @@ function getMockOutput(step: PipelineStepDefinition): MockRecord {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+/**
+ * TRIGGER/FILE_INPUT/JOB_INIT 의 OUTPUT 패널 — 별도 산출물 없이 입력/컨텍스트를 다음
+ * 노드로 전달하기만 하는 노드임을 시각적으로 알려준다. 연결된 downstream 노드 목록을 함께 표시.
+ */
+function PassThroughOutput({
+  kind,
+  nextNodes,
+}: {
+  kind: 'TRIGGER' | 'FILE_INPUT' | 'JOB_INIT';
+  nextNodes: PrevNodeInfo[];
+}) {
+  const description = kind === 'TRIGGER'
+    ? 'No standalone output. Triggers when the ground station delivers raw data and forwards the event to the next step(s).'
+    : kind === 'FILE_INPUT'
+      ? 'No standalone output. The uploaded result file is forwarded as input to the next step(s).'
+      : 'No standalone output. The job context (profile, priority, parameters) is forwarded to the next step(s).';
+  return (
+    <div className="flex-1 overflow-y-auto min-h-0 p-3" data-testid="pass-through-output">
+      <div className="rounded-md border border-border bg-muted/30 p-3 space-y-3">
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
+          <ChevronRight className="w-3.5 h-3.5 text-accent" />
+          <span>Pass-through</span>
+        </div>
+        <p className="text-[11px] text-muted-foreground leading-relaxed">{description}</p>
+        <div className="space-y-1.5">
+          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Delivered to</div>
+          {nextNodes.length === 0 ? (
+            <div className="text-[11px] text-muted-foreground/70 italic">No downstream node connected yet.</div>
+          ) : (
+            <ul className="space-y-1">
+              {nextNodes.map((n) => (
+                <li key={n.order} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-background/60 border border-border/60">
+                  <ChevronRight className="w-3 h-3 text-accent shrink-0" />
+                  <span className="text-[11px] text-foreground truncate">{n.label}</span>
+                  <span className="ml-auto text-[10px] text-muted-foreground/70 font-mono shrink-0">{n.csc}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** 키-값 데이터를 코드 블록 스타일로 렌더링 */
 function DataView({ data }: { data: MockRecord }) {
   return (
@@ -288,19 +333,40 @@ interface NodeDetailModalProps {
   satelliteId?: string;
   /** JOB_INIT 편집용 — 촬영 모드 */
   mode?: string;
+  /**
+   * JOB_INIT 편집용 — 이 파이프라인의 주력 처리 단계 (첫 SAR 노드의 sarStage 등). 사용자가
+   * 선택한 프로파일의 processingStage 와 다르면 mismatch 경고/확인을 띄운다.
+   */
+  expectedProcessingStage?: string;
   /** 이전 노드 정보 목록 (edges 기반으로 ConsolePage에서 계산) */
   prevNodes?: PrevNodeInfo[];
+  /** 다음 노드 정보 목록 — FILE_INPUT/JOB_INIT 의 OUTPUT 패널에서 "결과 전달 대상" 표시용. */
+  nextNodes?: PrevNodeInfo[];
   /** 직전 SAR 실행의 runId (체이닝용). 없으면 이 노드는 시작 노드 (업로드 필요). */
   prevRunId?: string;
+  /**
+   * 직전 FILE_INPUT(L0) 노드에서 업로드된 H5 의 uploadId. L1A 모달이 이 값을 받으면
+   * 자체 업로드 UI 대신 "Pipeline Input 에서 받은 입력" 으로 처리한다.
+   */
+  prevUploadId?: string;
+  /** prevUploadId 로 전달된 H5 파일명 (표시용). */
+  prevUploadFilename?: string;
+  /** prevUploadId 로 전달된 H5 파일 크기 (표시용). */
+  prevUploadSizeBytes?: number;
   /** SAR stage 실제 실행 완료 시 부모(ConsolePage) 가 runId 보관하도록 호출. */
   onSarRunComplete?: (stepOrder: number, runId: string) => void;
+  /**
+   * FILE_INPUT 노드 업로드 완료 시 부모에 알리는 콜백. 부모는 uploadId 를
+   * 보관해 두었다가 downstream L1A 모달에 prevUploadId 로 전달한다.
+   */
+  onFileInputUploadComplete?: (stepOrder: number, uploadId: string, filename: string, sizeBytes: number) => void;
   /** 이 노드의 직전 실행 결과 캐시 (모달 close/open 사이에 살아남기 위함). */
   cachedOutput?: CachedSarOutput;
   /** 실행이 끝났을 때 부모에 결과를 캐시하라고 알리는 콜백. */
   onSarOutputUpdate?: (stepOrder: number, output: CachedSarOutput) => void;
 }
 
-export default function NodeDetailModal({ step, onClose, onSaveNode, availableProfiles, satelliteId, mode, prevNodes, prevRunId, onSarRunComplete, cachedOutput, onSarOutputUpdate }: NodeDetailModalProps) {
+export default function NodeDetailModal({ step, onClose, onSaveNode, availableProfiles, satelliteId, mode, expectedProcessingStage, prevNodes, nextNodes, prevRunId, prevUploadId, prevUploadFilename, prevUploadSizeBytes, onSarRunComplete, onFileInputUploadComplete, cachedOutput, onSarOutputUpdate }: NodeDetailModalProps) {
   // cachedOutput 이 있으면 모달이 열리는 즉시 'done' 상태로 hydrate — 직전 결과 보전.
   const [execState, setExecState] = useState<ExecState>(cachedOutput ? 'done' : 'idle');
   const [outputData, setOutputData] = useState<MockRecord | null>(null);
@@ -315,9 +381,20 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
   const logLinesRef = useRef<RenderedLogLine[]>(cachedOutput?.logLines ?? []);
 
   // ── 실제 SAR 실행 상태 (시연용) ─────────────────────────────────────────────
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [uploadId, setUploadId] = useState<string | null>(null);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
+  // prevUploadId 가 있으면 (FILE_INPUT 에서 받은 업로드를 그대로 사용) 곧바로 'done' 상태로 시작.
+  // L1A 모달은 자체 업로드 UI 대신 "Pipeline Input 에서 받은 입력" 카드를 노출하고 바로 실행 가능.
+  const initialUploadedFile = useMemo<File | null>(
+    () => (prevUploadId && prevUploadFilename
+      ? new File([], prevUploadFilename, { type: 'application/x-hdf' })
+      : null),
+    // size 는 표시용으로만 쓰이므로 별도 state 로 추적 (File 객체에 임의 size 주입 불가)
+    [prevUploadId, prevUploadFilename],
+  );
+  const [uploadedFile, setUploadedFile] = useState<File | null>(initialUploadedFile);
+  const [uploadId, setUploadId] = useState<string | null>(prevUploadId ?? null);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>(
+    prevUploadId ? 'done' : 'idle',
+  );
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   /** 드래그 중 시각 피드백 */
@@ -345,7 +422,25 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
    *   대체할 수도 있다.
    */
   const isL1bStage = sarStageId === 'L1B_MULTILOOK' || sarStageId === 'L1B_SPECKLE';
-  const needsH5Upload = sarStageId === 'L1A' && !prevRunId;
+  /**
+   * H5 raw 업로드 패널 노출 조건:
+   * - L1A 시작 노드: 직전 run 이 없을 때.
+   * - FILE_INPUT(LEVEL_0): Pipeline Input 으로서 H5 를 받아 downstream L1A 가 쓰도록.
+   * prevUploadId 가 있어도 (L1A 가 FILE_INPUT 에서 받은 입력을 그대로 쓸 때) 동일 패널을 노출
+   * — 이미 "uploaded" 상태로 표시되어 사용자에게 Replace 옵션도 함께 제공된다.
+   */
+  const isFileInputL0 = step.kind === 'FILE_INPUT' && step.inputLevel === 'LEVEL_0';
+  /** FILE_INPUT(L0) 노드는 자기 자신이 업로드 패널을 그대로 노출. L1A 는 토글 안에서 동일 패널 재사용. */
+  const needsH5Upload = isFileInputL0;
+
+  /**
+   * L1A INPUT mode 토글.
+   * - 'upstream' : 직전 FILE_INPUT(L0) 노드의 uploadId 를 그대로 입력으로 사용 — prevUploadId 가 있을 때만 default.
+   * - 'upload'   : L1A 모달에서 사용자가 H5 를 직접 업로드.
+   */
+  const [l1aInputMode, setL1aInputMode] = useState<'upstream' | 'upload'>(
+    prevUploadId ? 'upstream' : 'upload',
+  );
 
   /**
    * L1B INPUT mode 토글.
@@ -371,17 +466,22 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
 
   /**
    * Execute 활성화 조건.
-   * - L1A: 업로드가 끝나야 활성.
+   * - L1A / upstream 모드: prevUploadId 있으면 활성.
+   * - L1A / upload 모드: 업로드가 끝나야 활성.
    * - L1B / upstream 모드: prevRunId 있으면 활성.
    * - L1B / upload 모드: bundle 업로드 완료 → uploadedBundleRunId 가 있으면 활성.
    */
   const canRunReal =
     sarStageId !== null &&
     (
-      (sarStageId === 'L1A' && uploadStatus === 'done' && uploadId !== null) ||
+      (sarStageId === 'L1A' && l1aInputMode === 'upstream' && prevUploadId !== undefined) ||
+      (sarStageId === 'L1A' && l1aInputMode === 'upload' && uploadStatus === 'done' && uploadId !== null) ||
       (isL1bStage && l1bInputMode === 'upstream' && prevRunId !== undefined) ||
       (isL1bStage && l1bInputMode === 'upload' && uploadedBundleRunId !== null)
     );
+  /** execute 호출 시 사용할 uploadId — L1A upstream 이면 prevUploadId, 아니면 자체 업로드 uploadId. */
+  const effectiveUploadId =
+    sarStageId === 'L1A' && l1aInputMode === 'upstream' ? prevUploadId : uploadId ?? undefined;
   /** execute 호출 시 사용할 inputRunId — upstream 이면 prev, upload 면 uploaded bundle. */
   const effectiveInputRunId =
     isL1bStage && l1bInputMode === 'upload' ? uploadedBundleRunId ?? undefined : prevRunId;
@@ -437,11 +537,15 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
       const res = await uploadH5(file, (p) => setUploadProgress(p));
       setUploadId(res.uploadId);
       setUploadStatus('done');
+      // FILE_INPUT 노드에서 업로드한 경우 부모에 uploadId 를 알려 downstream L1A 가 재사용.
+      if (isFileInputL0) {
+        onFileInputUploadComplete?.(step.order, res.uploadId, file.name, file.size);
+      }
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : String(err));
       setUploadStatus('error');
     }
-  }, []);
+  }, [isFileInputL0, onFileInputUploadComplete, step.order]);
 
   /** 드래그&드롭 핸들러. .h5 또는 application/x-hdf 만 받음. */
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -562,13 +666,13 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
 
     // ── SAR 실제 실행 분기: 매핑 가능한 stage 이고 입력(uploadId 또는 inputRunId) 확보됐을 때만.
     // SSE 스트림으로 라인 단위 stdout/stderr 를 받아 실시간으로 터미널에 흘려보낸다.
-    if (sarStageId && (uploadId || effectiveInputRunId)) {
+    if (sarStageId && (effectiveUploadId || effectiveInputRunId)) {
       let streamErrorMsg: string | null = null;
       let completedRunResult: Pick<ExecuteResponse, 'runId' | 'stage' | 'exitCode' | 'args' | 'primary' | 'meta' | 'files'> | null = null;
       try {
         for await (const ev of executeStageStream(
           sarStageId,
-          { uploadId: uploadId ?? undefined, inputRunId: effectiveInputRunId },
+          { uploadId: effectiveUploadId, inputRunId: effectiveInputRunId },
           resolvedStage?.params,
         )) {
           if (ev.type === 'log') {
@@ -664,7 +768,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
       }
     }, cumulative + 200);
     execTimeoutsRef.current.push(finishId);
-  }, [step, cancelStreaming, sarStageId, resolvedStage, uploadId, effectiveInputRunId, onSarRunComplete, onSarOutputUpdate]);
+  }, [step, cancelStreaming, sarStageId, resolvedStage, effectiveUploadId, effectiveInputRunId, onSarRunComplete, onSarOutputUpdate]);
 
   // 모달 unmount / step 교체 시 진행 중 스트림 정리
   useEffect(() => () => cancelStreaming(), [cancelStreaming]);
@@ -688,9 +792,17 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
       setRunError(null);
     }
     setOutputData(null);
-    setUploadedFile(null);
-    setUploadId(null);
-    setUploadStatus('idle');
+    // FILE_INPUT(L0) 모달은 자기 자신이 이전에 업로드한 H5 를 그대로 "이미 업로드됨" 으로 hydrate.
+    // L1A 모달은 upstream/upload 토글이 prevUploadId 를 별도로 다루므로 자체 업로드 상태는 항상 비움.
+    if (step.kind === 'FILE_INPUT' && prevUploadId) {
+      setUploadedFile(prevUploadFilename ? new File([], prevUploadFilename, { type: 'application/x-hdf' }) : null);
+      setUploadId(prevUploadId);
+      setUploadStatus('done');
+    } else {
+      setUploadedFile(null);
+      setUploadId(null);
+      setUploadStatus('idle');
+    }
     setUploadProgress(null);
     setUploadError(null);
     setBundleSlc(null);
@@ -699,11 +811,22 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
     setBundleProgress(null);
     setBundleError(null);
     setUploadedBundleRunId(null);
+    setL1aInputMode(prevUploadId ? 'upstream' : 'upload');
     setL1bInputMode(prevRunId ? 'upstream' : 'upload');
     // cachedOutput 은 새 step 진입 시점에 한 번만 반영. step 동일한 채로 cachedOutput 이
     // 갱신될 땐 (우리가 직접 update 한 경우) 재 hydrate 하지 않는다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step.order, step.kind, step.sarStage, prevRunId, cancelStreaming]);
+
+  // cachedOutput 의 runResult/runError 가 외부(cascade)에서 비동기로 갱신될 때 modal 도 따라가도록 sync.
+  // 모달이 열려 있는 중에 cascade 가 stage 를 끝내면 QuickLook 이미지·파일 목록이 곧바로 보인다.
+  // (기존 useEffect 는 step 교체 시점에만 hydrate 하므로 같은 step 의 결과 갱신은 놓침.)
+  useEffect(() => {
+    if (!cachedOutput) return;
+    setRunResult(cachedOutput.runResult);
+    setRunError(cachedOutput.runError);
+    if (cachedOutput.runResult || cachedOutput.runError) setExecState('done');
+  }, [cachedOutput]);
 
   // ESC 키로 닫기
   useEffect(() => {
@@ -1000,6 +1123,216 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                   </div>
                 )}
               </div>
+            ) : sarStageId === 'L1A' ? (
+              <div className="p-3 space-y-3" data-testid="sar-l1a-input-panel">
+                {/* L1A INPUT 토글 — Upstream(FILE_INPUT uploadId 재사용) vs Upload file */}
+                <div className="grid grid-cols-2 gap-1 rounded-md bg-muted/40 p-1" role="tablist" aria-label="L1A input source">
+                  {[
+                    { id: 'upstream' as const, label: 'Upstream input' },
+                    { id: 'upload' as const, label: 'Upload file' },
+                  ].map((opt) => {
+                    const active = l1aInputMode === opt.id;
+                    const disabled = opt.id === 'upstream' && !prevUploadId;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        disabled={disabled}
+                        onClick={() => setL1aInputMode(opt.id)}
+                        data-testid={`l1a-mode-${opt.id}`}
+                        title={disabled ? 'No upstream H5 uploaded yet. Upload H5 in the Pipeline Input node first.' : undefined}
+                        className={cn(
+                          'h-7 rounded text-[11px] font-medium transition-colors',
+                          active
+                            ? 'bg-card text-foreground shadow-sm border border-border'
+                            : 'text-muted-foreground hover:text-foreground',
+                          disabled && 'opacity-40 cursor-not-allowed hover:text-muted-foreground',
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {l1aInputMode === 'upstream' ? (
+                  prevUploadId ? (
+                    <div className="space-y-2" data-testid="sar-l1a-upstream">
+                      {prevNodes && prevNodes.length > 0 && prevNodes.map((prev) => {
+                        const PrevIcon = getNodeIcon(prev.kind, prev.sarStage);
+                        return (
+                          <div
+                            key={prev.order}
+                            className="flex items-center gap-2.5 p-2.5 rounded-lg border border-border bg-muted/20"
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
+                              <PrevIcon className="w-4 h-4 text-accent" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[11px] font-semibold text-foreground leading-tight truncate">{prev.label}</div>
+                              <div className="text-[10px] text-muted-foreground">{prev.csc} · #{prev.order}</div>
+                            </div>
+                            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />
+                          </div>
+                        );
+                      })}
+                      <div className="rounded-md border border-success/30 bg-success/10 px-2.5 py-2 text-[10px] text-success flex items-start gap-1.5" data-testid="sar-prev-upload">
+                        <CheckCircle className="w-3 h-3 mt-0.5 shrink-0" />
+                        <div className="min-w-0 break-all">
+                          Using Pipeline Input upload
+                          {prevUploadFilename && <> · <span className="font-mono">{prevUploadFilename}</span></>}
+                          {prevUploadSizeBytes !== undefined && <> · {(prevUploadSizeBytes / 1e6).toFixed(0)} MB</>}
+                          {' · '}uploadId <span className="font-mono">{prevUploadId.slice(0, 8)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3" data-testid="sar-l1a-needs-upstream">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                        <div className="min-w-0 space-y-1">
+                          <div className="text-[11px] font-semibold text-foreground">No upstream H5 yet</div>
+                          <div className="text-[10px] leading-relaxed text-muted-foreground">
+                            Upload an H5 in the upstream <span className="font-semibold text-foreground">Pipeline Input</span> node first,
+                            or switch to <span className="font-semibold text-foreground">Upload file</span> to provide it directly here.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  <div
+                    data-testid="sar-upload-panel"
+                    className="space-y-2.5"
+                    onDragOver={handleDragOver}
+                    onDragEnter={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".h5,application/x-hdf"
+                      className="hidden"
+                      data-testid="sar-h5-input"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) void handleFilePick(f);
+                      }}
+                    />
+                    {uploadStatus !== 'done' ? (
+                      <div
+                        className={cn(
+                          'rounded-md border border-dashed px-3 py-3 transition-colors',
+                          isDragging ? 'border-accent bg-accent/10' : 'border-accent/40 bg-accent/[0.03]',
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-md bg-accent/10 flex items-center justify-center shrink-0">
+                            <Upload className="w-4 h-4 text-accent" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[11px] font-semibold text-foreground">H5 raw data</div>
+                            {uploadedFile ? (
+                              <div className="text-[10px] text-muted-foreground font-mono truncate" data-testid="sar-picked-name" title={uploadedFile.name}>
+                                {uploadedFile.name} · {(uploadedFile.size / 1e6).toFixed(0)} MB
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-muted-foreground">
+                                {isDragging ? 'Drop the file here' : 'Drag & drop a file, or click to choose. Upload starts immediately on selection.'}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploadStatus === 'uploading'}
+                            className="shrink-0 text-[10px] font-medium text-accent hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+                            data-testid="sar-pick-file"
+                          >
+                            {uploadedFile ? 'Change' : 'Choose file'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        className={cn(
+                          'rounded-md border bg-success/5 px-3 py-2.5 transition-colors',
+                          isDragging ? 'border-accent bg-accent/10' : 'border-success/40',
+                        )}
+                        data-testid="sar-upload-done"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <CheckCircle className="w-4 h-4 text-success shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <div
+                              className="text-[11px] font-semibold text-foreground truncate"
+                              data-testid="sar-picked-name"
+                              title={uploadedFile?.name}
+                            >
+                              {uploadedFile?.name ?? 'uploaded.h5'}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground font-mono">
+                              {(((uploadedFile?.size) ?? 0) / 1e6).toFixed(0)} MB · uploadId{' '}
+                              <span>{uploadId?.slice(0, 8)}</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="shrink-0 text-[10px] font-medium text-muted-foreground hover:text-foreground hover:underline"
+                            data-testid="sar-pick-file"
+                          >
+                            Replace
+                          </button>
+                        </div>
+                        <div className="mt-1.5 pl-[26px] text-[10px] text-muted-foreground/80">
+                          Click <span className="font-semibold text-foreground">Execute step</span> on the right to start processing.
+                        </div>
+                      </div>
+                    )}
+
+                    {uploadStatus === 'uploading' && uploadProgress && (() => {
+                      const pct = uploadProgress.total > 0
+                        ? Math.min(100, Math.round((uploadProgress.loaded / uploadProgress.total) * 100))
+                        : 0;
+                      const loadedMb = (uploadProgress.loaded / 1e6).toFixed(0);
+                      const totalMb = (uploadProgress.total / 1e6).toFixed(0);
+                      const speedMbps = (uploadProgress.bytesPerSec / 1e6).toFixed(1);
+                      const remainingSec = uploadProgress.bytesPerSec > 0
+                        ? Math.ceil((uploadProgress.total - uploadProgress.loaded) / uploadProgress.bytesPerSec)
+                        : 0;
+                      const eta = remainingSec >= 60
+                        ? `${Math.floor(remainingSec / 60)}m ${remainingSec % 60}s`
+                        : `${remainingSec}s`;
+                      return (
+                        <div className="rounded-md border border-accent/30 bg-accent/[0.06] px-2.5 py-2 space-y-1.5" data-testid="sar-uploading">
+                          <div className="flex items-center justify-between text-[10px] text-accent font-mono" data-testid="sar-progress-text">
+                            <span>{pct}% · {loadedMb}/{totalMb} MB</span>
+                            <span>{speedMbps} MB/s · ETA {eta}</span>
+                          </div>
+                          <div className="h-1.5 w-full rounded-full bg-accent/15 overflow-hidden">
+                            <div
+                              className="h-full bg-accent transition-all duration-200 ease-linear"
+                              style={{ width: `${pct}%` }}
+                              data-testid="sar-progress-bar"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {uploadError && (
+                      <div className="rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-[10px] text-destructive flex items-start gap-1.5" data-testid="sar-upload-error">
+                        <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
+                        <div className="min-w-0 break-words">{uploadError}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             ) : needsH5Upload ? (
               <div
                 className="p-3 space-y-2.5"
@@ -1079,7 +1412,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                           {uploadedFile?.name ?? 'uploaded.h5'}
                         </div>
                         <div className="text-[10px] text-muted-foreground font-mono">
-                          {((uploadedFile?.size ?? 0) / 1e6).toFixed(0)} MB · uploadId{' '}
+                          {(((uploadedFile?.size || prevUploadSizeBytes) ?? 0) / 1e6).toFixed(0)} MB · uploadId{' '}
                           <span>{uploadId?.slice(0, 8)}</span>
                         </div>
                       </div>
@@ -1379,8 +1712,9 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                 </div>
               )}
 
-              {/* SAR: stage sub-function — CODE 본문에서 자동 도출되는 readonly 상태 표시 */}
-              {step.kind === 'SAR' && allTasks.length > 0 && (
+              {/* SAR: stage sub-function — CODE 본문에서 자동 도출되는 readonly 상태 표시.
+                  L1B 는 SUB STAGE Kind 가 곧 task 라서 표시가 중복이므로 숨긴다. */}
+              {step.kind === 'SAR' && step.sarStage !== 'L1B' && allTasks.length > 0 && (
                 <div className="shrink-0 px-5 py-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
@@ -1440,6 +1774,7 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
                     satelliteId={satelliteId}
                     mode={mode}
                     profiles={availableProfiles}
+                    expectedProcessingStage={expectedProcessingStage}
                     onSave={handleSaveJobInit}
                   />
                 </div>
@@ -1505,10 +1840,12 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
               // mock fallback stage 면 항상 가능.
               const realRunDisabled = sarStageId !== null && !canRunReal;
               const tooltip = realRunDisabled
-                ? (needsH5Upload
-                    ? (uploadStatus === 'uploading'
-                        ? 'Uploading… enabled when upload completes'
-                        : (uploadedFile ? 'Wait for upload to finish' : 'Choose an H5 file first'))
+                ? (sarStageId === 'L1A'
+                    ? (l1aInputMode === 'upstream'
+                        ? 'No upstream H5 yet — upload in the Pipeline Input node, or switch INPUT to "Upload file"'
+                        : uploadStatus === 'uploading'
+                          ? 'Uploading… enabled when upload completes'
+                          : uploadedFile ? 'Wait for upload to finish' : 'Choose an H5 file first')
                     : isL1bStage
                       ? (l1bInputMode === 'upstream'
                           ? 'Run the upstream L1A node first — or switch INPUT to "Upload file"'
@@ -1543,7 +1880,9 @@ export default function NodeDetailModal({ step, onClose, onSaveNode, availablePr
             })()}
           </div>
           <div className="flex-1 min-h-0 flex flex-col">
-            {step.kind === 'SAR' ? (
+            {(step.kind === 'TRIGGER' || step.kind === 'FILE_INPUT' || step.kind === 'JOB_INIT') ? (
+              <PassThroughOutput kind={step.kind} nextNodes={nextNodes ?? []} />
+            ) : step.kind === 'SAR' ? (
               <div className="flex-1 min-h-0 flex flex-col" data-testid="sar-output">
                 {/* CLI 스타일 로그 터미널 — 항상 보임 */}
                 <div className={cn('min-h-0', runResult ? 'h-1/2' : 'flex-1')}>

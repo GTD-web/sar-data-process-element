@@ -31,6 +31,7 @@ import {
   Database,
   FileInput,
   Image as ImageIcon,
+  // Sparkles, // Simulate 버튼 주석 처리에 따라 함께 비활성화
 } from 'lucide-react';
 
 export interface PipelineNodeData {
@@ -56,7 +57,9 @@ export interface PipelineNodeData {
   enabledTasks?: string[];
   onDelete?: (order: number) => void;
   onAddAfter?: (afterOrder: number) => void;
-  onTrigger?: () => void;
+  onTrigger?: (order: number) => void;
+  /** 진입 노드 hover 보조 버튼 — 업로드 없이 cascade 흐름만 프론트엔드에서 시뮬레이션. */
+  onSimulate?: (order: number) => void;
   /** 개별 노드 실행 → 노드 상세 모달 열기 */
   onExecuteStep?: (order: number) => void;
   /** 설정 누락 등 — 해당 노드에만 표시 (예: JOB_INIT 프로파일 미선택) */
@@ -301,7 +304,7 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
     if (hoverLeaveTimerRef.current != null) window.clearTimeout(hoverLeaveTimerRef.current);
   }, []);
 
-  const { kind, sarStage, inputLevel, fileInputSceneId, fileInputFilePath, status, order, startedAt, durationMs, errorMessage, editable, isLeaf, enabledTasks, onDelete, onAddAfter, onTrigger, onExecuteStep, warningReason, enabled, onReprocess, isJobMode, suppressEntryInputWarning } = nodeData;
+  const { kind, sarStage, inputLevel, fileInputSceneId, fileInputFilePath, status, order, startedAt, durationMs, errorMessage, editable, isLeaf, enabledTasks, onDelete, onAddAfter, onTrigger, onSimulate, onExecuteStep, warningReason, enabled, onReprocess, isJobMode, suppressEntryInputWarning } = nodeData;
 
   // RUNNING 상태일 때만 1초 간격 tick 으로 경과 시간을 다시 그린다.
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -458,18 +461,37 @@ function PipelineNodeComponent({ data, selected }: NodeProps) {
           <div className="node-trigger-zap absolute right-0 flex items-center justify-center w-5 h-5">
             <Zap className="w-4 h-4 text-accent" fill="currentColor" />
           </div>
-          {/* Hover: full execute button */}
-          <button
-            onClick={(e) => { e.stopPropagation(); onTrigger!(); }}
-            className={cn(
-              'node-trigger-btn flex items-center gap-2 pl-2.5 pr-3.5 py-2 rounded-lg text-[11px] font-semibold shadow-lg whitespace-nowrap',
-              'bg-accent text-accent-foreground cursor-pointer hover:brightness-110 active:brightness-95',
+          {/* Hover: full execute button + optional simulate button */}
+          <div className="node-trigger-btn flex items-center gap-1.5">
+            <button
+              onClick={(e) => { e.stopPropagation(); onTrigger!(order); }}
+              className={cn(
+                'flex items-center gap-2 pl-2.5 pr-3.5 py-2 rounded-lg text-[11px] font-semibold shadow-lg whitespace-nowrap',
+                'bg-accent text-accent-foreground cursor-pointer hover:brightness-110 active:brightness-95',
+              )}
+              data-testid={`entry-trigger-${order}`}
+              title="Run the pipeline from here (executes SLC → Multi-look → Speckle filters in cascade)"
+            >
+              <FlaskConical className="w-3.5 h-3.5" />
+              Run pipeline
+            </button>
+            {/* Simulate 버튼은 시연용으로 일시 숨김 처리 (주석 처리만 유지)
+            {onSimulate && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onSimulate(order); }}
+                className={cn(
+                  'flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-[11px] font-semibold whitespace-nowrap',
+                  'border border-accent/40 bg-card/90 text-accent cursor-pointer hover:bg-accent/10 active:bg-accent/15',
+                )}
+                data-testid={`entry-simulate-${order}`}
+                title="Simulate cascade without uploading H5 — shows pipeline flow only, no real outputs"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Simulate
+              </button>
             )}
-            title="Run the pipeline (check job initialization node for configuration warnings)"
-          >
-            <FlaskConical className="w-3.5 h-3.5" />
-            Run pipeline
-          </button>
+            */}
+          </div>
         </div>
       )}
 
