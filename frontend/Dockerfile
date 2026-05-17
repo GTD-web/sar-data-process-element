@@ -42,6 +42,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3-h5py \
       python3-matplotlib \
       python3-rasterio \
+      libhdf5-cpp-103 \
+      libhdf5-103 \
+      g++ \
+      libhdf5-dev \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3 /usr/local/bin/python
 
@@ -52,8 +56,17 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# CSC natives (root context). CSC-03 추가 시 한 줄 더 COPY.
+# CSC natives (root context).
 COPY --chown=nextjs:nodejs natives/csc-04-level-1-processor /app/natives/csc-04
+COPY --chown=nextjs:nodejs natives/csc-03-l0-processor /app/natives/csc-03
+
+# CSC-03 cli_runner ELF 빌드. libCatisTlm.so 가 lib/ 에 있어야만 실제 빌드되고,
+# 없으면 스크립트가 즉시 exit 0 (이미지 빌드 자체는 통과 — L0 노드 실행만 막힘).
+# 수요일 .so 수령 후 자동으로 활성화됨.
+RUN bash /app/natives/csc-03/scripts/build_cli_runner.sh
+
+ENV LD_LIBRARY_PATH=/app/natives/csc-03/lib
+ENV SDPE_NATIVES_CSC03_DIR=/app/natives/csc-03
 
 USER nextjs
 EXPOSE 3000

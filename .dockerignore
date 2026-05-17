@@ -3,7 +3,7 @@
 **
 !frontend/**
 !natives/csc-04-level-1-processor/**
-# !natives/csc-03-... (수요일 도착 후 활성화)
+!natives/csc-03-l0-processor/**
 
 # frontend 안의 빌드 산출물/대용량은 제외
 frontend/node_modules

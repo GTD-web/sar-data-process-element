@@ -111,3 +111,103 @@
 - [x] `frontend/AGENTS.md` / `CLAUDE.md` 의 재배포 명령이 새 빌드 컨텍스트 반영
 - [x] CSC-04 패키지 회귀 테스트 21 passed (옵션 인자 default None 으로 기존 동작 비트단위 보존)
 - [ ] (수요일 후) CSC-03 노드도 동일 흐름 통과
+
+---
+
+## 7. CSC-03 통합 (수요일 수령 후 작업)
+
+한컴인스페이스 정해찬 책임 제공 CatisTlm 라이브러리(CADU → L0 HDF5) 를 L0 노드 실행체로 통합한다.
+
+### 사전 작업 (이미 완료, 2026-05-17)
+
+`libCatisTlm.so` 수령 전이지만 컨테이너 골격은 미리 깔아뒀다:
+
+- `natives/csc-03-l0-processor/` 폴더 골격 + 이미 보유한 자산 배치
+  - `include/catis_tlm/catis_telemetry.h` — 4단계 파이프라인 헤더
+  - `lib/CatisTlm.dll/.lib`, `hdf5.dll`, `hdf5_cpp.dll`, `zlib.dll` — Windows 백업
+  - `src/cli_runner.cpp` — 정해찬 책임 제공 데모 (USE_POLLING 매크로)
+  - `bin/cli_runner.exe` — Windows 빌드본
+  - `aux-data/{antenna_az,antenna_el,gps_hq,gps_lq,replica}.bin` — 5개 보조 데이터 (`aux` 는 Windows 예약어라 dash-suffix)
+  - `scripts/build_cli_runner.sh` — Linux ELF 빌드 스크립트 (.so 없으면 즉시 exit 0)
+  - `README.md`, `examples/nodejs_example.md`
+- `.dockerignore` 에 `!natives/csc-03-l0-processor/**` 추가
+- `frontend/Dockerfile` 변경:
+  - apt: `libhdf5-cpp-103`, `libhdf5-103`, `g++`, `libhdf5-dev` 추가
+  - `COPY natives/csc-03-l0-processor /app/natives/csc-03`
+  - `RUN bash /app/natives/csc-03/scripts/build_cli_runner.sh` (gated — .so 없으면 skip)
+  - `ENV LD_LIBRARY_PATH=/app/natives/csc-03/lib`, `SDPE_NATIVES_CSC03_DIR=/app/natives/csc-03`
+
+이 상태에서 docker build 는 통과하며, **CSC-04 데모는 회귀 없이 정상 동작**한다. L0 노드만 실 binary 가 없어 미실행 (스테이지 wiring 도 아직 추가하지 않음).
+
+### 수요일 수령 직후 (당일 오전)
+
+1. `libCatisTlm.so` 수령 → `natives/csc-03-l0-processor/lib/libCatisTlm.so` 배치.
+2. (선택) `ldd lib/libCatisTlm.so` 로 의존성 확인 — `libhdf5_cpp.so.103`, `libhdf5.so.103` 매칭 확인.
+3. `cli_runner.cpp` 를 CLI 인자 받도록 수정 (현재는 하드코드 데모):
+   ```
+   ./cli_runner --cadu <path> --workspace <dir> --output <h5> --aux-dir <dir>
+                [--key <hex>] [--iv <hex>] [--lhcp-vcid N] [--rhcp-vcid N]
+   ```
+   - USE_POLLING=1 로 전환 (SSE 진행률 라인 일관성).
+   - `getopt_long` 또는 단순 argv 파싱.
+4. Docker 재빌드 — `RUN bash .../build_cli_runner.sh` 가 이제 실제 g++ 컴파일 수행.
+5. `docker exec sdpe-frontend /app/natives/csc-03/bin/cli_runner --help` 로 동적 링킹 확인.
+
+### 수요일 오후 — 백엔드 wiring
+
+`frontend/src/server/sar/stage-runner.ts` 의 `STAGE_CONFIG` 에 `L0` 항목 추가:
+
+```typescript
+const NATIVES_CSC03_DIR = process.env.SDPE_NATIVES_CSC03_DIR ?? '/app/natives/csc-03';
+
+L0: {
+  script: path.join(NATIVES_CSC03_DIR, 'bin', 'cli_runner'),
+  spawnMode: 'native',                       // python3 가 아닌 ELF 직접 실행
+  buildArgs: (ctx) => [
+    '--cadu',      ctx.caduPath,
+    '--workspace', path.join(ctx.runDir, 'csc03-workspace'),
+    '--output',    path.join(ctx.runDir, 'L0.h5'),
+    '--aux-dir',   path.join(NATIVES_CSC03_DIR, 'aux-data'),
+  ],
+  parseProgress: parseCatisProgressLine,     // [PROGRESS NN%] ... 매칭
+  resolveOutputs: (outputDir, files) => ({
+    primary: files.find((f) => f.endsWith('L0.h5')) ?? null,
+    meta:    null,
+  }),
+},
+```
+
+`frontend/src/app/api/sar/execute/route.ts` 의 spawn 호출에 `spawnMode === 'native' ? cfg.script : 'python3'` 분기 추가.
+
+`frontend/src/app/api/sar/upload/route.ts` 의 확장자 화이트리스트에 `.cadu` 추가.
+
+`frontend/src/app/api/sar/source/[stage]/route.ts` 의 `SOURCE_BY_SAR_STAGE` 에 `L0: 'src/cli_runner.cpp'` 매핑 + CSC-03 디렉토리 lookup 분기.
+
+### 수요일 저녁 — 프론트엔드 wiring
+
+`frontend/src/app/(planning)/_services/pipeline.mock.ts` 의 `CSC04_DEMO_STEPS` 앞에 prepend:
+
+```typescript
+const CSC04_DEMO_STEPS: StepDef[] = [
+  { kind: 'FILE_INPUT', inputLevel: 'CADU' },   // 신규
+  JOB_INIT_STEP,
+  { kind: 'SAR', sarStage: 'L0' },              // 신규 (CSC-03)
+  // ... 기존 L1A, L1B 들
+];
+```
+
+- `frontend/src/types/pipeline.types.ts` 의 `inputLevel` 에 `'CADU'` 추가.
+- `frontend/src/types/pipeline.constants.ts` 에 CADU 라벨/설명 추가.
+- `frontend/src/components/panels/NodeDetailModal.tsx` 에서 `inputLevel === 'CADU'` 분기 — `accept=".cadu"` 업로드 UI.
+- L0 노드 OUTPUT 패널 — SLC 스타일 단계별 진행 표시.
+- `handleAutoRunCascade` (ConsolePage) — L0 산출 `.h5` 경로를 `sarOutputsByOrder` 에 저장 → L1A 가 자동으로 입력 재사용.
+
+### 목요일 오전 (회사) — end-to-end 검증
+
+1. 회사 NAS 의 `16_resized.cadu` 입력으로 cascade 실행.
+2. 기대: L0(CSC-03) → L1A(SLC) → Multi-look → Speckle 5종 까지 자동 진행 + 각 단계 SSE 진행률 + 산출 QuickLook PNG 표시.
+3. 회귀: 기존 19개 e2e 스펙 통과 + 신규 CSC-03 스펙 1개 추가.
+
+### .so 미수령 시 fallback
+
+`build_cli_runner.sh` 는 .so 없으면 즉시 exit 0 하므로 컨테이너 빌드/기동 자체는 영향 없음. 시연 시점까지 .so 가 안 오면, 호스트 Windows 에서 `cli_runner.exe` 를 Express 사이드카로 감싸 `host.docker.internal:3011` 로 컨테이너가 HTTP 호출하는 우회 구조로 전환. 단 추가 작업량 큼 — 가능한 .so 수령으로 진행한다.
