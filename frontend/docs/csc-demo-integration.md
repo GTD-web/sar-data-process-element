@@ -114,100 +114,88 @@
 
 ---
 
-## 7. CSC-03 통합 (수요일 수령 후 작업)
+## 7. CSC-03 통합
 
-한컴인스페이스 정해찬 책임 제공 CatisTlm 라이브러리(CADU → L0 HDF5) 를 L0 노드 실행체로 통합한다.
+한컴인스페이스 정해찬 책임 제공 CatisTlm 라이브러리(CADU → L0 HDF5) 를 L0 노드 실행체로 통합한다. 2026-05-19 Linux 릴리즈(`CatisTlm_Release_Linux/`) 를 받아 통합 진행.
 
-### 사전 작업 (이미 완료, 2026-05-17)
+### 릴리즈 구성 (받은 자산)
 
-`libCatisTlm.so` 수령 전이지만 컨테이너 골격은 미리 깔아뒀다:
+- `lib/libCatisTlm.so` — 핵심 라이브러리 (Linux x86_64).
+- `lib/libhdf5.so.200`, `libhdf5_cpp.so.200`, `libsz.so.2` — **HDF5 1.14.x 번들** (Debian Bookworm 의 `libhdf5-cpp-103` (1.10.x) 과 SOVERSION 불일치, apt 패키지로 대체 불가).
+- `bin/{pre_processor, post_processor, hdf5_to_src, src_to_src_m, src_m_to_cadu}` — 사전 빌드 ELF 5종.
+- `include/catis_tlm/catis_telemetry.h` — 새 헤더 (DRM feature toggle + reverse pipeline 추가).
+- `run.sh` — `LD_LIBRARY_PATH` 셋업 + exec wrapper.
 
-- `natives/csc-03-l0-processor/` 폴더 골격 + 이미 보유한 자산 배치
-  - `include/catis_tlm/catis_telemetry.h` — 4단계 파이프라인 헤더
-  - `lib/CatisTlm.dll/.lib`, `hdf5.dll`, `hdf5_cpp.dll`, `zlib.dll` — Windows 백업
-  - `src/cli_runner.cpp` — 정해찬 책임 제공 데모 (USE_POLLING 매크로)
-  - `bin/cli_runner.exe` — Windows 빌드본
-  - `aux-data/{antenna_az,antenna_el,gps_hq,gps_lq,replica}.bin` — 5개 보조 데이터 (`aux` 는 Windows 예약어라 dash-suffix)
-  - `scripts/build_cli_runner.sh` — Linux ELF 빌드 스크립트 (.so 없으면 즉시 exit 0)
-  - `README.md`, `examples/nodejs_example.md`
-- `.dockerignore` 에 `!natives/csc-03-l0-processor/**` 추가
-- `frontend/Dockerfile` 변경:
-  - apt: `libhdf5-cpp-103`, `libhdf5-103`, `g++`, `libhdf5-dev` 추가
-  - `COPY natives/csc-03-l0-processor /app/natives/csc-03`
-  - `RUN bash /app/natives/csc-03/scripts/build_cli_runner.sh` (gated — .so 없으면 skip)
-  - `ENV LD_LIBRARY_PATH=/app/natives/csc-03/lib`, `SDPE_NATIVES_CSC03_DIR=/app/natives/csc-03`
+### 헤더 변화 (Windows 구버전 → Linux 신버전)
 
-이 상태에서 docker build 는 통과하며, **CSC-04 데모는 회귀 없이 정상 동작**한다. L0 노드만 실 binary 가 없어 미실행 (스테이지 wiring 도 아직 추가하지 않음).
+- `CatisPipelineConfig` 에 `output_file_prefix[256]`, `enable_randomizer`, `enable_rs_fec`, `enable_3des`, `src_chunk_size`, `src_buf_size_mb`, `src_no_double_buffer` 추가.
+- 역방향 함수 신규: `Catis_GenerateSrc`, `Catis_SegmentSrc`, `Catis_EncryptPayload`, `Catis_EncodeCadu`, `Catis_H5ToCadu`.
+- 신규 에러 코드: `CATIS_ERR_H5_READ_FAIL (-60)`, `CATIS_ERR_ENCODE_FAIL (-70)`.
+- **ABI 변경**: 우리가 가졌던 Windows `cli_runner.cpp` 빌드 노선은 폐기. 사전 빌드 ELF 호출 노선으로 전환.
 
-### 수요일 수령 직후 (당일 오전)
+### 진행 상황
 
-1. `libCatisTlm.so` 수령 → `natives/csc-03-l0-processor/lib/libCatisTlm.so` 배치.
-2. (선택) `ldd lib/libCatisTlm.so` 로 의존성 확인 — `libhdf5_cpp.so.103`, `libhdf5.so.103` 매칭 확인.
-3. `cli_runner.cpp` 를 CLI 인자 받도록 수정 (현재는 하드코드 데모):
-   ```
-   ./cli_runner --cadu <path> --workspace <dir> --output <h5> --aux-dir <dir>
-                [--key <hex>] [--iv <hex>] [--lhcp-vcid N] [--rhcp-vcid N]
-   ```
-   - USE_POLLING=1 로 전환 (SSE 진행률 라인 일관성).
-   - `getopt_long` 또는 단순 argv 파싱.
-4. Docker 재빌드 — `RUN bash .../build_cli_runner.sh` 가 이제 실제 g++ 컴파일 수행.
-5. `docker exec sdpe-frontend /app/natives/csc-03/bin/cli_runner --help` 로 동적 링킹 확인.
+| 단계 | 상태 |
+|---|---|
+| `natives/csc-03-l0-processor/` 골격 (`include/`, `lib/`, `bin/`, `aux-data/`, `run.sh`, README) | ✅ |
+| Windows DLL/lib + cli_runner.cpp/scripts/ 제거 (ABI 불일치) | ✅ |
+| Dockerfile: apt 의 `libhdf5-*`, `g++`, `libhdf5-dev` 제거 (번들 .so 사용) | ✅ |
+| Dockerfile: `chmod +x bin/* run.sh` 추가 | ✅ |
+| 컨테이너에서 `ldd libCatisTlm.so` 의존성 해결 검증 | ⏳ |
+| 5개 ELF `--help` 시도해 CLI 시그니처 파악 | ⏳ |
+| `STAGE_CONFIG.L0` 추가 (`stage-runner.ts`) | ⏳ |
+| `execute/route.ts` 의 spawn 분기 (`spawnMode==='native'`) | ⏳ |
+| `upload/route.ts` 의 `.cadu` 확장자 허용 | ⏳ |
+| `source/[stage]/route.ts` 의 L0 매핑 | ⏳ |
+| `pipeline.mock.ts` 의 `CSC04_DEMO_STEPS` 앞에 CADU/JOB_INIT/L0 prepend | ⏳ |
+| `inputLevel: 'CADU'` 타입 추가 + 라벨/설명 | ⏳ |
+| `NodeDetailModal` 의 CADU 업로드 UI | ⏳ |
+| end-to-end (CADU → L0.h5 → L1A → ...) cascade | ⏳ |
 
-### 수요일 오후 — 백엔드 wiring
+### 검증 계획
 
-`frontend/src/server/sar/stage-runner.ts` 의 `STAGE_CONFIG` 에 `L0` 항목 추가:
+| 검증 항목 | 우리 환경에서 가능? |
+|---|---|
+| 라이브러리 로딩 (`ldd`) | ✅ |
+| ELF 기동 (symbol resolve) | ✅ |
+| 부분 단계 (feature toggle 일부 OFF) | ✅ |
+| end-to-end (CADU → H5) | ⚠️ — 회사 NAS `16_resized.cadu` 가 DRM 없는 파일이면 가능. DRM 영향 받으면 정해찬 책임도 못 푼 케이스라 우리도 못 풂. |
+
+### 백엔드 wiring (예정)
+
+`frontend/src/server/sar/stage-runner.ts` 의 `STAGE_CONFIG` 에 `L0` 항목:
 
 ```typescript
 const NATIVES_CSC03_DIR = process.env.SDPE_NATIVES_CSC03_DIR ?? '/app/natives/csc-03';
 
 L0: {
-  script: path.join(NATIVES_CSC03_DIR, 'bin', 'cli_runner'),
-  spawnMode: 'native',                       // python3 가 아닌 ELF 직접 실행
+  // pre_processor / post_processor 를 순차 호출하거나, 통합 wrapper 작성.
+  // CLI 시그니처는 5개 ELF --help 결과 보고 확정.
+  script: path.join(NATIVES_CSC03_DIR, 'run.sh'),
+  spawnMode: 'native',
   buildArgs: (ctx) => [
-    '--cadu',      ctx.caduPath,
-    '--workspace', path.join(ctx.runDir, 'csc03-workspace'),
-    '--output',    path.join(ctx.runDir, 'L0.h5'),
-    '--aux-dir',   path.join(NATIVES_CSC03_DIR, 'aux-data'),
+    'pre_processor',  // run.sh 첫 인자 = bin/ 의 tool 이름
+    ...
   ],
-  parseProgress: parseCatisProgressLine,     // [PROGRESS NN%] ... 매칭
+  parseProgress: parseCatisProgressLine,
   resolveOutputs: (outputDir, files) => ({
-    primary: files.find((f) => f.endsWith('L0.h5')) ?? null,
+    primary: files.find((f) => f.endsWith('.h5')) ?? null,
     meta:    null,
   }),
 },
 ```
 
-`frontend/src/app/api/sar/execute/route.ts` 의 spawn 호출에 `spawnMode === 'native' ? cfg.script : 'python3'` 분기 추가.
+### 프론트엔드 wiring (예정)
 
-`frontend/src/app/api/sar/upload/route.ts` 의 확장자 화이트리스트에 `.cadu` 추가.
-
-`frontend/src/app/api/sar/source/[stage]/route.ts` 의 `SOURCE_BY_SAR_STAGE` 에 `L0: 'src/cli_runner.cpp'` 매핑 + CSC-03 디렉토리 lookup 분기.
-
-### 수요일 저녁 — 프론트엔드 wiring
-
-`frontend/src/app/(planning)/_services/pipeline.mock.ts` 의 `CSC04_DEMO_STEPS` 앞에 prepend:
-
+`pipeline.mock.ts` 의 `CSC04_DEMO_STEPS` 앞에:
 ```typescript
-const CSC04_DEMO_STEPS: StepDef[] = [
-  { kind: 'FILE_INPUT', inputLevel: 'CADU' },   // 신규
-  JOB_INIT_STEP,
-  { kind: 'SAR', sarStage: 'L0' },              // 신규 (CSC-03)
-  // ... 기존 L1A, L1B 들
-];
+{ kind: 'FILE_INPUT', inputLevel: 'CADU' },
+JOB_INIT_STEP,
+{ kind: 'SAR', sarStage: 'L0' },
+// ... 기존 L1A, L1B 들
 ```
++ `inputLevel` 타입 확장, `NodeDetailModal` 의 `accept=".cadu"`, `handleAutoRunCascade` 에서 L0 산출 H5 를 L1A 입력으로 전달.
 
-- `frontend/src/types/pipeline.types.ts` 의 `inputLevel` 에 `'CADU'` 추가.
-- `frontend/src/types/pipeline.constants.ts` 에 CADU 라벨/설명 추가.
-- `frontend/src/components/panels/NodeDetailModal.tsx` 에서 `inputLevel === 'CADU'` 분기 — `accept=".cadu"` 업로드 UI.
-- L0 노드 OUTPUT 패널 — SLC 스타일 단계별 진행 표시.
-- `handleAutoRunCascade` (ConsolePage) — L0 산출 `.h5` 경로를 `sarOutputsByOrder` 에 저장 → L1A 가 자동으로 입력 재사용.
+### DRM 미해결 시 fallback
 
-### 목요일 오전 (회사) — end-to-end 검증
-
-1. 회사 NAS 의 `16_resized.cadu` 입력으로 cascade 실행.
-2. 기대: L0(CSC-03) → L1A(SLC) → Multi-look → Speckle 5종 까지 자동 진행 + 각 단계 SSE 진행률 + 산출 QuickLook PNG 표시.
-3. 회귀: 기존 19개 e2e 스펙 통과 + 신규 CSC-03 스펙 1개 추가.
-
-### .so 미수령 시 fallback
-
-`build_cli_runner.sh` 는 .so 없으면 즉시 exit 0 하므로 컨테이너 빌드/기동 자체는 영향 없음. 시연 시점까지 .so 가 안 오면, 호스트 Windows 에서 `cli_runner.exe` 를 Express 사이드카로 감싸 `host.docker.internal:3011` 로 컨테이너가 HTTP 호출하는 우회 구조로 전환. 단 추가 작업량 큼 — 가능한 .so 수령으로 진행한다.
+DRM 영향으로 end-to-end 가 안 되면, **L0 단계를 mock 처리** + L1A 부터는 실제 실행 (CSC-04 데모 그대로). L0 노드 출력 패널에는 "DRM 검증 대기" 배너 표시. 정해찬 책임 측에서 DRM 정리 후 시연 환경에서 재검증.

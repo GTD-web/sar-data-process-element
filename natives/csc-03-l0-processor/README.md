@@ -1,8 +1,10 @@
 # CSC-03 Level-0 Processor (CATIS Telemetry)
 
-위성 다운링크 CADU(`.cadu`) 파일을 Level-0 HDF5(`.h5`)로 변환하는 네이티브 파이프라인. SDPE 파이프라인의 **CSC-03 (Level-0 Processor) / SAR L0 단계** 의 실제 구현체. 한컴인스페이스 정해찬 책임 제공.
+위성 다운링크 CADU(`.cadu`) 파일을 Level-0 HDF5(`.h5`)로 변환하는 네이티브 파이프라인. 한컴인스페이스 정해찬 책임 제공.
 
-내부 처리: CCSDS De-packetize → BAQ De-compression → Range Line Reconstruction → Auxiliary Data Extraction → Calibration → HDF5 Export.
+내부 처리: CCSDS De-packetize → BAQ De-compression → Range Line Reconstruction → Auxiliary Data Extraction → Calibration → HDF5 Export. 신규 릴리즈는 H5 → CADU 역방향 파이프라인도 함께 제공.
+
+릴리즈 출처: `CatisTlm_Release_Linux/` (2026-05-18, Linux x86_64 빌드).
 
 ---
 
@@ -10,26 +12,30 @@
 
 ```
 csc-03-l0-processor/
-├── include/catis_tlm/catis_telemetry.h   # 공개 헤더 (4단계 파이프라인 API)
-├── lib/
-│   ├── libCatisTlm.so                    # Linux x86_64 빌드 (수요일 수령 예정) ⚠
-│   ├── CatisTlm.lib                      # Windows import lib (개발 빌드용)
-│   └── (CatisTlm.dll, hdf5.dll, hdf5_cpp.dll, zlib.dll — repo .gitignore 의 `*.dll` 규칙에 막혀 커밋되지 않음. Windows 로컬 개발 필요 시 OneDrive\BizboxA\CatisTlm\ 에서 직접 복사)
-├── src/cli_runner.cpp                    # 정해찬 책임 제공 데모 (USE_POLLING 매크로)
-├── bin/
-│   ├── cli_runner.exe                    # Windows 빌드 (개발용)
-│   └── cli_runner                        # Linux ELF (Docker 빌드 단계에서 g++ 컴파일)
-├── aux-data/                             # 보조 데이터 (매 변환마다 동일하게 사용). `aux` 는 Windows 예약어라 dash-suffix.
-│   ├── antenna_az.bin   (방위각 보정)
-│   ├── antenna_el.bin   (고도각 보정)
+├── include/catis_tlm/catis_telemetry.h   # 공개 헤더 (Forward + Reverse API)
+├── lib/                                  # Linux 동적 라이브러리 (HDF5 번들 포함)
+│   ├── libCatisTlm.so                    # 핵심 라이브러리
+│   ├── libhdf5.so.200                    # HDF5 1.14.x C API (★)
+│   ├── libhdf5_cpp.so.200                # HDF5 1.14.x C++ API
+│   └── libsz.so.2                        # szip 압축 (HDF5 의존성)
+├── bin/                                  # 사전 빌드 ELF (x86_64 Linux)
+│   ├── pre_processor                     # Forward 전반부 (Extract+Decrypt+ProcessRangeLines)
+│   ├── post_processor                    # Forward 후반부 (Export HDF5)
+│   ├── hdf5_to_src                       # Reverse 1단계 (Catis_GenerateSrc)
+│   ├── src_to_src_m                      # Reverse 2단계 (Catis_SegmentSrc)
+│   └── src_m_to_cadu                     # Reverse 3단계 (EncryptPayload + EncodeCadu)
+├── aux-data/                             # 보조 데이터 (매 변환마다 동일). `aux` 는 Windows 예약어라 dash-suffix.
+│   ├── antenna_az.bin   (방위각)
+│   ├── antenna_el.bin   (고도각)
 │   ├── gps_hq.bin       (GPS 고품질)
 │   ├── gps_lq.bin       (GPS 저품질 / 폴백)
 │   └── replica.bin      (Replica 신호)
-└── scripts/
-    └── build_cli_runner.sh               # Linux 컴파일 스크립트 (Docker 빌드 단계에서 호출)
+├── examples/nodejs_example.md            # Node.js spawn 예제
+├── run.sh                                # LD_LIBRARY_PATH 셋업 + bin/<tool> exec
+└── README.md
 ```
 
-> **CADU 와 .bin 5개의 관계**: CADU 는 입력마다 다른 raw 파일. `.bin` 5개는 위성 보정/메타 데이터로 **매번 동일**. 그래서 .bin 은 레포에 커밋해서 Docker 이미지에 동봉하고, CADU 만 사용자가 업로드한다.
+> **HDF5 SOVERSION 주의**: 번들된 HDF5 는 `.so.200` (1.14.x). Debian Bookworm 의 `libhdf5-cpp-103` (1.10.x) 과는 ABI 비호환이라 apt 패키지로는 대체 불가. **반드시 번들 lib/ 를 사용** (`LD_LIBRARY_PATH=/app/natives/csc-03/lib`).
 
 ---
 
@@ -37,140 +43,82 @@ csc-03-l0-processor/
 
 ### Linux (컨테이너 런타임)
 
-```bash
-apt-get install -y libhdf5-cpp-103 libhdf5-103
-```
+특별한 apt 패키지 없음. 번들된 `.so` 들이 모두 처리. `LD_LIBRARY_PATH` 만 잡아주면 됨 — Dockerfile 의 `ENV LD_LIBRARY_PATH=/app/natives/csc-03/lib` 가 그 역할.
 
 ### Windows (개발용)
 
-`lib/` 의 DLL들(`CatisTlm.dll`, `hdf5.dll`, `hdf5_cpp.dll`, `zlib.dll`)을 PATH 또는 EXE 옆에 놓으면 `cli_runner.exe` 가 그대로 실행됨.
+이번 릴리즈에 Windows DLL 은 포함되지 않음. Windows 로컬에서 직접 실행이 필요하면 OneDrive 의 별도 폴더(`BizboxA\CatisTlm\`) 에 있는 Windows DLL/lib + cli_runner.exe 사용. **단 그 Windows 버전은 헤더 ABI 가 구버전이므로 새 .so 와 섞어 쓰지 말 것**.
 
 ---
 
-## C/C++ API
+## API 변화 (Windows 구버전 → Linux 신버전)
 
-전체 흐름은 4단계 명시적 호출.
+### `CatisPipelineConfig` 새 필드
+
+- `output_file_prefix[256]` — Forward 산출 파일명 베이스.
+- **DRM/Feature toggle**:
+  - `enable_randomizer` — Derandomize on/off
+  - `enable_rs_fec` — Reed-Solomon FEC on/off
+  - `enable_3des` — 3-DES 복호화 on/off
+- **Reverse SrcGenerator 튜닝**: `src_chunk_size`, `src_buf_size_mb`, `src_no_double_buffer`.
+
+### 신규 함수 (역방향 H5 → CADU)
 
 ```c
-#include "catis_tlm/catis_telemetry.h"
-
-// 1. config 구성
-CatisPipelineConfig cfg = {};
-strcpy(cfg.workspace_path, "/tmp/sdpe-runs/<runId>/csc03-workspace");
-strcpy(cfg.decryption_key,  "0123456789ABCDEF");      // 24-byte Hex (위성 키)
-strcpy(cfg.decryption_key2, "...");
-strcpy(cfg.decryption_iv,   "...");                    // 8-byte Hex
-strcpy(cfg.decryption_iv2,  "...");
-cfg.lhcp_vcid = 4;
-cfg.rhcp_vcid = 5;
-cfg.enable_dummy_insertion = 1;
-cfg.single_thread_mode = 0;                            // 0=parallel, 1=sequential
-strcpy(cfg.aux_antenna_az_path, "/app/natives/csc-03/aux-data/antenna_az.bin");
-strcpy(cfg.aux_antenna_el_path, "/app/natives/csc-03/aux-data/antenna_el.bin");
-strcpy(cfg.aux_gps_hq_path,     "/app/natives/csc-03/aux-data/gps_hq.bin");
-strcpy(cfg.aux_gps_lq_path,     "/app/natives/csc-03/aux-data/gps_lq.bin");
-strcpy(cfg.aux_replica_path,    "/app/natives/csc-03/aux-data/replica.bin");
-strcpy(cfg.tm01_dir_name, "TM01");
-strcpy(cfg.tm02_dir_name, "TM02");
-
-// 2. 파이프라인 생성
-void* handle = Catis_CreatePipeline(&cfg);
-
-// 3. 진행률 모드 선택 (둘 중 하나)
-Catis_SetProgressCallback(handle, my_cb);              // (a) Callback
-// 또는 별도 스레드에서 Catis_GetProgress(handle, &p)   // (b) Polling
-
-// 4. 4단계 처리 (각각 동기 호출)
-Catis_ExtractPayload(handle);          // CCSDS De-packetize
-Catis_DecryptPayload(handle);          // Decrypt
-Catis_ProcessRangeLines(handle);       // BAQ + Range Line + Aux + Calibration
-Catis_ExportHDF5(handle, "/out/L0.h5"); // HDF5 변환
-
-// 5. 결과 조회 및 정리
-char report[1024];
-Catis_GetLastReport(handle, report, sizeof(report));
-Catis_DestroyPipeline(handle);
+int Catis_GenerateSrc(handle, h5_path, src_path);
+int Catis_SegmentSrc(handle, src_path, src_m_path);
+int Catis_EncryptPayload(handle, src_m_path, dsrc_m_path);
+int Catis_EncodeCadu(handle, src_m_path, cadu_path);
+int Catis_H5ToCadu(handle, h5_path, src_path, src_m_path, cadu_path);  // 묶음
 ```
 
-### 상태 코드
+### 신규 에러 코드
 
 | 코드 | 의미 |
 |---|---|
-| `CATIS_SUCCESS` (0) | 정상 |
-| `CATIS_SUCCESS_WITH_WARNINGS` (1) | 경고 있음 |
-| `CATIS_ERR_WORKSPACE_NOT_FOUND` (-10) | workspace 디렉토리 없음 |
-| `CATIS_ERR_SYNC_MARKER_INVALID` (-20) | CADU 동기 마커 무효 |
-| `CATIS_ERR_DECRYPT_FAIL` (-30) | 복호화 실패 (키/IV 오류) |
-| `CATIS_ERR_DISK_FULL` (-40) | 디스크 공간 부족 |
+| `CATIS_ERR_H5_READ_FAIL` (-60) | Reverse 시 H5 입력 읽기 실패 |
+| `CATIS_ERR_ENCODE_FAIL` (-70) | CADU 인코딩 실패 |
 
-### 진행률 표시
-
-콜백 / 폴링 두 방식 모두 제공. SDPE 백엔드는 **stdout 라인을 SSE 로 중계**하는 구조라 둘 다 활용 가능.
-
-- **콜백 (USE_POLLING=0, 단순)**: 라이브러리가 `progress_callback(int, const char*)` 를 호출 → stdout 출력. 라인 형식: `[PROGRESS NN%] <message>`.
-- **폴링 (USE_POLLING=1, 정밀)**: 워커 스레드가 1초 간격으로 `Catis_GetProgress()` 호출 → stdout. 라인 형식: `[PROGRESS NN%] <step_name> ...` (carriage return 사용).
-
-SDPE 시연 시 폴링 모드를 권장 (단계 라벨 일관성 + 1초 단위 갱신).
+기존 forward API (`Catis_ExtractPayload`/`DecryptPayload`/`ProcessRangeLines`/`ExportHDF5`) 는 그대로 유지.
 
 ---
 
-## cli_runner.cpp (정해찬 책임 제공 데모)
+## 호출 방식
 
-`src/cli_runner.cpp` 는 정해찬 책임이 전달한 **데모용** 진입점이다. 현재는 모든 config 값이 하드코드되어 있고(`d:/projects/postprocess/CATIS/workspace`), CLI 인자를 받지 않는다.
-
-SDPE 백엔드에서 호출 가능하도록, **수요일 .so 수령 후 다음 중 한 가지로 wrapping** 한다:
-
-### 옵션 A — cli_runner.cpp 를 CLI 인자 받도록 수정 (간단)
+### 권장: 사전 빌드 ELF 직접 spawn (SDPE 백엔드 적용)
 
 ```bash
-cli_runner --cadu <path> --workspace <dir> --output <h5> --aux-dir <dir> [--key <hex>] [--iv <hex>]
+# LD_LIBRARY_PATH 가 셋되어 있다는 전제
+/app/natives/csc-03/bin/pre_processor <args>
+/app/natives/csc-03/bin/post_processor <args>
 ```
 
-`scripts/build_cli_runner.sh` 가 Docker 빌드 단계에서 `g++ -Iinclude -Llib -lCatisTlm -lhdf5_cpp -lhdf5 -pthread -o bin/cli_runner src/cli_runner.cpp` 로 컴파일.
+또는 `run.sh` 가 LD_LIBRARY_PATH 자동 셋업:
 
-### 옵션 B — Node.js N-API addon (FFI)
+```bash
+/app/natives/csc-03/run.sh pre_processor <args>
+```
 
-[examples/nodejs_example.md](examples/nodejs_example.md) 참고.
+각 ELF 의 CLI 시그니처는 `--help` 또는 `strings` 로 확인. 정식 문서 미포함.
 
-**우선 옵션 A 채택** — frontend SSE 패턴([stage-runner.ts](../../frontend/src/server/sar/stage-runner.ts) 의 `spawn()` 방식) 과 일관성 유지.
+### 대안: libCatisTlm.so 직접 dlopen / FFI
+
+[examples/nodejs_example.md](examples/nodejs_example.md) 참고. SDPE 백엔드는 spawn 패턴 채택 — CSC-04 와 일관성 유지.
 
 ---
 
-## 빌드
+## DRM 이슈
 
-### Linux (Docker 컨테이너 안에서)
+정해찬 책임 코멘트: *"우선 리눅스 빌드는 했는데 DRM 때문에 테스트를 못하는 환경입니다. DRM때문에 데이터 파일이 변형되서 검증이 안되거든요."*
 
-`libCatisTlm.so` 가 `lib/` 에 있어야 함. Dockerfile 에서 자동 실행:
-
-```bash
-bash scripts/build_cli_runner.sh
-```
-
-### Windows (로컬 개발)
-
-이미 빌드된 `bin/cli_runner.exe` 가 있음. 재빌드 필요 시 MSVC `cl.exe` 또는 MinGW `g++` 사용:
-
-```powershell
-g++ -std=c++17 -O2 -Iinclude -Llib src/cli_runner.cpp -lCatisTlm -lhdf5_cpp -lhdf5 -lpthread -o bin/cli_runner.exe
-```
+→ 라이브러리 자체는 정상 빌드. End-to-end 검증은 보내주신 분 환경에서 미진행. 우리 쪽에서:
+- DRM 영향 받지 않는 CADU 샘플로 검증 (회사 NAS 의 `16_resized.cadu` 가 그것일 가능성)
+- Feature toggle (`enable_3des=0`, `enable_randomizer=0`, `enable_rs_fec=0`) 로 일부 단계 우회해 부분 검증
 
 ---
 
 ## SDPE 백엔드 통합
 
-[frontend/src/server/sar/stage-runner.ts](../../frontend/src/server/sar/stage-runner.ts) 의 `STAGE_CONFIG.L0` 에서 `bin/cli_runner` 를 spawn. stdout 의 `[PROGRESS NN%]` 라인을 SSE 로 클라이언트에 중계. 산출 `.h5` 는 다음 단계(L1A) 의 입력으로 자동 전달.
+[frontend/src/server/sar/stage-runner.ts](../../frontend/src/server/sar/stage-runner.ts) 의 `STAGE_CONFIG.L0` 에서 `bin/pre_processor` → `bin/post_processor` 를 순차 spawn. stdout 의 `[PROGRESS NN%]` 라인을 SSE 로 클라이언트에 중계.
 
-전체 시연 흐름은 [frontend/docs/csc-demo-integration.md](../../frontend/docs/csc-demo-integration.md) 참고.
-
----
-
-## 수요일 수령 체크리스트
-
-`libCatisTlm.so` 수령 직후:
-
-1. `lib/libCatisTlm.so` 배치 후 `ldd lib/libCatisTlm.so` 로 의존성 확인 (HDF5 버전 매칭).
-2. `cli_runner.cpp` 를 CLI 인자 버전으로 수정 (옵션 A).
-3. `scripts/build_cli_runner.sh` 실행 또는 Docker rebuild.
-4. `bin/cli_runner --help` 로 동작 확인.
-5. 실제 `.cadu` 샘플로 end-to-end 검증.
-6. 복호화 키/IV 가 데모용 더미라면 실 데이터용 키로 교체 (단, 키는 .gitignore 로 커밋 회피).
+전체 시연 흐름은 [frontend/docs/csc-demo-integration.md § 7](../../frontend/docs/csc-demo-integration.md) 참고.

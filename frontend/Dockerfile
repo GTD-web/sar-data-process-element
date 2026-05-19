@@ -42,12 +42,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3-h5py \
       python3-matplotlib \
       python3-rasterio \
-      libhdf5-cpp-103 \
-      libhdf5-103 \
-      g++ \
-      libhdf5-dev \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3 /usr/local/bin/python
+# CSC-03 은 HDF5 1.14.x (libhdf5*.so.200) 를 번들로 들고 오므로 apt 의 libhdf5-*
+# 는 설치하지 않는다. Bookworm 의 libhdf5-cpp-103 (1.10.x) 과 SOVERSION 불일치 (.200 vs .103).
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
@@ -60,10 +58,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --chown=nextjs:nodejs natives/csc-04-level-1-processor /app/natives/csc-04
 COPY --chown=nextjs:nodejs natives/csc-03-l0-processor /app/natives/csc-03
 
-# CSC-03 cli_runner ELF 빌드. libCatisTlm.so 가 lib/ 에 있어야만 실제 빌드되고,
-# 없으면 스크립트가 즉시 exit 0 (이미지 빌드 자체는 통과 — L0 노드 실행만 막힘).
-# 수요일 .so 수령 후 자동으로 활성화됨.
-RUN bash /app/natives/csc-03/scripts/build_cli_runner.sh
+# CSC-03 사전 빌드 ELF + run.sh exec bit 보장.
+# Windows host 에서 COPY 된 경우 filesystem 이 unix mode 를 보존하지 않을 수 있음.
+RUN chmod +x /app/natives/csc-03/bin/* /app/natives/csc-03/run.sh
 
 ENV LD_LIBRARY_PATH=/app/natives/csc-03/lib
 ENV SDPE_NATIVES_CSC03_DIR=/app/natives/csc-03
